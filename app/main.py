@@ -81,6 +81,7 @@ async def connect(sid, environ):
 def index(request):
     return web.FileResponse('ui/dist/metube/index.html')
 
+routes.static('/favicon/', 'favicon')
 routes.static('/', 'ui/dist/metube')
 
 app.add_routes(routes)
