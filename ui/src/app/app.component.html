@@ -1,0 +1,75 @@
+<nav class="navbar navbar-expand-md navbar-dark bg-dark">
+  <a class="navbar-brand" href="#">MeTube</a>
+  <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
+    <span class="navbar-toggler-icon"></span>
+  </button>
+
+  <!--
+  <div class="collapse navbar-collapse" id="navbarsDefault">
+    <ul class="navbar-nav mr-auto">
+      <li class="nav-item active">
+        <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
+      </li>
+    </ul>
+  </div>
+  -->
+</nav>
+
+<main role="main" class="container">
+  <form #f="ngForm">
+    <div class="input-group add-url-box">
+      <input type="text" class="form-control" placeholder="Video or playlist URL" name="addUrl" [(ngModel)]="addUrl" [disabled]="addInProgress || downloads.loading">
+      <div class="input-group-append">
+        <button class="btn btn-primary" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
+          <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
+          {{ addInProgress ? "Adding..." : "Add" }}
+        </button>
+      </div>
+    </div>
+  </form>
+
+  <p *ngIf="downloads.loading">Loading...</p>
+  <div *ngIf="!downloads.loading">
+    <div *ngIf="downloads.empty()" class="jumbotron jumbotron-fluid px-4">
+      <div class="container text-center">
+        <h1 class="display-4">Welcome to MeTube!</h1>
+        <p class="lead">Please add some downloads via the URL box above.</p>
+      </div>
+    </div> 
+    <table *ngIf="!downloads.empty()" class="table">
+      <thead>
+      <tr>
+        <th scope="col" style="width: 1rem; vertical-align: middle;">
+          <div class="custom-control custom-checkbox">
+            <input type="checkbox" class="custom-control-input" id="select-all" #masterCheckbox [(ngModel)]="masterSelected" (change)="checkUncheckAll()">
+            <label class="custom-control-label" for="select-all"></label>
+          </div>
+        </th>      
+        <th scope="col">
+          <button type="button" class="btn btn-link px-0" disabled #delSelected (click)="delSelectedDownloads()"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
+        </th>
+        <th scope="col" style="width: 14rem;"></th>
+        <th scope="col" style="width: 8rem;">Speed</th>
+        <th scope="col" style="width: 7rem;">ETA</th>
+        <th scope="col" style="width: 2rem;"></th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr *ngFor="let download of downloads.downloads | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
+        <td>
+          <div class="custom-control custom-checkbox">
+            <input type="checkbox" class="custom-control-input" id="select-{{download.key}}" [(ngModel)]="download.value.checked" (change)="selectionChanged()">
+            <label class="custom-control-label" for="select-{{download.key}}"></label>
+          </div>
+        </td>
+        <td>{{ download.value.title }}</td>
+        <td><ngb-progressbar height="1.5rem" [showValue]="download.value.status != 'preparing'" [striped]="download.value.status == 'preparing'" [animated]="download.value.status == 'preparing'" type="success" [value]="download.value.status == 'preparing' ? 100 : download.value.percent | number:'1.0-0'"></ngb-progressbar></td>
+        <td>{{ download.value.speed | speed }}</td>
+        <td>{{ download.value.eta | eta }}</td>
+        <td><button type="button" class="btn btn-link" (click)="delDownload(download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+  
+</main><!-- /.container -->

@@ -1,0 +1,47 @@
+# compiled output
+/ui/dist
+/ui/tmp
+/ui/out-tsc
+# Only exists if Bazel was run
+/ui/bazel-out
+
+# dependencies
+/ui/node_modules
+
+# profiling files
+chrome-profiler-events*.json
+speed-measure-plugin*.json
+
+# IDEs and editors
+/ui/.idea
+.project
+.classpath
+.c9/
+*.launch
+.settings/
+*.sublime-workspace
+
+# IDE - VSCode
+.vscode/*
+#!.vscode/settings.json
+!.vscode/tasks.json
+!.vscode/launch.json
+!.vscode/extensions.json
+.history/*
+
+# misc
+/ui/.sass-cache
+/ui/connect.lock
+/ui/coverage
+/ui/libpeerconnection.log
+npm-debug.log
+yarn-error.log
+testem.log
+/ui/typings
+
+# System Files
+.DS_Store
+Thumbs.db
+
+
+__pycache__
