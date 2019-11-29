@@ -16,7 +16,7 @@ export class AppComponent {
   @ViewChild('masterCheckbox', {static: false}) masterCheckbox: ElementRef;
   @ViewChild('delSelected', {static: false}) delSelected: ElementRef;
 
-  constructor(private downloads: DownloadsService) {
+  constructor(public downloads: DownloadsService) {
     this.downloads.dlChanges.subscribe(() => this.selectionChanged());
   }
 
