@@ -2,6 +2,8 @@
 
 Web GUI for youtube-dl with playlist support
 
+![screenshot1](screenshot.gif)
+
 ## Run using Docker
 
 ```bash
