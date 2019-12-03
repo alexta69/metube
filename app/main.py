@@ -1,4 +1,5 @@
 #!/usr/bin/env python3
+# pylint: disable=no-member,method-hidden
 
 import os
 from aiohttp import web
@@ -15,6 +16,7 @@ log = logging.getLogger('main')
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
+        'URL_PREFIX': '',
     }
 
     def __init__(self):
@@ -35,6 +37,8 @@ app = web.Application()
 sio = socketio.AsyncServer()
 sio.attach(app)
 routes = web.RouteTableDef()
+if not config.URL_PREFIX.endswith('/'):
+    config.URL_PREFIX += '/'
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):
@@ -54,7 +58,7 @@ class Notifier(DownloadQueueNotifier):
 
 dqueue = DownloadQueue(config, Notifier())
 
-@routes.post('/add')
+@routes.post(config.URL_PREFIX + 'add')
 async def add(request):
     post = await request.json()
     url = post.get('url')
@@ -63,7 +67,7 @@ async def add(request):
     status = await dqueue.add(url)
     return web.Response(text=serializer.encode(status))
 
-@routes.post('/delete')
+@routes.post(config.URL_PREFIX + 'delete')
 async def delete(request):
     post = await request.json()
     ids = post.get('ids')
@@ -77,12 +81,21 @@ async def delete(request):
 async def connect(sid, environ):
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
 
-@routes.get('/')
+@routes.get(config.URL_PREFIX)
 def index(request):
     return web.FileResponse('ui/dist/metube/index.html')
 
-routes.static('/favicon/', 'favicon')
-routes.static('/', 'ui/dist/metube')
+if config.URL_PREFIX != '/':
+    @routes.get('/')
+    def index_redirect_root(request):
+        return web.HTTPFound(config.URL_PREFIX)
+
+    @routes.get(config.URL_PREFIX[:-1])
+    def index_redirect_dir(request):
+        return web.HTTPFound(config.URL_PREFIX)
+
+routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
+routes.static(config.URL_PREFIX, 'ui/dist/metube')
 
 app.add_routes(routes)
 

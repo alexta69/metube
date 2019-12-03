@@ -24,6 +24,13 @@ services:
       - /path/to/downloads:/downloads
 ```
 
+## Configuration via environment variables
+
+Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
+
+* __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to "/downloads" in the docker image, and "." otherwise.
+* __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to "/".
+
 ## Build and run locally
 
 Make sure you have node.js installed.
