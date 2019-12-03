@@ -26,39 +26,51 @@ interface Download {
 })
 export class DownloadsService {
   loading = true;
-  downloads = new Map<string, Download>();
-  dlChanges = new Subject();
+  queue = new Map<string, Download>();
+  done = new Map<string, Download>();
+  queueChanged = new Subject();
+  doneChanged = new Subject();
 
   constructor(private http: HttpClient, private socket: Socket) {
-    socket.fromEvent('queue').subscribe((strdata: string) => {
+    socket.fromEvent('all').subscribe((strdata: string) => {
       this.loading = false;
-      this.downloads.clear();
-      let data: [[string, Download]] = JSON.parse(strdata);
-      data.forEach(entry => this.downloads.set(...entry));
-      this.dlChanges.next();
+      let data: [[[string, Download]], [[string, Download]]] = JSON.parse(strdata);
+      this.queue.clear();
+      data[0].forEach(entry => this.queue.set(...entry));
+      this.done.clear();
+      data[1].forEach(entry => this.done.set(...entry));
+      this.queueChanged.next();
+      this.doneChanged.next();
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.downloads.set(data.id, data);
-      this.dlChanges.next();
+      this.queue.set(data.id, data);
+      this.queueChanged.next();
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      let dl: Download = this.downloads.get(data.id);
+      let dl: Download = this.queue.get(data.id);
       data.checked = dl.checked;
       data.deleting = dl.deleting;
-      this.downloads.set(data.id, data);
-      this.dlChanges.next();
+      this.queue.set(data.id, data);
     });
-    socket.fromEvent('deleted').subscribe((strdata: string) => {
+    socket.fromEvent('completed').subscribe((strdata: string) => {
+      let data: Download = JSON.parse(strdata);
+      this.queue.delete(data.id);
+      this.done.set(data.id, data);
+      this.queueChanged.next();
+      this.doneChanged.next();
+    });
+    socket.fromEvent('canceled').subscribe((strdata: string) => {
       let data: string = JSON.parse(strdata);
-      this.downloads.delete(data);
-      this.dlChanges.next();
+      this.queue.delete(data);
+      this.queueChanged.next();
     });
-  }
-
-  empty() {
-    return this.downloads.size == 0;
+    socket.fromEvent('cleared').subscribe((strdata: string) => {
+      let data: string = JSON.parse(strdata);
+      this.done.delete(data);
+      this.doneChanged.next();
+    });
   }
 
   handleHTTPError(error: HttpErrorResponse) {
@@ -72,8 +84,14 @@ export class DownloadsService {
     );
   }
 
-  public del(ids: string[]) {
-    ids.forEach(id => this.downloads.get(id).deleting = true);
-    return this.http.post('delete', {ids: ids});
+  public delById(where: string, ids: string[]) {
+    ids.forEach(id => this[where].get(id).deleting = true);
+    return this.http.post('delete', {where: where, ids: ids});
+  }
+
+  public delByFilter(where: string, filter: (dl: Download) => boolean) {
+    let ids: string[] = [];
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
+    return this.delById(where, ids);
   }
 }

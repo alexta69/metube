@@ -1,23 +1,48 @@
-import { Component, ViewChild, ElementRef } from '@angular/core';
-import { faTrashAlt } from '@fortawesome/free-regular-svg-icons';
+import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
 
 import { DownloadsService, Status } from './downloads.service';
+import { MasterCheckboxComponent } from './master-checkbox.component';
 
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
   styleUrls: ['./app.component.sass']
 })
-export class AppComponent {
+export class AppComponent implements AfterViewInit {
   addUrl: string;
   addInProgress = false;
+  
+  @ViewChild('queueMasterCheckbox', {static: false}) queueMasterCheckbox: MasterCheckboxComponent;
+  @ViewChild('queueDelSelected', {static: false}) queueDelSelected: ElementRef;
+  @ViewChild('doneMasterCheckbox', {static: false}) doneMasterCheckbox: MasterCheckboxComponent;
+  @ViewChild('doneDelSelected', {static: false}) doneDelSelected: ElementRef;
+  @ViewChild('doneClearCompleted', {static: false}) doneClearCompleted: ElementRef;
+  @ViewChild('doneClearFailed', {static: false}) doneClearFailed: ElementRef;
+
   faTrashAlt = faTrashAlt;
-  masterSelected: boolean;
-  @ViewChild('masterCheckbox', {static: false}) masterCheckbox: ElementRef;
-  @ViewChild('delSelected', {static: false}) delSelected: ElementRef;
+  faCheckCircle = faCheckCircle;
+  faTimesCircle = faTimesCircle;
 
   constructor(public downloads: DownloadsService) {
-    this.downloads.dlChanges.subscribe(() => this.selectionChanged());
+  }
+
+  ngAfterViewInit() {
+    this.downloads.queueChanged.subscribe(() => {
+      this.queueMasterCheckbox.selectionChanged();
+    });
+    this.downloads.doneChanged.subscribe(() => {
+      this.doneMasterCheckbox.selectionChanged();
+      let completed: number = 0, failed: number = 0;
+      this.downloads.done.forEach(dl => {
+        if (dl.status === 'finished')
+          completed++;
+        else if (dl.status === 'error')
+          failed++;
+      });
+      this.doneClearCompleted.nativeElement.disabled = completed === 0;
+      this.doneClearFailed.nativeElement.disabled = failed === 0;
+    });
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
@@ -26,19 +51,12 @@ export class AppComponent {
     return 1;
   }
 
-  checkUncheckAll() {
-    this.downloads.downloads.forEach(dl => dl.checked = this.masterSelected);
-    this.selectionChanged();
+  queueSelectionChanged(checked: number) {
+    this.queueDelSelected.nativeElement.disabled = checked == 0;
   }
 
-  selectionChanged() {
-    if (!this.masterCheckbox)
-      return;
-    let checked: number = 0;
-    this.downloads.downloads.forEach(dl => { if(dl.checked) checked++ });
-    this.masterSelected = checked > 0 && checked == this.downloads.downloads.size;
-    this.masterCheckbox.nativeElement.indeterminate = checked > 0 && checked < this.downloads.downloads.size;
-    this.delSelected.nativeElement.disabled = checked == 0;
+  doneSelectionChanged(checked: number) {
+    this.doneDelSelected.nativeElement.disabled = checked == 0;
   }
 
   addDownload() {
@@ -53,13 +71,19 @@ export class AppComponent {
     });
   }
 
-  delDownload(id: string) {
-    this.downloads.del([id]).subscribe();
+  delDownload(where: string, id: string) {
+    this.downloads.delById(where, [id]).subscribe();
   }
 
-  delSelectedDownloads() {
-    let ids: string[] = [];
-    this.downloads.downloads.forEach(dl => { if(dl.checked) ids.push(dl.id) });
-    this.downloads.del(ids).subscribe();
+  delSelectedDownloads(where: string) {
+    this.downloads.delByFilter(where, dl => dl.checked).subscribe();
+  }
+
+  clearCompletedDownloads() {
+    this.downloads.delByFilter('done', dl => dl.status === 'finished').subscribe();
+  }
+
+  clearFailedDownloads() {
+    this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe();
   }
 }

@@ -8,6 +8,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 
 import { AppComponent } from './app.component';
 import { EtaPipe, SpeedPipe } from './downloads.pipe';
+import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkbox.component';
 
 const config: SocketIoConfig = { url: '', options: {} };
 
@@ -15,7 +16,9 @@ const config: SocketIoConfig = { url: '', options: {} };
   declarations: [
     AppComponent,
     EtaPipe,
-    SpeedPipe
+    SpeedPipe,
+    MasterCheckboxComponent,
+    SlaveCheckboxComponent
   ],
   imports: [
     BrowserModule,

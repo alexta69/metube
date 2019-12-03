@@ -1,15 +1,37 @@
 .add-url-box
-    padding: 5rem 0
     max-width: 720px
-    margin: auto
+    margin: 4rem auto
 
-.rounded-box
-    border: 1px solid rgba(0,0,0,.125)
-    border-radius: .25rem
+$metube-section-color-bg: rgba(0,0,0,.07)
+
+.metube-section-header
+    font-size: 1.8rem
+    font-weight: 300
+    position: relative
+    background: $metube-section-color-bg
+    padding: 0.5rem 0
+    margin-top: 3.5rem
+
+.metube-section-header:before
+    content: ""
+    position: absolute
+    top: 0
+    bottom: 0
+    left: -9999px
+    right: 0
+    border-left: 9999px solid $metube-section-color-bg
+    box-shadow: 9999px 0 0 $metube-section-color-bg
+
+button:hover
+    text-decoration: none
 
 th
     border-top: 0
-    border-bottom: 3px solid #dee2e6 !important
+    border-bottom-width: 3px !important
+    vertical-align: middle !important
+
+td
+    vertical-align: middle
 
 .disabled
     opacity: 0.5

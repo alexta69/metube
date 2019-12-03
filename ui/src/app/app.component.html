@@ -1,10 +1,9 @@
 <nav class="navbar navbar-expand-md navbar-dark bg-dark">
   <a class="navbar-brand" href="#">MeTube</a>
+  <!--
   <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
     <span class="navbar-toggler-icon"></span>
   </button>
-
-  <!--
   <div class="collapse navbar-collapse" id="navbarsDefault">
     <ul class="navbar-nav mr-auto">
       <li class="nav-item active">
@@ -29,47 +28,66 @@
   </form>
 
   <p *ngIf="downloads.loading">Loading...</p>
-  <div *ngIf="!downloads.loading">
-    <div *ngIf="downloads.empty()" class="jumbotron jumbotron-fluid px-4">
-      <div class="container text-center">
-        <h1 class="display-4">Welcome to MeTube!</h1>
-        <p class="lead">Please add some downloads via the URL box above.</p>
-      </div>
-    </div> 
-    <table *ngIf="!downloads.empty()" class="table">
-      <thead>
+  <div class="metube-section-header">Downloading</div>
+  <table class="table">
+    <thead>
       <tr>
-        <th scope="col" style="width: 1rem; vertical-align: middle;">
-          <div class="custom-control custom-checkbox">
-            <input type="checkbox" class="custom-control-input" id="select-all" #masterCheckbox [(ngModel)]="masterSelected" (change)="checkUncheckAll()">
-            <label class="custom-control-label" for="select-all"></label>
-          </div>
+        <th scope="col" style="width: 1rem;">
+          <app-master-checkbox #queueMasterCheckbox [id]="'queue'" [list]="downloads.queue" (changed)="queueSelectionChanged($event)"></app-master-checkbox>
         </th>      
         <th scope="col">
-          <button type="button" class="btn btn-link px-0" disabled #delSelected (click)="delSelectedDownloads()"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
+          <button type="button" class="btn btn-link px-0 mr-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Cancel selected</button>
         </th>
         <th scope="col" style="width: 14rem;"></th>
         <th scope="col" style="width: 8rem;">Speed</th>
         <th scope="col" style="width: 7rem;">ETA</th>
         <th scope="col" style="width: 2rem;"></th>
       </tr>
-      </thead>
-      <tbody>
-      <tr *ngFor="let download of downloads.downloads | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
+    </thead>
+    <tbody>
+      <tr *ngFor="let download of downloads.queue | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
         <td>
-          <div class="custom-control custom-checkbox">
-            <input type="checkbox" class="custom-control-input" id="select-{{download.key}}" [(ngModel)]="download.value.checked" (change)="selectionChanged()">
-            <label class="custom-control-label" for="select-{{download.key}}"></label>
-          </div>
+          <app-slave-checkbox [id]="download.key" [master]="queueMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
         </td>
         <td>{{ download.value.title }}</td>
         <td><ngb-progressbar height="1.5rem" [showValue]="download.value.status != 'preparing'" [striped]="download.value.status == 'preparing'" [animated]="download.value.status == 'preparing'" type="success" [value]="download.value.status == 'preparing' ? 100 : download.value.percent | number:'1.0-0'"></ngb-progressbar></td>
         <td>{{ download.value.speed | speed }}</td>
         <td>{{ download.value.eta | eta }}</td>
-        <td><button type="button" class="btn btn-link" (click)="delDownload(download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button></td>
+        <td><button type="button" class="btn btn-link" (click)="delDownload('queue', download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button></td>
       </tr>
-      </tbody>
-    </table>
-  </div>
+    </tbody>
+  </table>
+
+  <div class="metube-section-header">Completed</div>
+  <table class="table">
+    <thead>
+      <tr>
+        <th scope="col" style="width: 1rem;">
+          <app-master-checkbox #doneMasterCheckbox [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)"></app-master-checkbox>
+        </th>      
+        <th scope="col">
+          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
+          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle"></fa-icon>&nbsp; Clear completed</button>
+          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneClearFailed (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle"></fa-icon>&nbsp; Clear failed</button>
+        </th>
+        <th scope="col" style="width: 2rem;"></th>
+      </tr>
+    </thead>
+    <tbody>
+      <tr *ngFor="let download of downloads.done | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
+        <td>
+          <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
+        </td>
+        <td>
+          <div style="display: inline-block; width: 1.3rem;">
+            <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" style="color: green;"></fa-icon>
+            <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" style="color: red;"></fa-icon>
+          </div>
+          {{ download.value.title }}
+        </td>
+        <td><button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button></td>
+      </tr>
+    </tbody>
+  </table>
   
 </main><!-- /.container -->

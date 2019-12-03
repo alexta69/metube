@@ -78,7 +78,13 @@ class DownloadQueueNotifier:
     async def updated(self, dl):
         raise NotImplementedError
 
-    async def deleted(self, id):
+    async def completed(self, dl):
+        raise NotImplementedError
+
+    async def canceled(self, id):
+        raise NotImplementedError
+
+    async def cleared(self, id):
         raise NotImplementedError
 
 class DownloadQueue:
@@ -86,6 +92,7 @@ class DownloadQueue:
         self.config = config
         self.notifier = notifier
         self.queue = OrderedDict()
+        self.done = OrderedDict()
         self.event = asyncio.Event()
         asyncio.ensure_future(self.__download())
 
@@ -116,20 +123,28 @@ class DownloadQueue:
         self.event.set()
         return {'status': 'ok'}
     
-    async def delete(self, ids):
+    async def cancel(self, ids):
         for id in ids:
             if id not in self.queue:
+                log.warn(f'requested cancel for non-existent download {id}')
+                continue
+            self.queue[id].cancel()
+            del self.queue[id]
+            await self.notifier.canceled(id)
+        return {'status': 'ok'}
+
+    async def clear(self, ids):
+        for id in ids:
+            if id not in self.done:
                 log.warn(f'requested delete for non-existent download {id}')
                 continue
-            if self.queue[id].info.status is not None:
-                self.queue[id].cancel()
-            else:
-                del self.queue[id]
-                await self.notifier.deleted(id)
+            del self.done[id]
+            await self.notifier.cleared(id)
         return {'status': 'ok'}
 
     def get(self):
-        return list((k, v.info) for k, v in self.queue.items())
+        return(list((k, v.info) for k, v in self.queue.items()),
+               list((k, v.info) for k, v in self.done.items()))
     
     async def __download(self):
         while True:
@@ -144,11 +159,15 @@ class DownloadQueue:
             async def updated_cb(): await self.notifier.updated(entry.info)
             asyncio.ensure_future(entry.update_status(updated_cb))
             await start_aw
-            if entry.info.status != 'finished' and entry.tmpfilename and os.path.isfile(entry.tmpfilename):
-                try:
-                    os.remove(entry.tmpfilename)
-                except:
-                    pass
+            if entry.info.status != 'finished':
+                if entry.tmpfilename and os.path.isfile(entry.tmpfilename):
+                    try:
+                        os.remove(entry.tmpfilename)
+                    except:
+                        pass
+                entry.info.status = 'error'
             entry.close()
-            del self.queue[id]
-            await self.notifier.deleted(id)
+            if id in self.queue:
+                del self.queue[id]
+                self.done[id] = entry
+                await self.notifier.completed(entry.info)

@@ -43,8 +43,14 @@ class Notifier(DownloadQueueNotifier):
     async def updated(self, dl):
         await sio.emit('updated', serializer.encode(dl))
 
-    async def deleted(self, id):
-        await sio.emit('deleted', serializer.encode(id))
+    async def completed(self, dl):
+        await sio.emit('completed', serializer.encode(dl))
+
+    async def canceled(self, id):
+        await sio.emit('canceled', serializer.encode(id))
+
+    async def cleared(self, id):
+        await sio.emit('cleared', serializer.encode(id))
 
 dqueue = DownloadQueue(config, Notifier())
 
@@ -61,21 +67,15 @@ async def add(request):
 async def delete(request):
     post = await request.json()
     ids = post.get('ids')
-    if not ids:
+    where = post.get('where')
+    if not ids or where not in ['queue', 'done']:
         raise web.HTTPBadRequest()
-    status = await dqueue.delete(ids)
+    status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
     return web.Response(text=serializer.encode(status))
-
-@routes.get('/queue')
-def queue(request):
-    ret = dqueue.get()
-    return web.Response(text=serializer.encode(ret))
 
 @sio.event
 async def connect(sid, environ):
-    ret = dqueue.get()
-    #ret = [["XeNTV0kyHaU", {"id": "XeNTV0kyHaU", "title": "2020 Mercedes ACTROS \u2013 Digital Side Mirrors, Electronic Stability, Auto Braking, Side Guard Safety", "url": "XeNTV0kyHaU", "status": None, "percentage": 0}], ["76wlIusQe9U", {"id": "76wlIusQe9U", "title": "Toyota HIACE 2020 \u2013 Toyota Wagon /  Toyota HIACE 2019 and 2020", "url": "76wlIusQe9U", "status": None, "percentage": 0}], ["n_d5LPwflMM", {"id": "n_d5LPwflMM", "title": "2020 Toyota GRANVIA \u2013 Toyota 8 Seater LUXURY VAN / ALL-NEW Toyota GRANVIA 2020", "url": "n_d5LPwflMM", "status": None, "percentage": 0}], ["Dv4ZFhCpF1M", {"id": "Dv4ZFhCpF1M", "title": "Toyota SIENNA 2019 vs Honda ODYSSEY 2019", "url": "Dv4ZFhCpF1M", "status": None, "percentage": 0}], ["GjHJFb3Mgqw", {"id": "GjHJFb3Mgqw", "title": "How It's Made (Buses) \u2013 How Buses are made? SETRA BUS Production", "url": "GjHJFb3Mgqw", "status": None, "percentage": 0}]]
-    await sio.emit('queue', serializer.encode(ret), to=sid)
+    await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
 
 @routes.get('/')
 def index(request):
