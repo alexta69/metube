@@ -2,7 +2,7 @@
 
 Web GUI for youtube-dl with playlist support
 
-![screenshot1](screenshot.gif)
+![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
 
 ## Run using Docker
 
