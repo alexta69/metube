@@ -33,6 +33,20 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to "/downloads" in the docker image, and "." otherwise.
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to "/".
 
+## Running behind a reverse proxy
+
+Use the following nginx configuration to run MeTube behind a reverse proxy. The extra `proxy_set_headers` directives are there to make WebSockets work. Don't forget to set the URL_PREFIX environment variable to the correct value as well.
+
+```
+location /metube/ {
+        proxy_pass http://metube:8081;
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_set_header Host $host;
+}
+```
+
 ## Build and run locally
 
 Make sure you have node.js installed.

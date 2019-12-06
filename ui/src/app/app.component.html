@@ -27,8 +27,10 @@
     </div>
   </form>
 
-  <p *ngIf="downloads.loading">Loading...</p>
-  <div class="metube-section-header">Downloading</div>
+  <div *ngIf="downloads.loading" class="alert alert-info" role="alert">
+    Connecting to server...
+  </div>
+    <div class="metube-section-header">Downloading</div>
   <table class="table">
     <thead>
       <tr>

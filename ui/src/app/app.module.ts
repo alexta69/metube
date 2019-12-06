@@ -3,14 +3,12 @@ import { NgModule } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { HttpClientModule } from '@angular/common/http';
-import { SocketIoModule, SocketIoConfig } from 'ngx-socket-io';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 
 import { AppComponent } from './app.component';
 import { EtaPipe, SpeedPipe } from './downloads.pipe';
 import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkbox.component';
-
-const config: SocketIoConfig = { url: '', options: {} };
+import { MeTubeSocket } from './metube-socket';
 
 @NgModule({
   declarations: [
@@ -25,10 +23,9 @@ const config: SocketIoConfig = { url: '', options: {} };
     FormsModule,
     NgbModule,
     HttpClientModule,
-    SocketIoModule.forRoot(config),
     FontAwesomeModule
   ],
-  providers: [],
+  providers: [MeTubeSocket],
   bootstrap: [AppComponent]
 })
 export class AppModule { }

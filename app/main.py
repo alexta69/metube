@@ -22,6 +22,8 @@ class Config:
     def __init__(self):
         for k, v in self._DEFAULTS.items():
             setattr(self, k, os.environ[k] if k in os.environ else v)
+        if not self.URL_PREFIX.endswith('/'):
+            self.URL_PREFIX += '/'
 
 config = Config()
 
@@ -35,10 +37,8 @@ class ObjectSerializer(json.JSONEncoder):
 serializer = ObjectSerializer()
 app = web.Application()
 sio = socketio.AsyncServer()
-sio.attach(app)
+sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
-if not config.URL_PREFIX.endswith('/'):
-    config.URL_PREFIX += '/'
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):

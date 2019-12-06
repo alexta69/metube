@@ -2,7 +2,7 @@ import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
-import { Socket } from 'ngx-socket-io';
+import { MeTubeSocket } from './metube-socket';
 
 export interface Status {
   status: string;
@@ -31,7 +31,7 @@ export class DownloadsService {
   queueChanged = new Subject();
   doneChanged = new Subject();
 
-  constructor(private http: HttpClient, private socket: Socket) {
+  constructor(private http: HttpClient, private socket: MeTubeSocket) {
     socket.fromEvent('all').subscribe((strdata: string) => {
       this.loading = false;
       let data: [[[string, Download]], [[string, Download]]] = JSON.parse(strdata);
