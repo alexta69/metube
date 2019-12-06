@@ -11,7 +11,7 @@ log = logging.getLogger('ytdl')
 class DownloadInfo:
     def __init__(self, id, title, url):
         self.id, self.title, self.url = id, title, url
-        self.status = self.percent = self.speed = self.eta = None
+        self.status = self.msg = self.percent = self.speed = self.eta = None
 
 class Download:
     manager = None
@@ -25,14 +25,19 @@ class Download:
         self.loop = None
     
     def _download(self):
-        youtube_dl.YoutubeDL(params={
-            'quiet': True,
-            'no_color': True,
-            #'skip_download': True,
-            'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
-            'socket_timeout': 30,
-            'progress_hooks': [lambda d: self.status_queue.put(d)],
-        }).download([self.info.url])
+        try:
+            ret = youtube_dl.YoutubeDL(params={
+                'quiet': True,
+                'no_color': True,
+                #'skip_download': True,
+                'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
+                'cachedir': False,
+                'socket_timeout': 30,
+                'progress_hooks': [lambda d: self.status_queue.put(d)],
+            }).download([self.info.url])
+            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+        except youtube_dl.utils.YoutubeDLError as exc:
+            self.status_queue.put({'status': 'error', 'msg': str(exc)})
     
     async def start(self):
         if Download.manager is None:
@@ -53,7 +58,10 @@ class Download:
             self.status_queue.put(None)
 
     def running(self):
-        return self.proc is not None and self.proc.is_alive()
+        try:
+            return self.proc is not None and self.proc.is_alive()
+        except ValueError:
+            return False
 
     async def update_status(self, updated_cb):
         await updated_cb()
@@ -63,6 +71,7 @@ class Download:
                 return
             self.tmpfilename = status.get('tmpfilename')
             self.info.status = status['status']
+            self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
                 total = status.get('total_bytes') or status.get('total_bytes_estimate')
                 if total:
@@ -109,12 +118,15 @@ class DownloadQueue:
             info = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except youtube_dl.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        if info.get('_type') == 'playlist':
+        etype = info.get('_type') or 'video'
+        if etype == 'playlist':
             entries = info['entries']
             log.info(f'playlist detected with {len(entries)} entries')
-        else:
+        elif etype == 'video':
             entries = [info]
             log.info('single video detected')
+        else:
+            return {'status': 'error', 'msg': f'Unsupported resource requested: {etype}, please enter video or playlist URLs only'}
         for entry in entries:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])

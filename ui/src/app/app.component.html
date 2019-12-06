@@ -81,11 +81,11 @@
           <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
         </td>
         <td>
-          <div style="display: inline-block; width: 1.3rem;">
+          <div style="display: inline-block; width: 1.5rem;">
             <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" style="color: green;"></fa-icon>
             <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" style="color: red;"></fa-icon>
           </div>
-          {{ download.value.title }}
+          <span ngbTooltip="{{download.value.msg}}">{{ download.value.title }}</span>
         </td>
         <td><button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button></td>
       </tr>
