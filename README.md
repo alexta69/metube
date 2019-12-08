@@ -1,6 +1,6 @@
 # MeTube
 
-Web GUI for youtube-dl with playlist support
+Web GUI for youtube-dl with playlist support. Allows you to download videos from YouTube and dozens of other sites (https://ytdl-org.github.io/youtube-dl/supportedsites.html).
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
 
@@ -30,12 +30,12 @@ services:
 
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
 
-* __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to "/downloads" in the docker image, and "." otherwise.
-* __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to "/".
+* __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
+* __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 
 ## Running behind a reverse proxy
 
-Use the following nginx configuration to run MeTube behind a reverse proxy. The extra `proxy_set_headers` directives are there to make WebSockets work. Don't forget to set the URL_PREFIX environment variable to the correct value as well.
+Use the following nginx configuration to run MeTube behind a reverse proxy. The extra `proxy_set_header` directives are there to make WebSocket work. Don't forget to set the URL_PREFIX environment variable to the correct value as well.
 
 ```
 location /metube/ {
@@ -49,7 +49,7 @@ location /metube/ {
 
 ## Build and run locally
 
-Make sure you have node.js installed.
+Make sure you have node.js and Python 3.8 installed.
 
 ```bash
 cd metube
