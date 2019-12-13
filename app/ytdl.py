@@ -121,28 +121,41 @@ class DownloadQueue:
             'extract_flat': True,
         }).extract_info(url, download=False)
 
-    async def add(self, url):
-        log.info(f'adding {url}')
-        try:
-            info = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
-        except youtube_dl.utils.YoutubeDLError as exc:
-            return {'status': 'error', 'msg': str(exc)}
-        etype = info.get('_type') or 'video'
+    async def __add_entry(self, entry, already):
+        etype = entry.get('_type') or 'video'
         if etype == 'playlist':
-            entries = info['entries']
+            entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
-        elif etype == 'video':
-            entries = [info]
-            log.info('single video detected')
-        else:
-            return {'status': 'error', 'msg': f'Unsupported resource requested: {etype}, please enter video or playlist URLs only'}
-        for entry in entries:
+            results = []
+            for etr in entries:
+                results.append(await self.__add_entry(etr, already))
+            if any(res['status'] == 'error' for res in results):
+                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
+            return {'status': 'ok'}
+        elif etype == 'video' or etype == 'url' and 'id' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])
                 self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, dl)
+                self.event.set()
                 await self.notifier.added(dl)
-        self.event.set()
-        return {'status': 'ok'}
+            return {'status': 'ok'}
+        elif etype == 'url':
+            return await self.add(entry['url'], already)
+        return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
+
+    async def add(self, url, already=None):
+        log.info(f'adding {url}')
+        already = set() if already is None else already
+        if url in already:
+            log.info('recursion detected, skipping')
+            return {'status': 'ok'}
+        else:
+            already.add(url)
+        try:
+            entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
+        except youtube_dl.utils.YoutubeDLError as exc:
+            return {'status': 'error', 'msg': str(exc)}
+        return await self.__add_entry(entry, already)
     
     async def cancel(self, ids):
         for id in ids:
