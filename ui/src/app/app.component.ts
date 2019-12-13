@@ -11,6 +11,13 @@ import { MasterCheckboxComponent } from './master-checkbox.component';
 })
 export class AppComponent implements AfterViewInit {
   addUrl: string;
+  qualities: Array<Object> = [
+    {id: "best", text: "Best"},
+    {id: "1080p", text: "1080p"},
+    {id: "720p", text: "720p"},
+    {id: "480p", text: "480p"}
+  ];
+  quality: string = "best";
   addInProgress = false;
   
   @ViewChild('queueMasterCheckbox', {static: false}) queueMasterCheckbox: MasterCheckboxComponent;
@@ -61,7 +68,7 @@ export class AppComponent implements AfterViewInit {
 
   addDownload() {
     this.addInProgress = true;
-    this.downloads.add(this.addUrl).subscribe((status: Status) => {
+    this.downloads.add(this.addUrl, this.quality).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {

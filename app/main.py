@@ -62,9 +62,10 @@ dqueue = DownloadQueue(config, Notifier())
 async def add(request):
     post = await request.json()
     url = post.get('url')
-    if not url:
+    quality = post.get('quality')
+    if not url or not quality:
         raise web.HTTPBadRequest()
-    status = await dqueue.add(url)
+    status = await dqueue.add(url, quality)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

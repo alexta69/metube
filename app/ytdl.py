@@ -32,8 +32,15 @@ class DownloadInfo:
 class Download:
     manager = None
 
-    def __init__(self, download_dir, info):
+    def __init__(self, download_dir, quality, info):
         self.download_dir = download_dir
+        if quality == 'best':
+            self.format = None
+        elif quality in ('1080p', '720p', '480p'):
+            res = quality[:-1]
+            self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}]'
+        else:
+            raise Exception(f'unknown quality {quality}')
         self.info = info
         self.canceled = False
         self.tmpfilename = None
@@ -49,6 +56,7 @@ class Download:
                 'no_color': True,
                 #'skip_download': True,
                 'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
+                'format': self.format,
                 'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [lambda d: self.status_queue.put(d)],
@@ -121,29 +129,29 @@ class DownloadQueue:
             'extract_flat': True,
         }).extract_info(url, download=False)
 
-    async def __add_entry(self, entry, already):
+    async def __add_entry(self, entry, quality, already):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
             results = []
             for etr in entries:
-                results.append(await self.__add_entry(etr, already))
+                results.append(await self.__add_entry(etr, quality, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
         elif etype == 'video' or etype == 'url' and 'id' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])
-                self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, dl)
+                self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, quality, dl)
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype == 'url':
-            return await self.add(entry['url'], already)
+            return await self.add(entry['url'], quality, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, already=None):
+    async def add(self, url, quality, already=None):
         log.info(f'adding {url}')
         already = set() if already is None else already
         if url in already:
@@ -155,7 +163,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except youtube_dl.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, already)
+        return await self.__add_entry(entry, quality, already)
     
     async def cancel(self, ids):
         for id in ids:

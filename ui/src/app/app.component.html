@@ -19,11 +19,14 @@
     <div class="input-group add-url-box">
       <input type="text" class="form-control" placeholder="Video or playlist URL" name="addUrl" [(ngModel)]="addUrl" [disabled]="addInProgress || downloads.loading">
       <div class="input-group-append">
-        <button class="btn btn-primary" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
-          <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
-          {{ addInProgress ? "Adding..." : "Add" }}
-        </button>
+        <select class="custom-select" name="quality" [(ngModel)]="quality" [disabled]="addInProgress || downloads.loading">
+          <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
+        </select>
       </div>
+      <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
+        <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
+        {{ addInProgress ? "Adding..." : "Add" }}
+      </button>
     </div>
   </form>
 
