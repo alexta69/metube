@@ -52,11 +52,12 @@ location /metube/ {
 Make sure you have node.js and Python 3.8 installed.
 
 ```bash
-cd metube
+cd metube/ui
 # install Angular and build the UI
 npm install
 node_modules/.bin/ng build
 # install python dependencies
+cd ..
 pip3 install pipenv
 pipenv install
 # run
