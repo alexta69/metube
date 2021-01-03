@@ -8,7 +8,7 @@ pylint = "*"
 
 [packages]
 aiohttp = "*"
-python-socketio = "*"
+python-socketio = "~=4.0"
 youtube-dl = "*"
 
 [requires]
