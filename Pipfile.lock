@@ -75,6 +75,14 @@
             "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
             "version": "==20.3.0"
         },
+        "bidict": {
+            "hashes": [
+                "sha256:4fa46f7ff96dc244abfc437383d987404ae861df797e2fd5b190e233c302be09",
+                "sha256:929d056e8d0d9b17ceda20ba5b24ac388e2a4d39802b87f9f4d3f45ecba070bf"
+            ],
+            "markers": "python_version >= '3.6'",
+            "version": "==0.21.2"
+        },
         "chardet": {
             "hashes": [
                 "sha256:84ab92ed1c4d4f16916e05906b6b75a6c0fb5db821cc65e70cbd64a3e2a5eaae",
@@ -84,11 +92,11 @@
         },
         "idna": {
             "hashes": [
-                "sha256:b307872f855b18632ce0c21c5e45be78c0ea7ae4c15c828c20788b26921eb3f6",
-                "sha256:b97d804b1e9b523befed77c48dacec60e6dcb0b5391d57af6a65a312a90648c0"
+                "sha256:320229aadbdfc597bc28876748cc0c9d04d476e0fe6caacaaddea146365d9f63",
+                "sha256:c9a26e10e5558412384fac891eefb41957831d31be55f1e2c98ed97a70abb969"
             ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
-            "version": "==2.10"
+            "markers": "python_version >= '3.4'",
+            "version": "==3.0"
         },
         "multidict": {
             "hashes": [
@@ -135,26 +143,18 @@
         },
         "python-engineio": {
             "hashes": [
-                "sha256:5a9e6086d192463b04a1428ff1f85b6ba631bbb19d453b144ffc04f530542b84",
-                "sha256:eab4553f2804c1ce97054c8b22cf0d5a9ab23128075248b97e1a5b2f29553085"
+                "sha256:33f7a214be5db35c867e97027bfe63676cb003d82aa17a607612b25ba5d84e5b",
+                "sha256:9f34afa4170f5ba6e3d9ff158752ccf8fbb2145f16554b2f0fc84646675be99a"
             ],
-            "version": "==3.14.2"
+            "version": "==4.0.0"
         },
         "python-socketio": {
             "hashes": [
-                "sha256:5a21da53fdbdc6bb6c8071f40e13d100e0b279ad997681c2492478e06f370523",
-                "sha256:cd1f5aa492c1eb2be77838e837a495f117e17f686029ebc03d62c09e33f4fa10"
+                "sha256:870f8b00a63ef7c9a1f85fd70028624867bf246115e82625f28ef79def8847bb",
+                "sha256:f53fd0d5bd9f75a70492062f4ae6195ab5d34d67a29024d740f25e468392893e"
             ],
             "index": "pypi",
-            "version": "==4.6.1"
-        },
-        "six": {
-            "hashes": [
-                "sha256:30639c035cdb23534cd4aa2dd52c3bf48f06e5f4a941509c8bafd8ce11080259",
-                "sha256:8b74bedcbbbaca38ff6d7491d76f2b06b3592611af620f8426e82dddb04a5ced"
-            ],
-            "markers": "python_version >= '2.7' and python_version not in '3.0, 3.1, 3.2, 3.3'",
-            "version": "==1.15.0"
+            "version": "==5.0.4"
         },
         "typing-extensions": {
             "hashes": [
@@ -209,11 +209,11 @@
         },
         "youtube-dl": {
             "hashes": [
-                "sha256:c73c79ccaabb7eabc223b36889ad9d3fbe04433d933312e8752d6a2c2bdc028d",
-                "sha256:cd7a072314ee67472de75a0f770bffc1363be46921c28bfc47a786a5188c417f"
+                "sha256:67cc185783ef828249bcc199317a207d19e1320857bb16e68d64ea97ad2793b3",
+                "sha256:7cedf2be0ac3920075a3197ab6dd41ff9b9d45d6232235d968328a20267ca28e"
             ],
             "index": "pypi",
-            "version": "==2020.12.5"
+            "version": "==2021.1.3"
         }
     },
     "develop": {
@@ -227,11 +227,11 @@
         },
         "isort": {
             "hashes": [
-                "sha256:dcab1d98b469a12a1a624ead220584391648790275560e1a43e54c5dceae65e7",
-                "sha256:dcaeec1b5f0eca77faea2a35ab790b4f3680ff75590bfcb7145986905aab2f58"
+                "sha256:c729845434366216d320e936b8ad6f9d681aab72dc7cbc2d51bedc3582f3ad1e",
+                "sha256:fff4f0c04e1825522ce6949973e83110a6e907750cd92d128b0d14aaaadbffdc"
             ],
             "markers": "python_version >= '3.6' and python_version < '4.0'",
-            "version": "==5.6.4"
+            "version": "==5.7.0"
         },
         "lazy-object-proxy": {
             "hashes": [
