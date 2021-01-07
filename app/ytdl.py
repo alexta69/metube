@@ -36,8 +36,9 @@ class Download:
         self.download_dir = download_dir
         if quality == 'best':
             self.format = None
-        elif quality == 'retro':
-            self.format = f'bestvideo[ext=mp4]+bestaudio[ext=aac]/best[ext=mp4]/best'
+        elif 'custom' in quality:
+            quality = quality.replace('custom:', '')
+            self.format = f'{quality}'
         elif quality in ('1080p', '720p', '480p'):
             res = quality[:-1]
             self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}]'
