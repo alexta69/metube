@@ -39,6 +39,8 @@ class Download:
         elif quality in ('1080p', '720p', '480p'):
             res = quality[:-1]
             self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}]'
+        elif quality.startswith('custom:'):
+            self.format = quality[7:]
         else:
             raise Exception(f'unknown quality {quality}')
         self.info = info
