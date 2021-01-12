@@ -8,14 +8,14 @@ while getopts ":hhelpf:t:p:" ARGS;
 do
     case $ARGS in
         h|help )
-            echo -e "Usgae:\n\t-t \"Tag\"\n\t\tuse a specific Tag\n\t-p true\n\t\tPush the Image do a registry. Needs to be logged in (docker login).\n\t-h\n\t\t Show this Help Dialog"
+            echo -e "Usgae:\n\t-t \"Tag\"\n\t\tuse a specific Tag\n\t-p\n\t\tPush the Image do a registry. Needs to be logged in (docker login).\n\t-h\n\t\t Show this Help Dialog"
             exit 1
             ;;
         t )
             TAG="${OPTARG}"
             ;;
         p )
-            PUSH="${OPTARG}"
+            PUSH="true"
             ;;
     esac
 done
