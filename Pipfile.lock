@@ -84,11 +84,11 @@
         },
         "idna": {
             "hashes": [
-                "sha256:320229aadbdfc597bc28876748cc0c9d04d476e0fe6caacaaddea146365d9f63",
-                "sha256:c9a26e10e5558412384fac891eefb41957831d31be55f1e2c98ed97a70abb969"
+                "sha256:5205d03e7bcbb919cc9c19885f9920d622ca52448306f2377daede5cf3faac16",
+                "sha256:c5b02147e01ea9920e6b0a3f1f7bb833612d507592c837a6c49552768f4054e1"
             ],
             "markers": "python_version >= '3.4'",
-            "version": "==3.0"
+            "version": "==3.1"
         },
         "multidict": {
             "hashes": [
@@ -209,11 +209,11 @@
         },
         "youtube-dl": {
             "hashes": [
-                "sha256:67cc185783ef828249bcc199317a207d19e1320857bb16e68d64ea97ad2793b3",
-                "sha256:7cedf2be0ac3920075a3197ab6dd41ff9b9d45d6232235d968328a20267ca28e"
+                "sha256:19d8529f1275dfa6726f0cf144fe2da1f5800e3c1ef1b3a963c2e183262955d1",
+                "sha256:1a216c0172b145e7231e8f87f66dc914dce996f993920857b77996fa04e6290c"
             ],
             "index": "pypi",
-            "version": "==2021.1.3"
+            "version": "==2021.1.8"
         }
     },
     "develop": {
