@@ -70,6 +70,12 @@ A Docker image can be built locally (it will build the UI too):
 docker build -t metube .
 ```
 
+A Multi-Platform Docker image can be built locally:
+
+```bash
+build-multi-platform.sh
+```
+
 ## Development notes
 
 * The above works on Windows as well as Linux.
