@@ -36,7 +36,7 @@ class Download:
         self.download_dir = download_dir
         if quality == 'best':
             self.format = None
-        elif quality in ('1080p', '720p', '480p'):
+        elif quality in ('1440p', '1080p', '720p', '480p'):
             res = quality[:-1]
             self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}]'
         elif quality.startswith('custom:'):

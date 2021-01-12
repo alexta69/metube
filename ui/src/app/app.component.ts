@@ -13,6 +13,7 @@ export class AppComponent implements AfterViewInit {
   addUrl: string;
   qualities: Array<Object> = [
     {id: "best", text: "Best"},
+    {id: "1440p", text: "1440p"},
     {id: "1080p", text: "1080p"},
     {id: "720p", text: "720p"},
     {id: "480p", text: "480p"}
