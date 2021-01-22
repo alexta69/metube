@@ -5,8 +5,11 @@ COPY ui ./
 RUN npm install && \
     node_modules/.bin/ng build --prod
 
+ARG BASE_IMAGE_PREFIX
+FROM ${BASE_IMAGE_PREFIX}python:3.8-alpine
 
-FROM python:3.8-alpine
+ARG ARCH
+COPY qemu-${ARCH}-static* /usr/bin
 
 WORKDIR /app
 
