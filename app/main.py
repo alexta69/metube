@@ -97,8 +97,23 @@ if config.URL_PREFIX != '/':
 
 routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
 routes.static(config.URL_PREFIX, 'ui/dist/metube')
-
 app.add_routes(routes)
+
+
+# https://github.com/aio-libs/aiohttp/pull/4615 waiting for release
+# @routes.options(config.URL_PREFIX + 'add')
+async def add_cors(request):
+    return web.Response(text=serializer.encode({"status": "ok"}))
+
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
+
+
+async def on_prepare(request, response):
+    if 'Origin' in request.headers:
+        response.headers['Access-Control-Allow-Origin'] = request.headers['Origin']
+        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+app.on_response_prepare.append(on_prepare)
 
 
 if __name__ == '__main__':
