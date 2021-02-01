@@ -21,12 +21,12 @@ export class AppComponent implements AfterViewInit {
   quality: string = "best";
   addInProgress = false;
   
-  @ViewChild('queueMasterCheckbox', {static: false}) queueMasterCheckbox: MasterCheckboxComponent;
-  @ViewChild('queueDelSelected', {static: false}) queueDelSelected: ElementRef;
-  @ViewChild('doneMasterCheckbox', {static: false}) doneMasterCheckbox: MasterCheckboxComponent;
-  @ViewChild('doneDelSelected', {static: false}) doneDelSelected: ElementRef;
-  @ViewChild('doneClearCompleted', {static: false}) doneClearCompleted: ElementRef;
-  @ViewChild('doneClearFailed', {static: false}) doneClearFailed: ElementRef;
+  @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
+  @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
+  @ViewChild('doneMasterCheckbox') doneMasterCheckbox: MasterCheckboxComponent;
+  @ViewChild('doneDelSelected') doneDelSelected: ElementRef;
+  @ViewChild('doneClearCompleted') doneClearCompleted: ElementRef;
+  @ViewChild('doneClearFailed') doneClearFailed: ElementRef;
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;

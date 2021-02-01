@@ -18,7 +18,7 @@ export class MasterCheckboxComponent {
   @Input() list: Map<String, Checkable>;
   @Output() changed = new EventEmitter<number>();
 
-  @ViewChild('masterCheckbox', {static: false}) masterCheckbox: ElementRef;
+  @ViewChild('masterCheckbox') masterCheckbox: ElementRef;
   selected: boolean;
 
   clicked() {

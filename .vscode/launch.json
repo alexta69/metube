@@ -9,8 +9,15 @@
             "type": "python",
             "request": "launch",
             "program": "${workspaceFolder}/app/main.py",
-            "env": {
-                "DOWNLOAD_DIR": "${env:USERPROFILE}/Downloads",
+            "windows": {
+                "env": {
+                    "DOWNLOAD_DIR": "${env:USERPROFILE}/Downloads",
+                }
+            },
+            "osx": {
+                "env": {
+                    "DOWNLOAD_DIR": "${env:HOME}/Downloads",
+                }
             },
             "console": "integratedTerminal"
         }
