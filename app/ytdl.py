@@ -38,7 +38,9 @@ class Download:
             self.format = None
         elif quality in ('1440p', '1080p', '720p', '480p'):
             res = quality[:-1]
-            self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}]'
+            self.format = f'bestvideo[height<={res}]+bestaudio'
+        elif quality == 'audio':
+            self.format = 'bestaudio'
         elif quality.startswith('custom:'):
             self.format = quality[7:]
         else:

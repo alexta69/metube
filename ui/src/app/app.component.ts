@@ -16,7 +16,8 @@ export class AppComponent implements AfterViewInit {
     {id: "1440p", text: "1440p"},
     {id: "1080p", text: "1080p"},
     {id: "720p", text: "720p"},
-    {id: "480p", text: "480p"}
+    {id: "480p", text: "480p"},
+    {id: "audio", text: "Audio only"}
   ];
   quality: string = "best";
   addInProgress = false;
