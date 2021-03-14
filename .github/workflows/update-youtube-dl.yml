@@ -1,0 +1,34 @@
+name: update-youtube-dl
+
+on:
+  schedule:
+    - cron: '0 0 * * *'
+
+jobs:
+  update-youtube-dl :
+    runs-on: ubuntu-latest
+    steps:
+      -
+        name: Checkout
+        uses: actions/checkout@v2
+        with:
+          token: ${{ secrets.AUTOUPDATE_PAT }}
+      -
+        name: Set up Python
+        uses: actions/setup-python@v2
+        with:
+          python-version: '3.8'
+      -
+        name: Update youtube-dl
+        run: |
+          pip install pipenv
+          pipenv sync
+          VER=`pipenv run pip list -o | awk '$1 == "youtube-dl" {print $3}'`
+          if [ -n "$VER" ]; then
+            pipenv update --selective-upgrade youtube-dl
+            git config --global user.email "updater@metube"
+            git config --global user.name "AutoUpdater"
+            git add Pipfile.lock
+            git commit -m 'upgraded youtube-dl'
+            git push
+          fi
