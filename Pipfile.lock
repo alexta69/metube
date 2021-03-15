@@ -210,11 +210,11 @@
         },
         "youtube-dl": {
             "hashes": [
-                "sha256:02432aa2dd0e859e64d74fca2ad624abf3bead3dba811d594100e1cb7897dce7",
-                "sha256:28663ce51bb35d0a0fa764aed3492b38c570da0a5a62fef3c28f4431522a6d4a"
+                "sha256:c287ad8dd33471aabaabab5ab1dd825bebc70eb8b83ebfa93fd71022e01a1d08",
+                "sha256:d414166efe52447877db06803816277f52f405faeee2bdf5ef816b30e352b3b8"
             ],
             "index": "pypi",
-            "version": "==2021.3.3"
+            "version": "==2021.3.14"
         }
     },
     "develop": {
