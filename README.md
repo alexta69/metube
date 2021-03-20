@@ -1,5 +1,8 @@
 # MeTube
 
+![Build Status](https://github.com/alexta69/metube/actions/workflows/main.yml/badge.svg)
+![Docker Pulls](https://img.shields.io/docker/pulls/alexta69/metube.svg)
+
 Web GUI for youtube-dl with playlist support. Allows you to download videos from YouTube and dozens of other sites (https://ytdl-org.github.io/youtube-dl/supportedsites.html).
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
