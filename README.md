@@ -64,7 +64,7 @@ cd ..
 pip3 install pipenv
 pipenv install
 # run
-python3 app/main.py
+pipenv run python3 app/main.py
 ```
 
 A Docker image can be built locally (it will build the UI too):
