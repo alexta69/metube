@@ -25,7 +25,7 @@
     "@fortawesome/free-regular-svg-icons": "^5.15.2",
     "@ng-bootstrap/ng-bootstrap": "^8.0.4",
     "bootstrap": "^4.5.0",
-    "ngx-socket-io": "^3.2.0",
+    "ngx-socket-io": "~3.2.0",
     "rxjs": "~6.6.0",
     "tslib": "^2.0.0",
     "zone.js": "~0.10.2"
