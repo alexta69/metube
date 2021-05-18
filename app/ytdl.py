@@ -32,8 +32,9 @@ class DownloadInfo:
 class Download:
     manager = None
 
-    def __init__(self, download_dir, quality, info):
+    def __init__(self, download_dir, output_template, quality, info):
         self.download_dir = download_dir
+        self.output_template = output_template
         if quality == 'best':
             self.format = None
         elif quality in ('1440p', '1080p', '720p', '480p'):
@@ -59,7 +60,7 @@ class Download:
                 'quiet': True,
                 'no_color': True,
                 #'skip_download': True,
-                'outtmpl': os.path.join(self.download_dir, '%(title)s.%(ext)s'),
+                'outtmpl': os.path.join(self.download_dir, self.output_template),
                 'format': self.format,
                 'cachedir': False,
                 'socket_timeout': 30,
@@ -147,7 +148,7 @@ class DownloadQueue:
         elif etype == 'video' or etype.startswith('url') and 'id' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])
-                self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, quality, dl)
+                self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, self.config.OUTPUT_TEMPLATE, quality, dl)
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}

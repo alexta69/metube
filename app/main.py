@@ -17,6 +17,7 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'URL_PREFIX': '',
+        'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
     }
 
     def __init__(self):
