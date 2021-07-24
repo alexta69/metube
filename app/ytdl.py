@@ -148,7 +148,8 @@ class DownloadQueue:
         elif etype == 'video' or etype.startswith('url') and 'id' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])
-                self.queue[entry['id']] = Download(self.config.DOWNLOAD_DIR, self.config.OUTPUT_TEMPLATE, quality, dl)
+                dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
+                self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, dl)
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}

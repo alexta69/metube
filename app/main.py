@@ -16,6 +16,7 @@ log = logging.getLogger('main')
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
+        'AUDIO_DOWNLOAD_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
     }

@@ -34,6 +34,7 @@ services:
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
 
 * __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
+* __AUDIO_DOWNLOAD_DIR__: path to where the audio downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 * __OUTPUT_TEMPLATE__: the template for the filenames of the downloaded videos, formatted according to [this spec](https://github.com/ytdl-org/youtube-dl/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
 
