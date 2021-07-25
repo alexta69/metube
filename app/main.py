@@ -16,6 +16,7 @@ log = logging.getLogger('main')
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
+        'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
     }
@@ -23,6 +24,9 @@ class Config:
     def __init__(self):
         for k, v in self._DEFAULTS.items():
             setattr(self, k, os.environ[k] if k in os.environ else v)
+        for k, v in self.__dict__.items():
+            if v.startswith('%%'):
+                setattr(self, k, getattr(self, v[2:]))
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 

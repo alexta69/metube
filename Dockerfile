@@ -2,7 +2,7 @@ FROM node as builder
 
 WORKDIR /metube
 COPY ui ./
-RUN npm install && \
+RUN npm ci && \
     node_modules/.bin/ng build --prod
 
 
