@@ -25,7 +25,6 @@ COPY app ./app
 COPY --from=builder /metube/dist/metube ./ui/dist/metube
 
 ENV DOWNLOAD_DIR /downloads
-ENV AUDIO_DOWNLOAD_DIR /downloads
 VOLUME /downloads
 EXPOSE 8081
 CMD ["python3", "app/main.py"]
