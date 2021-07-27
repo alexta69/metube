@@ -40,7 +40,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 
 ## Chrome extension
 
-[Rpsl](https://github.com/rpsl) has create a Chrome extension. You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
+[Rpsl](https://github.com/rpsl) has created a Chrome extension that allows right-clicking a video and sending it to MeTube. You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
 
 ## Bookmarklet
 
