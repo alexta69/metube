@@ -38,6 +38,10 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 * __OUTPUT_TEMPLATE__: the template for the filenames of the downloaded videos, formatted according to [this spec](https://github.com/ytdl-org/youtube-dl/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
 
+## Chrome extension
+
+[Rpsl](https://github.com/rpsl) has created a Chrome extension that allows right-clicking a video and sending it to MeTube. You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
+
 ## Bookmarklet
 
 [kushfest](https://github.com/kushfest) has created a Chrome bookmarklet for sending the currently open webpage to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for the bookmarklet to work.
