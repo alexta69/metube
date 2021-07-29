@@ -1,5 +1,6 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
+import { faRedoAlt } from '@fortawesome/free-solid-svg-icons';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
@@ -21,7 +22,7 @@ export class AppComponent implements AfterViewInit {
   ];
   quality: string = "best";
   addInProgress = false;
-  
+
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
   @ViewChild('doneMasterCheckbox') doneMasterCheckbox: MasterCheckboxComponent;
@@ -32,6 +33,7 @@ export class AppComponent implements AfterViewInit {
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
   faTimesCircle = faTimesCircle;
+  faRedoAlt = faRedoAlt;
 
   constructor(public downloads: DownloadsService) {
   }
@@ -68,9 +70,12 @@ export class AppComponent implements AfterViewInit {
     this.doneDelSelected.nativeElement.disabled = checked == 0;
   }
 
-  addDownload() {
+  addDownload(url?: string, quality?: string) {
+    url = url ?? this.addUrl
+    quality = quality ?? this.quality
+
     this.addInProgress = true;
-    this.downloads.add(this.addUrl, this.quality).subscribe((status: Status) => {
+    this.downloads.add(url, quality).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -78,6 +83,10 @@ export class AppComponent implements AfterViewInit {
       }
       this.addInProgress = false;
     });
+  }
+
+  retryDownload(key: string, quality:string){
+    this.addDownload(key, quality);
   }
 
   delDownload(where: string, id: string) {

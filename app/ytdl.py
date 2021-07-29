@@ -25,8 +25,9 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url):
+    def __init__(self, id, title, url, quality):
         self.id, self.title, self.url = id, title, url
+        self.quality = quality
         self.status = self.msg = self.percent = self.speed = self.eta = None
 
 class Download:
@@ -53,7 +54,7 @@ class Download:
         self.proc = None
         self.loop = None
         self.notifier = None
-    
+
     def _download(self):
         try:
             ret = youtube_dl.YoutubeDL(params={
@@ -69,7 +70,7 @@ class Download:
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
         except youtube_dl.utils.YoutubeDLError as exc:
             self.status_queue.put({'status': 'error', 'msg': str(exc)})
-    
+
     async def start(self, notifier):
         if Download.manager is None:
             Download.manager = multiprocessing.Manager()
@@ -81,7 +82,7 @@ class Download:
         self.info.status = 'preparing'
         await self.notifier.updated(self.info)
         asyncio.ensure_future(self.update_status())
-        return await self.loop.run_in_executor(None, self.proc.join) 
+        return await self.loop.run_in_executor(None, self.proc.join)
 
     def cancel(self):
         if self.running():
@@ -147,7 +148,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         elif etype == 'video' or etype.startswith('url') and 'id' in entry:
             if entry['id'] not in self.queue:
-                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'])
+                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality)
                 dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
                 self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, dl)
                 self.event.set()
@@ -170,7 +171,7 @@ class DownloadQueue:
         except youtube_dl.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
         return await self.__add_entry(entry, quality, already)
-    
+
     async def cancel(self, ids):
         for id in ids:
             if id not in self.queue:
@@ -195,7 +196,7 @@ class DownloadQueue:
     def get(self):
         return(list((k, v.info) for k, v in self.queue.items()),
                list((k, v.info) for k, v in self.done.items()))
-    
+
     async def __download(self):
         while True:
             while not self.queue:
