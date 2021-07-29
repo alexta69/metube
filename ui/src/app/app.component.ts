@@ -87,6 +87,7 @@ export class AppComponent implements AfterViewInit {
 
   retryDownload(key: string, quality:string){
     this.addDownload(key, quality);
+    this.downloads.delById('done', [key]).subscribe();
   }
 
   delDownload(where: string, id: string) {
