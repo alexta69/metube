@@ -1,0 +1,29 @@
+version: "3"
+
+services:
+    backend:
+        build:
+            context: .
+            dockerfile: Dockerfile-dev-backend
+        container_name: metube-dev-backend
+        image: metube-dev-backend
+        expose:
+            - 8081
+        ports:
+            - "8081:8081"
+        links:
+            - frontend
+        volumes:
+            - ./ui:/app/ui
+            - ./app:/app/app
+
+    frontend:
+        build:
+            context: .
+            dockerfile: Dockerfile-dev-frontend
+        container_name: metube-dev-frontend
+        image: metube-dev-frontend
+        expose:
+            - 4200
+        volumes:
+            - ./ui:/app

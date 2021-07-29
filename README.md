@@ -75,6 +75,23 @@ If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag)
 
 ## Build and run locally
 
+A Docker image can be built locally (it will build the UI too):
+
+```bash
+make build
+```
+
+### Run dev mode with local docker
+
+```bash
+make serve-dev
+```
+It will launch two containers: `metube-dev-frontend` and `metube-dev-backend`. Frontend will be started in watching mode but backend need to be restarted after code changes - `docker restart metube-dev-backend`
+
+After first start `metube-dev-backend` may crashed with error about nonexistent files - it's normal, just wait while frontend will be build and restart backend.
+
+### Run without docker
+
 Make sure you have node.js and Python 3.8 installed.
 
 ```bash
@@ -90,11 +107,6 @@ pipenv install
 pipenv run python3 app/main.py
 ```
 
-A Docker image can be built locally (it will build the UI too):
-
-```bash
-docker build -t metube .
-```
 
 ## Development notes
 

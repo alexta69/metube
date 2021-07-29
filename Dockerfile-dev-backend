@@ -1,0 +1,18 @@
+FROM python:3.8-alpine
+
+COPY . /app
+
+WORKDIR /app
+
+RUN apk add --update ffmpeg && \
+    apk add --update --virtual .build-deps gcc musl-dev && \
+    pip install --no-cache-dir pipenv && \
+    pipenv install --system --deploy --clear && \
+    pip uninstall pipenv -y && \
+    apk del .build-deps && \
+    rm -rf /var/cache/apk/*
+
+ENV DOWNLOAD_DIR /downloads
+VOLUME /downloads
+EXPOSE 8081
+CMD ["python3", "app/main.py"]
