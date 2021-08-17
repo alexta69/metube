@@ -1,6 +1,5 @@
 import os
-import sys
-import youtube_dl
+import yt_dlp
 from collections import OrderedDict
 import asyncio
 import multiprocessing
@@ -57,7 +56,18 @@ class Download:
 
     def _download(self):
         try:
-            ret = youtube_dl.YoutubeDL(params={
+            def put_status(st):
+                self.status_queue.put({k: v for k, v in st.items() if k in (
+                    'tmpfilename',
+                    'status',
+                    'msg',
+                    'total_bytes',
+                    'total_bytes_estimate',
+                    'downloaded_bytes',
+                    'speed',
+                    'eta',
+                )})
+            ret = yt_dlp.YoutubeDL(params={
                 'quiet': True,
                 'no_color': True,
                 #'skip_download': True,
@@ -65,10 +75,10 @@ class Download:
                 'format': self.format,
                 'cachedir': False,
                 'socket_timeout': 30,
-                'progress_hooks': [lambda d: self.status_queue.put(d)],
+                'progress_hooks': [put_status],
             }).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
-        except youtube_dl.utils.YoutubeDLError as exc:
+        except yt_dlp.utils.YoutubeDLError as exc:
             self.status_queue.put({'status': 'error', 'msg': str(exc)})
 
     async def start(self, notifier):
@@ -129,7 +139,7 @@ class DownloadQueue:
         asyncio.ensure_future(self.__download())
 
     def __extract_info(self, url):
-        return youtube_dl.YoutubeDL(params={
+        return yt_dlp.YoutubeDL(params={
             'quiet': True,
             'no_color': True,
             'extract_flat': True,
@@ -168,7 +178,7 @@ class DownloadQueue:
             already.add(url)
         try:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
-        except youtube_dl.utils.YoutubeDLError as exc:
+        except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
         return await self.__add_entry(entry, quality, already)
 

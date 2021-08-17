@@ -9,7 +9,7 @@ pylint = "*"
 [packages]
 aiohttp = "*"
 python-socketio = "~=4.0"
-youtube-dl = "*"
+yt-dlp = "*"
 
 [requires]
 python_version = "3.8"

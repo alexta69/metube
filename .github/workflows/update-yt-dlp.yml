@@ -1,11 +1,11 @@
-name: update-youtube-dl
+name: update-yt-dlp
 
 on:
   schedule:
     - cron: '0 0 * * *'
 
 jobs:
-  update-youtube-dl :
+  update-yt-dlp :
     runs-on: ubuntu-latest
     steps:
       -
@@ -19,16 +19,15 @@ jobs:
         with:
           python-version: '3.8'
       -
-        name: Update youtube-dl
+        name: Update yt-dlp
         run: |
           pip install pipenv
           pipenv sync
-          VER=`pipenv run pip list -o | awk '$1 == "youtube-dl" {print $3}'`
+          VER=`pipenv run pip list -o | awk '$1 == "yt-dlp" {print $3}'`
           if [ -n "$VER" ]; then
-            pipenv update --selective-upgrade youtube-dl
+            pipenv update --selective-upgrade yt-dlp
             git config --global user.email "updater@metube"
             git config --global user.name "AutoUpdater"
-            git add Pipfile.lock
-            git commit -m 'upgraded youtube-dl'
+            git commit -m 'upgraded yt-dlp' Pipfile.lock
             git push
           fi
