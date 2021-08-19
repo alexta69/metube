@@ -36,10 +36,10 @@ class Download:
         self.download_dir = download_dir
         self.output_template = output_template
         if quality == 'best':
-            self.format = None
+            self.format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
         elif quality in ('1440p', '1080p', '720p', '480p'):
             res = quality[:-1]
-            self.format = f'bestvideo[height<={res}]+bestaudio'
+            self.format = f'bestvideo[height<={res}][ext=mp4]+bestaudio[ext=m4a]/best[height<={res}][ext=mp4]/best[height<={res}]'
         elif quality == 'audio':
             self.format = 'bestaudio'
         elif quality.startswith('custom:'):
