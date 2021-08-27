@@ -36,10 +36,10 @@ class Download:
         self.download_dir = download_dir
         self.output_template = output_template
         if quality == 'best':
-            self.format = 'bestvideo[ext=mp4]+bestaudio[ext=m4a]/best[ext=mp4]/best'
+            self.format = 'bestvideo+bestaudio/best[ext=mp4]/best'
         elif quality in ('1440p', '1080p', '720p', '480p'):
             res = quality[:-1]
-            self.format = f'bestvideo[height<={res}][ext=mp4]+bestaudio[ext=m4a]/best[height<={res}][ext=mp4]/best[height<={res}]'
+            self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}][ext=mp4]/best[height<={res}]'
         elif quality == 'audio':
             self.format = 'bestaudio'
         elif quality.startswith('custom:'):
@@ -73,6 +73,7 @@ class Download:
                 #'skip_download': True,
                 'outtmpl': os.path.join(self.download_dir, self.output_template),
                 'format': self.format,
+                'merge_output_format': 'mp4',
                 'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [put_status],
