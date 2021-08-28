@@ -2,6 +2,7 @@
 # pylint: disable=no-member,method-hidden
 
 import os
+import sys
 from aiohttp import web
 import socketio
 import logging
@@ -17,6 +18,7 @@ class Config:
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
+        'YTDL_OPTIONS': '{}',
     }
 
     def __init__(self):
@@ -27,6 +29,12 @@ class Config:
                 setattr(self, k, getattr(self, v[2:]))
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
+        try:
+            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
+            assert isinstance(self.YTDL_OPTIONS, dict)
+        except (json.decoder.JSONDecodeError, AssertionError):
+            log.error('YTDL_OPTIONS is invalid')
+            sys.exit(1)
 
 config = Config()
 

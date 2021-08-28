@@ -32,7 +32,7 @@ class DownloadInfo:
 class Download:
     manager = None
 
-    def __init__(self, download_dir, output_template, quality, info):
+    def __init__(self, download_dir, output_template, quality, ytdl_opts, info):
         self.download_dir = download_dir
         self.output_template = output_template
         if quality == 'best':
@@ -46,6 +46,7 @@ class Download:
             self.format = quality[7:]
         else:
             raise Exception(f'unknown quality {quality}')
+        self.ytdl_opts = ytdl_opts
         self.info = info
         self.canceled = False
         self.tmpfilename = None
@@ -77,6 +78,7 @@ class Download:
                 'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [put_status],
+                **self.ytdl_opts,
             }).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
         except yt_dlp.utils.YoutubeDLError as exc:
@@ -161,7 +163,7 @@ class DownloadQueue:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality)
                 dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
-                self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, dl)
+                self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, self.config.YTDL_OPTIONS, dl)
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
