@@ -8,7 +8,7 @@ pylint = "*"
 
 [packages]
 aiohttp = "*"
-python-socketio = "~=4.0"
+python-socketio = "~=5.0"
 yt-dlp = "*"
 
 [requires]
