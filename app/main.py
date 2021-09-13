@@ -76,7 +76,8 @@ async def add(request):
     quality = post.get('quality')
     if not url or not quality:
         raise web.HTTPBadRequest()
-    status = await dqueue.add(url, quality)
+    format = post.get('format')
+    status = await dqueue.add(url, quality, format)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

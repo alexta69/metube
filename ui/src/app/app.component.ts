@@ -1,6 +1,7 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt } from '@fortawesome/free-solid-svg-icons';
+import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
@@ -20,7 +21,12 @@ export class AppComponent implements AfterViewInit {
     {id: "480p", text: "480p"},
     {id: "audio", text: "Audio only"}
   ];
-  quality: string = "best";
+  quality: string;
+  formats: Array<Object> = [
+    {id: "any", text: "Any"},
+    {id: "mp4", text: "MP4"}
+  ];
+  format: string;
   addInProgress = false;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
@@ -35,7 +41,9 @@ export class AppComponent implements AfterViewInit {
   faTimesCircle = faTimesCircle;
   faRedoAlt = faRedoAlt;
 
-  constructor(public downloads: DownloadsService) {
+  constructor(public downloads: DownloadsService, private cookieService: CookieService) {
+    this.quality = cookieService.get('metube_quality') || 'best';
+    this.format = cookieService.get('metube_format') || 'any';
   }
 
   ngAfterViewInit() {
@@ -62,6 +70,14 @@ export class AppComponent implements AfterViewInit {
     return 1;
   }
 
+  qualityChanged() {
+    this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+  }
+
+  formatChanged() {
+    this.cookieService.set('metube_format', this.format, { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected.nativeElement.disabled = checked == 0;
   }
@@ -70,12 +86,13 @@ export class AppComponent implements AfterViewInit {
     this.doneDelSelected.nativeElement.disabled = checked == 0;
   }
 
-  addDownload(url?: string, quality?: string) {
+  addDownload(url?: string, quality?: string, format?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
+    format = format ?? this.format
 
     this.addInProgress = true;
-    this.downloads.add(url, quality).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -85,8 +102,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, quality:string){
-    this.addDownload(key, quality);
+  retryDownload(key: string, quality: string, format: string) {
+    this.addDownload(key, quality, format);
     this.downloads.delById('done', [key]).subscribe();
   }
 

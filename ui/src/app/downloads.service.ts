@@ -80,8 +80,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality}).pipe(
+  public add(url: string, quality: string, format: string) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format}).pipe(
       catchError(this.handleHTTPError)
     );
   }

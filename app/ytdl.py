@@ -24,24 +24,28 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality):
+    def __init__(self, id, title, url, quality, format):
         self.id, self.title, self.url = id, title, url
         self.quality = quality
+        self.format = format
         self.status = self.msg = self.percent = self.speed = self.eta = None
 
 class Download:
     manager = None
 
-    def __init__(self, download_dir, output_template, quality, ytdl_opts, info):
+    def __init__(self, download_dir, output_template, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.output_template = output_template
+        vfmt, afmt = '', ''
+        if format == 'mp4':
+            vfmt, afmt = '[ext=mp4]', '[ext=m4a]'
         if quality == 'best':
-            self.format = 'bestvideo+bestaudio/best[ext=mp4]/best'
+            self.format = f'bestvideo{vfmt}+bestaudio{afmt}/best{vfmt}'
         elif quality in ('1440p', '1080p', '720p', '480p'):
             res = quality[:-1]
-            self.format = f'bestvideo[height<={res}]+bestaudio/best[height<={res}][ext=mp4]/best[height<={res}]'
+            self.format = f'bestvideo[height<={res}]{vfmt}+bestaudio{afmt}/best[height<={res}]{vfmt}'
         elif quality == 'audio':
-            self.format = 'bestaudio'
+            self.format = f'bestaudio{afmt}'
         elif quality.startswith('custom:'):
             self.format = quality[7:]
         else:
@@ -74,7 +78,6 @@ class Download:
                 #'skip_download': True,
                 'outtmpl': os.path.join(self.download_dir, self.output_template),
                 'format': self.format,
-                'merge_output_format': 'mp4',
                 'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [put_status],
@@ -148,30 +151,30 @@ class DownloadQueue:
             'extract_flat': True,
         }).extract_info(url, download=False)
 
-    async def __add_entry(self, entry, quality, already):
+    async def __add_entry(self, entry, quality, format, already):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
             results = []
             for etr in entries:
-                results.append(await self.__add_entry(etr, quality, already))
+                results.append(await self.__add_entry(etr, quality, format, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
         elif etype == 'video' or etype.startswith('url') and 'id' in entry:
             if entry['id'] not in self.queue:
-                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality)
+                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
-                self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, self.config.YTDL_OPTIONS, dl)
+                self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, format, self.config.YTDL_OPTIONS, dl)
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype == 'url':
-            return await self.add(entry['url'], quality, already)
+            return await self.add(entry['url'], quality, format, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, already=None):
+    async def add(self, url, quality, format, already=None):
         log.info(f'adding {url}')
         already = set() if already is None else already
         if url in already:
@@ -183,7 +186,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, already)
+        return await self.__add_entry(entry, quality, format, already)
 
     async def cancel(self, ids):
         for id in ids:
