@@ -162,7 +162,7 @@ class DownloadQueue:
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
-        elif etype == 'video' or etype.startswith('url') and 'id' in entry:
+        elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
