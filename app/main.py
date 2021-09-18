@@ -47,7 +47,7 @@ class ObjectSerializer(json.JSONEncoder):
 
 serializer = ObjectSerializer()
 app = web.Application()
-sio = socketio.AsyncServer()
+sio = socketio.AsyncServer(cors_allowed_origins='*')
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
 
