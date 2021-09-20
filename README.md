@@ -28,6 +28,24 @@ services:
     volumes:
       - /path/to/downloads:/downloads
 ```
+### Cookies
+In case you need to use cookies with this container:
+
+* Add the following to your docker-compose
+
+```yaml
+
+    volumes:
+      - /some/path/to/your/cookies:/app/cookies
+    environment:
+      - YTDL_OPTIONS={"cookiefile":"/app/cookies/cookies.txt"}
+```
+* Install in your browser an extension to extract Cookies
+    * [Firefox](https://addons.mozilla.org/en-US/firefox/addon/export-cookies-txt/)
+    * [Chrome](https://chrome.google.com/webstore/detail/get-cookiestxt/bgaddhkoddajcdgocldbbfleckgcbcid) 
+* Extract the cookies you need with the extension and rename the file `cookies.txt`
+* Drop the file in the folder you configured in the docker-compose above
+* Restart the container
 
 ## Configuration via environment variables
 
