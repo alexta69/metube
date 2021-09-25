@@ -149,6 +149,7 @@ class DownloadQueue:
             'quiet': True,
             'no_color': True,
             'extract_flat': True,
+            **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
     async def __add_entry(self, entry, quality, format, already):
