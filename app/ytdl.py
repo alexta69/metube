@@ -150,7 +150,7 @@ class DownloadQueue:
             'no_color': True,
             'extract_flat': True,
             **self.config.YTDL_OPTIONS,
-        }).extract_info(url, download=False)
+        }).extract_info(url, download=False, process=False)
 
     async def __add_entry(self, entry, quality, format, already):
         etype = entry.get('_type') or 'video'
