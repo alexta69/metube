@@ -356,11 +356,11 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:07fde3b6067335a46f8f67a92ed620cceaaf49203c832d212b8e04d7638b1f2b",
-                "sha256:dc6c290ac208b2feda5c6760c20883d9c8128da37630a72894a63b08cf411f29"
+                "sha256:6dbf58013226b5400b77188dcd75038685a42f505d143d531156045f96af4440",
+                "sha256:cc96211e8e55ebbb48d2e6609c0d0942507eb5471b2ce74e38f7b95f8d70a4e7"
             ],
             "index": "pypi",
-            "version": "==2021.10.9"
+            "version": "==2021.10.10"
         }
     },
     "develop": {
