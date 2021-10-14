@@ -91,6 +91,20 @@ location /metube/ {
 
 If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag) image for your reverse proxying needs (which I can heartily recommend), it already includes ready snippets for proxying MeTube both in [subfolder](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subfolder.conf.sample) and [subdomain](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subdomain.conf.sample) modes under the `nginx/proxy-confs` directory in the configuration volume.
 
+
+### Reverse proxy using Caddy
+
+The following example Caddyfile gets a reverse proxy going behind [caddy](https://caddyserver.com) 
+
+```caddyfile
+example.com {
+  route /metube/* {
+    uri strip_prefix metube
+    reverse_proxy metube:8081
+  }
+}
+```
+
 ## Build and run locally
 
 Make sure you have node.js and Python 3.8 installed.
