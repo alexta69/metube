@@ -77,7 +77,13 @@ javascript:(function(){xhr=new XMLHttpRequest();xhr.open("POST","https://metube.
 
 ## Running behind a reverse proxy
 
-Use the following nginx configuration to run MeTube behind a reverse proxy. The extra `proxy_set_header` directives are there to make WebSocket work. Don't forget to set the URL_PREFIX environment variable to the correct value as well.
+It's advisable to run MeTube behind a reverse proxy, if authentication and/or HTTPS support are required.
+
+When running behind a reverse proxy which remaps the URL (i.e. serves MeTube under a subdirectory and not under root), don't forget to set the URL_PREFIX environment variable to the correct value.
+
+If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag) image for your reverse proxying needs (which I can heartily recommend), it already includes ready snippets for proxying MeTube both in [subfolder](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subfolder.conf.sample) and [subdomain](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subdomain.conf.sample) modes under the `nginx/proxy-confs` directory in the configuration volume. It also includes Authelia which can be used for authentication.
+
+### NGINX
 
 ```
 location /metube/ {
@@ -89,10 +95,9 @@ location /metube/ {
 }
 ```
 
-If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag) image for your reverse proxying needs (which I can heartily recommend), it already includes ready snippets for proxying MeTube both in [subfolder](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subfolder.conf.sample) and [subdomain](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subdomain.conf.sample) modes under the `nginx/proxy-confs` directory in the configuration volume.
+Note: the extra `proxy_set_header` directives are there to make WebSocket work.
 
-
-### Reverse proxy using Caddy
+### Caddy
 
 The following example Caddyfile gets a reverse proxy going behind [caddy](https://caddyserver.com) 
 
