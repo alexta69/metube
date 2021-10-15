@@ -56,13 +56,13 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 * Drop the file in the folder you configured in the docker-compose.yml above
 * Restart the container
 
-## Chrome extension
+## Browser extensions
 
-[Rpsl](https://github.com/rpsl) has created a Chrome extension that allows right-clicking a video and sending it to MeTube. You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
+Browser extensions allow right-clicking videos and sending them directly to MeTube.
 
-## Firefox extension
+__Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
 
-[nanocortex](https://github.com/nanocortex) has created a similar extension for Firefox. You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
+__Firefox:__ contributed by [nanocortex](https://github.com/nanocortex). You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
 
 ## Bookmarklet
 
