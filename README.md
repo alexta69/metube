@@ -62,7 +62,7 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 
 ## Firefox extension
 
-[nanocortex](https://github.com/nanocortex) has created a similar extension for Firefox. You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) and get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
+[nanocortex](https://github.com/nanocortex) has created a similar extension for Firefox. You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
 
 ## Bookmarklet
 
