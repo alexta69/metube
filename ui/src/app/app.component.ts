@@ -24,7 +24,8 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   formats: Array<Object> = [
     {id: "any", text: "Any"},
-    {id: "mp4", text: "MP4"}
+    {id: "mp4", text: "MP4"},
+    {id: "mp3", text: "MP3"}
   ];
   format: string;
   addInProgress = false;

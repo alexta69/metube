@@ -39,6 +39,14 @@ class Download:
         vfmt, afmt = '', ''
         if format == 'mp4':
             vfmt, afmt = '[ext=mp4]', '[ext=m4a]'
+        elif format == 'mp3':
+            afmt = '/best'
+            ytdl_opts["writethumbnail"] = True
+            ytdl_opts["postprocessors"] = [
+                {"key": "FFmpegExtractAudio", "preferredcodec": "mp3"},
+                {"key": "EmbedThumbnail"},
+            ]
+
         if quality == 'best':
             self.format = f'bestvideo{vfmt}+bestaudio{afmt}/best{vfmt}'
         elif quality in ('1440p', '1080p', '720p', '480p'):
