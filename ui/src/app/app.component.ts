@@ -5,6 +5,7 @@ import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
+import { Formats, Format, Quality } from './formats';
 
 @Component({
   selector: 'app-root',
@@ -13,20 +14,9 @@ import { MasterCheckboxComponent } from './master-checkbox.component';
 })
 export class AppComponent implements AfterViewInit {
   addUrl: string;
-  qualities: Array<Object> = [
-    {id: "best", text: "Best"},
-    {id: "1440p", text: "1440p"},
-    {id: "1080p", text: "1080p"},
-    {id: "720p", text: "720p"},
-    {id: "480p", text: "480p"},
-    {id: "audio", text: "Audio only"}
-  ];
+  formats: Format[] = Formats;
+  qualities: Quality[];
   quality: string;
-  formats: Array<Object> = [
-    {id: "any", text: "Any"},
-    {id: "mp4", text: "MP4"},
-    {id: "mp3", text: "MP3"}
-  ];
   format: string;
   addInProgress = false;
 
@@ -45,6 +35,8 @@ export class AppComponent implements AfterViewInit {
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
     this.quality = cookieService.get('metube_quality') || 'best';
     this.format = cookieService.get('metube_format') || 'any';
+    // Needs to be set or qualities won't automatically be set
+    this.setQualities()
   }
 
   ngAfterViewInit() {
@@ -77,6 +69,8 @@ export class AppComponent implements AfterViewInit {
 
   formatChanged() {
     this.cookieService.set('metube_format', this.format, { expires: 3650 });
+    // Updates to use qualities available
+    this.setQualities()
   }
 
   queueSelectionChanged(checked: number) {
@@ -85,6 +79,11 @@ export class AppComponent implements AfterViewInit {
 
   doneSelectionChanged(checked: number) {
     this.doneDelSelected.nativeElement.disabled = checked == 0;
+  }
+
+  setQualities() {
+    // qualities for specific format
+    this.qualities = this.formats.find(el => el.id == this.format).qualities
   }
 
   addDownload(url?: string, quality?: string, format?: string) {
