@@ -26,20 +26,20 @@
         <div class="col-md-5 add-url-component">
           <div class="input-group">
             <div class="input-group-prepend">
-              <span class="input-group-text">Format</span>
+              <span class="input-group-text">Quality</span>
             </div>
-            <select class="custom-select" name="format" [(ngModel)]="format" (change)="formatChanged()" [disabled]="addInProgress || downloads.loading">
-              <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
+            <select class="custom-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
+              <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
             </select>
           </div>
         </div>
         <div class="col-md-4 add-url-component">
           <div class="input-group">
             <div class="input-group-prepend">
-              <span class="input-group-text">Quality</span>
+              <span class="input-group-text">Format</span>
             </div>
-            <select class="custom-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
-              <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
+            <select class="custom-select" name="format" [(ngModel)]="format" (change)="formatChanged()" [disabled]="addInProgress || downloads.loading">
+              <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
             </select>
           </div>
         </div>
