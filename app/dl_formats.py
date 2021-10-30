@@ -16,7 +16,7 @@ def get_format(format: str, quality: str) -> str:
     video_fmt = ""
     final_fmt = ""
 
-    if format.startswith("custom: "):
+    if format.startswith("custom:"):
         final_fmt = format[7:]
     elif format == "any":
         final_fmt = "bv*+ba/b"
