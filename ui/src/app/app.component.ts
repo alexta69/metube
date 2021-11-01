@@ -84,6 +84,7 @@ export class AppComponent implements AfterViewInit {
   setQualities() {
     // qualities for specific format
     this.qualities = this.formats.find(el => el.id == this.format).qualities
+    this.quality = "best"
   }
 
   addDownload(url?: string, quality?: string, format?: string) {
