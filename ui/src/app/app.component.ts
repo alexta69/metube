@@ -5,7 +5,7 @@ import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
-import { Formats, Format, Quality } from './formats';
+import { Formats, Format, Quality, fillQualities, getQualityById } from './formats';
 
 @Component({
   selector: 'app-root',
@@ -14,9 +14,9 @@ import { Formats, Format, Quality } from './formats';
 })
 export class AppComponent implements AfterViewInit {
   addUrl: string;
-  formats: Format[] = Formats;
+  formats: Format[] = fillQualities(Formats);
   qualities: Quality[];
-  quality: string;
+  quality: Quality;
   format: string;
   addInProgress = false;
 
@@ -33,10 +33,11 @@ export class AppComponent implements AfterViewInit {
   faRedoAlt = faRedoAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
-    this.quality = cookieService.get('metube_quality') || 'best';
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
+    let qualityId = cookieService.get('metube_quality') || this.qualities[0].id
+    this.quality = getQualityById(this.formats, qualityId);
   }
 
   ngAfterViewInit() {
@@ -64,7 +65,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   qualityChanged() {
-    this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+    this.cookieService.set('metube_quality', this.quality.id, { expires: 3650 });
   }
 
   formatChanged() {
@@ -84,13 +85,13 @@ export class AppComponent implements AfterViewInit {
   setQualities() {
     // qualities for specific format
     this.qualities = this.formats.find(el => el.id == this.format).qualities
-    this.quality = "best"
+    this.quality = this.qualities.find(el => el.value === "best")
   }
 
   addDownload(url?: string, quality?: string, format?: string) {
     url = url ?? this.addUrl
-    quality = quality ?? this.quality
-    format = format ?? this.format
+    quality = quality ?? this.quality.value
+    format = format ?? this.quality.fmt
 
     this.addInProgress = true;
     this.downloads.add(url, quality, format).subscribe((status: Status) => {

@@ -29,7 +29,7 @@
               <span class="input-group-text">Quality</span>
             </div>
             <select class="custom-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
-              <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
+              <option *ngFor="let q of qualities" [ngValue]="q">{{ q.text }}</option>
             </select>
           </div>
         </div>
