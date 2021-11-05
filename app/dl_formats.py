@@ -12,24 +12,12 @@ def get_format(format: str, quality: str) -> str:
     Returns:
       dl_format: Formatted download string
     """
-    audio_fmt = ""
-    video_fmt = ""
     final_fmt = ""
 
     if format.startswith("custom:"):
         final_fmt = format[7:]
-    elif format == "any":
-        final_fmt = "bv*+ba/b"
-    elif format == "mp3":
-        audio_fmt = _get_audio_fmt(quality)
-    elif format == "mp4":
-        audio_fmt = "ba/b"
-        video_fmt = _get_video_fmt(quality)
     else:
-        raise Exception(f"Unknown format {format}")
-
-    if not final_fmt:
-        final_fmt = video_fmt + audio_fmt
+        final_fmt = _get_final_fmt(format, quality)
 
     return final_fmt
 
@@ -58,15 +46,12 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", **extra_args},
         )
 
-    elif format == "mp4":
-        ytdl_opts["merge_output_format"] = "mp4"
-
     return ytdl_opts
 
 
 def _get_audio_fmt(quality: str) -> str:
     if quality == "best" or quality in ("128", "192", "320"):
-        audio_fmt = "ba/b"
+        audio_fmt = "bestaudio/best"
         # Audio quality needs to be set post-download, set in opts
     else:
         raise Exception(f"Unknown quality {quality}")
@@ -74,12 +59,29 @@ def _get_audio_fmt(quality: str) -> str:
     return audio_fmt
 
 
-def _get_video_fmt(quality: str) -> str:
+def _get_video_res(quality: str) -> str:
     if quality == "best":
-        video_fmt = "bv*+"
+        video_fmt = ""
     elif quality in ("1440", "1080", "720", "480"):
-        video_fmt = f"bv[height<={quality}]+"
+        video_fmt = f"[height<={quality}]"
     else:
         raise Exception(f"Unknown quality {quality}")
 
     return video_fmt
+
+
+def _get_final_fmt(format: str, quality: str) -> str:
+    vfmt, afmt, vres = "", "", ""
+
+    if format == "mp4":
+        # video {res} {vfmt} + audio {afmt} {res} {vfmt}
+        vfmt, afmt = "[ext=mp4]", "[ext=m4a]"
+        vres = _get_video_res(quality)
+        combo = vres + vfmt
+        final_fmt = f"bestvideo{combo}+bestaudio{afmt}/best{combo}"
+    elif format == "mp3":
+        final_fmt = _get_audio_fmt(quality)
+    else:
+        raise Exception(f"Unkown format {format}")
+
+    return final_fmt
