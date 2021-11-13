@@ -5,7 +5,7 @@ import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
-import { Formats, Format, Quality, fillQualities, getQualityById } from './formats';
+import { Formats, Format, Quality, getQualityById } from './formats';
 
 @Component({
   selector: 'app-root',
@@ -14,7 +14,7 @@ import { Formats, Format, Quality, fillQualities, getQualityById } from './forma
 })
 export class AppComponent implements AfterViewInit {
   addUrl: string;
-  formats: Format[] = fillQualities(Formats);
+  formats: Format[] = Formats;
   qualities: Quality[];
   quality: Quality;
   format: string;
@@ -91,7 +91,7 @@ export class AppComponent implements AfterViewInit {
   addDownload(url?: string, quality?: string, format?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality.value
-    format = format ?? this.quality.fmt
+    format = format ?? this.format
 
     this.addInProgress = true;
     this.downloads.add(url, quality, format).subscribe((status: Status) => {
