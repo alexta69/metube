@@ -60,7 +60,7 @@ def _get_audio_fmt(quality: str) -> str:
 
 
 def _get_video_res(quality: str) -> str:
-    if quality == "best":
+    if quality in ("best", "audio"):
         video_fmt = ""
     elif quality in ("1440", "1080", "720", "480"):
         video_fmt = f"[height<={quality}]"
@@ -73,12 +73,17 @@ def _get_video_res(quality: str) -> str:
 def _get_final_fmt(format: str, quality: str) -> str:
     vfmt, afmt, vres = "", "", ""
 
-    if format == "mp4":
+    if format in ("mp4", "any"):
         # video {res} {vfmt} + audio {afmt} {res} {vfmt}
-        vfmt, afmt = "[ext=mp4]", "[ext=m4a]"
-        vres = _get_video_res(quality)
-        combo = vres + vfmt
-        final_fmt = f"bestvideo{combo}+bestaudio{afmt}/best{combo}"
+        if format == "mp4":
+            vfmt, afmt = "[ext=mp4]", "[ext=m4a]"
+
+        if quality == "audio":
+            final_fmt = "bestaudio/best"
+        else:
+            vres = _get_video_res(quality)
+            combo = vres + vfmt
+            final_fmt = f"bestvideo{combo}+bestaudio{afmt}/best{combo}"
     elif format == "mp3":
         final_fmt = _get_audio_fmt(quality)
     else:
