@@ -38,9 +38,9 @@ export const Formats: Format[] = [
     text: 'MP3',
     qualities: [
       { id: 'best', text: 'Best' },
-      { id: '128', text: '128 kbps' },
-      { id: '192', text: '192 kbps' },
       { id: '320', text: '320 kbps' },
+      { id: '192', text: '192 kbps' },
+      { id: '128', text: '128 kbps' },
     ],
   },
 ];
