@@ -49,27 +49,6 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
     return ytdl_opts
 
 
-def _get_audio_fmt(quality: str) -> str:
-    if quality == "best" or quality in ("128", "192", "320"):
-        audio_fmt = "bestaudio/best"
-        # Audio quality needs to be set post-download, set in opts
-    else:
-        raise Exception(f"Unknown quality {quality}")
-
-    return audio_fmt
-
-
-def _get_video_res(quality: str) -> str:
-    if quality in ("best", "audio"):
-        video_fmt = ""
-    elif quality in ("1440", "1080", "720", "480"):
-        video_fmt = f"[height<={quality}]"
-    else:
-        raise Exception(f"Unknown quality {quality}")
-
-    return video_fmt
-
-
 def _get_final_fmt(format: str, quality: str) -> str:
     vfmt, afmt, vres = "", "", ""
 
@@ -81,11 +60,20 @@ def _get_final_fmt(format: str, quality: str) -> str:
         if quality == "audio":
             final_fmt = "bestaudio/best"
         else:
-            vres = _get_video_res(quality)
+            if quality in ("best", "audio"):
+                vres = ""
+            elif quality in ("1440", "1080", "720", "480"):
+                vres = f"[height<={quality}]"
+            else:
+                raise Exception(f"Unknown quality {quality}")
             combo = vres + vfmt
             final_fmt = f"bestvideo{combo}+bestaudio{afmt}/best{combo}"
     elif format == "mp3":
-        final_fmt = _get_audio_fmt(quality)
+        if quality == "best" or quality in ("128", "192", "320"):
+            final_fmt = "bestaudio/best"
+            # Audio quality needs to be set post-download, set in opts
+        else:
+            raise Exception(f"Unknown quality {quality}")
     else:
         raise Exception(f"Unkown format {format}")
 
