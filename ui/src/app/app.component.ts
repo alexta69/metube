@@ -5,7 +5,7 @@ import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
-import { Formats, Format, Quality, getQualityById } from './formats';
+import { Formats, Format, Quality } from './formats';
 
 @Component({
   selector: 'app-root',
@@ -16,7 +16,7 @@ export class AppComponent implements AfterViewInit {
   addUrl: string;
   formats: Format[] = Formats;
   qualities: Quality[];
-  quality: Quality;
+  quality: string;
   format: string;
   addInProgress = false;
 
@@ -36,8 +36,7 @@ export class AppComponent implements AfterViewInit {
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
-    let qualityId = cookieService.get('metube_quality') || this.qualities[0].id
-    this.quality = getQualityById(this.formats, qualityId);
+    this.quality = cookieService.get('metube_quality') || 'best';
   }
 
   ngAfterViewInit() {
@@ -65,7 +64,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   qualityChanged() {
-    this.cookieService.set('metube_quality', this.quality.id, { expires: 3650 });
+    this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
   }
 
   formatChanged() {
@@ -85,12 +84,13 @@ export class AppComponent implements AfterViewInit {
   setQualities() {
     // qualities for specific format
     this.qualities = this.formats.find(el => el.id == this.format).qualities
-    this.quality = this.qualities.find(el => el.value === "best")
+    const exists = this.qualities.find(el => el.id === this.quality)
+    this.quality = exists ? this.quality : 'best'
   }
 
   addDownload(url?: string, quality?: string, format?: string) {
     url = url ?? this.addUrl
-    quality = quality ?? this.quality.value
+    quality = quality ?? this.quality
     format = format ?? this.format
 
     this.addInProgress = true;
