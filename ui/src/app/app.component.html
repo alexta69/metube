@@ -26,7 +26,7 @@
         <div class="col-md-5 add-url-component">
           <div class="input-group">
             <div class="input-group-prepend">
-              <span class="input-group-text">Video quality</span>
+              <span class="input-group-text">Quality</span>
             </div>
             <select class="custom-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>

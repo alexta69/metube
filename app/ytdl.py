@@ -4,6 +4,7 @@ from collections import OrderedDict
 import asyncio
 import multiprocessing
 import logging
+from dl_formats import get_format, get_opts
 
 log = logging.getLogger('ytdl')
 
@@ -36,21 +37,8 @@ class Download:
     def __init__(self, download_dir, output_template, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.output_template = output_template
-        vfmt, afmt = '', ''
-        if format == 'mp4':
-            vfmt, afmt = '[ext=mp4]', '[ext=m4a]'
-        if quality == 'best':
-            self.format = f'bestvideo{vfmt}+bestaudio{afmt}/best{vfmt}'
-        elif quality in ('1440p', '1080p', '720p', '480p'):
-            res = quality[:-1]
-            self.format = f'bestvideo[height<={res}]{vfmt}+bestaudio{afmt}/best[height<={res}]{vfmt}'
-        elif quality == 'audio':
-            self.format = f'bestaudio{afmt}'
-        elif quality.startswith('custom:'):
-            self.format = quality[7:]
-        else:
-            raise Exception(f'unknown quality {quality}')
-        self.ytdl_opts = ytdl_opts
+        self.format = get_format(format, quality)
+        self.ytdl_opts = get_opts(format, quality, ytdl_opts)
         self.info = info
         self.canceled = False
         self.tmpfilename = None
@@ -171,7 +159,7 @@ class DownloadQueue:
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if entry['id'] not in self.queue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
-                dldirectory = self.config.DOWNLOAD_DIR if quality != 'audio' else self.config.AUDIO_DOWNLOAD_DIR
+                dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
                 self.queue[entry['id']] = Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, format, self.config.YTDL_OPTIONS, dl)
                 self.event.set()
                 await self.notifier.added(dl)
