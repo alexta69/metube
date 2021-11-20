@@ -3,7 +3,7 @@ FROM node as builder
 WORKDIR /metube
 COPY ui ./
 RUN npm ci && \
-    node_modules/.bin/ng build --prod
+    NODE_OPTIONS=--openssl-legacy-provider node_modules/.bin/ng build --prod
 
 
 FROM python:3.8-alpine

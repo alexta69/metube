@@ -85,7 +85,7 @@ class Download:
         self.notifier = notifier
         self.info.status = 'preparing'
         await self.notifier.updated(self.info)
-        asyncio.ensure_future(self.update_status())
+        asyncio.create_task(self.update_status())
         return await self.loop.run_in_executor(None, self.proc.join)
 
     def cancel(self):
@@ -129,8 +129,13 @@ class DownloadQueue:
         self.notifier = notifier
         self.queue = OrderedDict()
         self.done = OrderedDict()
-        self.event = asyncio.Event()
-        asyncio.ensure_future(self.__download())
+        self.initialized = False
+
+    def __initialize(self):
+        if not self.initialized:
+            self.initialized = True
+            self.event = asyncio.Event()
+            asyncio.create_task(self.__download())
 
     def __extract_info(self, url):
         return yt_dlp.YoutubeDL(params={
@@ -165,6 +170,7 @@ class DownloadQueue:
 
     async def add(self, url, quality, format, already=None):
         log.info(f'adding {url}')
+        self.__initialize()
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
