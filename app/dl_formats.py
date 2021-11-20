@@ -12,14 +12,27 @@ def get_format(format: str, quality: str) -> str:
     Returns:
       dl_format: Formatted download string
     """
-    final_fmt = ""
+    format = format or "best"
 
     if format.startswith("custom:"):
-        final_fmt = format[7:]
-    else:
-        final_fmt = _get_final_fmt(format, quality)
+        return format[7:]
 
-    return final_fmt
+    if format == "mp3":
+        # Audio quality needs to be set post-download, set in opts
+        return "bestaudio/best"
+
+    if format in ("mp4", "any"):
+        if quality == "audio":
+            return "bestaudio/best"
+
+        # video {res} {vfmt} + audio {afmt} {res} {vfmt}
+        vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format == "mp4" else ("", "")
+        vres = f"[height<={quality}]" if quality != "best" else ""
+        vcombo = vres + vfmt
+
+        return f"bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
+
+    raise Exception(f"Unkown format {format}")
 
 
 def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
@@ -47,34 +60,3 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
         )
 
     return ytdl_opts
-
-
-def _get_final_fmt(format: str, quality: str) -> str:
-    vfmt, afmt, vres = "", "", ""
-
-    if format in ("mp4", "any"):
-        # video {res} {vfmt} + audio {afmt} {res} {vfmt}
-        if format == "mp4":
-            vfmt, afmt = "[ext=mp4]", "[ext=m4a]"
-
-        if quality == "audio":
-            final_fmt = "bestaudio/best"
-        else:
-            if quality in ("best", "audio"):
-                vres = ""
-            elif quality in ("1440", "1080", "720", "480"):
-                vres = f"[height<={quality}]"
-            else:
-                raise Exception(f"Unknown quality {quality}")
-            combo = vres + vfmt
-            final_fmt = f"bestvideo{combo}+bestaudio{afmt}/best{combo}"
-    elif format == "mp3":
-        if quality == "best" or quality in ("128", "192", "320"):
-            final_fmt = "bestaudio/best"
-            # Audio quality needs to be set post-download, set in opts
-        else:
-            raise Exception(f"Unknown quality {quality}")
-    else:
-        raise Exception(f"Unkown format {format}")
-
-    return final_fmt
