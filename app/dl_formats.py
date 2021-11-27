@@ -12,7 +12,7 @@ def get_format(format: str, quality: str) -> str:
     Returns:
       dl_format: Formatted download string
     """
-    format = format or "best"
+    format = format or "any"
 
     if format.startswith("custom:"):
         return format[7:]
