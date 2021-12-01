@@ -1,3 +1,5 @@
+import copy
+
 def get_format(format: str, quality: str) -> str:
     """
     Returns format for download
@@ -48,15 +50,22 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
     Returns:
       ytdl_opts: Extra options
     """
-    if "postprocessors" not in ytdl_opts:
-        ytdl_opts["postprocessors"] = []
+    
+    opts = copy.deepcopy(ytdl_opts)
+
+    if "postprocessors" not in opts:
+        opts["postprocessors"] = []
 
     if format == "mp3":
         extra_args = {}
         if quality != "best":
             extra_args = {"preferredquality": quality}
-        ytdl_opts["postprocessors"].append(
+
+        opts["postprocessors"].append(
             {"key": "FFmpegExtractAudio", "preferredcodec": "mp3", **extra_args},
         )
-
-    return ytdl_opts
+        opts["writethumbnail"] = True
+        opts["postprocessors"].append({"key": "FFmpegMetadata"})
+        opts["postprocessors"].append({"key": "EmbedThumbnail"})
+    
+    return opts
