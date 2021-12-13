@@ -30,6 +30,7 @@ class DownloadInfo:
         self.quality = quality
         self.format = format
         self.status = self.msg = self.percent = self.speed = self.eta = None
+        self.filename = None
 
 class Download:
     manager = None
@@ -60,6 +61,9 @@ class Download:
                     'speed',
                     'eta',
                 )})
+            def put_status_postprocessor(d):
+                if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
+                    self.status_queue.put({'status': 'finished', 'filename': d['info_dict']['filepath']})
             ret = yt_dlp.YoutubeDL(params={
                 'quiet': True,
                 'no_color': True,
@@ -69,6 +73,7 @@ class Download:
                 'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [put_status],
+                'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
@@ -113,6 +118,8 @@ class Download:
             if status is None:
                 return
             self.tmpfilename = status.get('tmpfilename')
+            if 'filename' in status:
+                self.info.filename = os.path.relpath(status.get('filename'))
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
