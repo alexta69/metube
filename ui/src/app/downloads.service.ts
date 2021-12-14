@@ -15,6 +15,7 @@ interface Download {
   url: string,
   status: string;
   msg: string;
+  filename: string;
   quality: string;
   percent: number;
   speed: number;

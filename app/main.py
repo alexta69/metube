@@ -108,6 +108,7 @@ if config.URL_PREFIX != '/':
         return web.HTTPFound(config.URL_PREFIX)
 
 routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
+routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
 routes.static(config.URL_PREFIX, 'ui/dist/metube')
 app.add_routes(routes)
 
