@@ -53,6 +53,7 @@ class Download:
             def put_status(st):
                 self.status_queue.put({k: v for k, v in st.items() if k in (
                     'tmpfilename',
+                    'filename',
                     'status',
                     'msg',
                     'total_bytes',
@@ -119,7 +120,7 @@ class Download:
                 return
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
-                self.info.filename = os.path.relpath(status.get('filename'))
+                self.info.filename = os.path.relpath(status.get('filename'), self.download_dir)
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
