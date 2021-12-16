@@ -12,6 +12,10 @@
     </ul>
   </div>
   -->
+  <div>
+    <span class="text-white">Toggle Theme</span>
+    <input style="margin: 1rem;" type="checkbox" [ngModel]="this.darkMode" aria-label="Toggle theme" (change)="themeChanged()">
+  </div>
 </nav>
 
 <main role="main" class="container">
