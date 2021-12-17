@@ -13,8 +13,12 @@
   </div>
   -->
   <div>
-    <span class="text-white">Toggle Theme</span>
-    <input style="margin: 1rem;" type="checkbox" [ngModel]="this.darkMode" aria-label="Toggle theme" (change)="themeChanged()">
+    <button class="btn btn-secondary" aria-label="Toggle theme" (click)="themeChanged()">
+      <i *ngIf="darkMode; else sunIcon" class="bi bi-sun-fill"></i>
+      <ng-template #sunIcon>
+        <i class="bi bi-moon-stars-fill"></i>
+      </ng-template>
+    </button>
   </div>
 </nav>
 
