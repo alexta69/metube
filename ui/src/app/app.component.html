@@ -12,6 +12,11 @@
     </ul>
   </div>
   -->
+  <div class="ml-auto">
+    <button class="btn btn-outline-light button-toggle-theme" aria-label="Toggle theme" (click)="themeChanged()">
+      <fa-icon [icon]="darkMode ? faSun : faMoon"></fa-icon>
+    </button>
+  </div>
 </nav>
 
 <main role="main" class="container">

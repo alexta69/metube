@@ -1,6 +1,6 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
@@ -19,6 +19,7 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   addInProgress = false;
+  darkMode: boolean;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -31,12 +32,15 @@ export class AppComponent implements AfterViewInit {
   faCheckCircle = faCheckCircle;
   faTimesCircle = faTimesCircle;
   faRedoAlt = faRedoAlt;
+  faSun = faSun;
+  faMoon = faMoon;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
     this.quality = cookieService.get('metube_quality') || 'best';
+    this.setupTheme(cookieService)
   }
 
   ngAfterViewInit() {
@@ -65,6 +69,27 @@ export class AppComponent implements AfterViewInit {
 
   qualityChanged() {
     this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+  }
+
+  setupTheme(cookieService) {
+    if (cookieService.check('metube_dark')) {
+      this.darkMode = cookieService.get('metube_dark') === "true"
+    } else {
+      this.darkMode = window.matchMedia("prefers-color-scheme: dark").matches
+    }
+    this.setTheme()
+  }
+
+  themeChanged() {
+    this.darkMode = !this.darkMode
+    this.cookieService.set('metube_dark', this.darkMode.toString(), { expires: 3650 });
+    this.setTheme()
+  }
+
+  setTheme() {
+    const doc = document.querySelector('html')
+    const filter = this.darkMode ? "invert(1) hue-rotate(180deg)" : ""
+    doc.style.filter = filter
   }
 
   formatChanged() {
