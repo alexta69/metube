@@ -12,12 +12,9 @@
     </ul>
   </div>
   -->
-  <div>
-    <button class="btn btn-secondary" aria-label="Toggle theme" (click)="themeChanged()">
-      <i *ngIf="darkMode; else sunIcon" class="bi bi-sun-fill"></i>
-      <ng-template #sunIcon>
-        <i class="bi bi-moon-stars-fill"></i>
-      </ng-template>
+  <div class="ml-auto">
+    <button class="btn btn-outline-light button-toggle-theme" aria-label="Toggle theme" (click)="themeChanged()">
+      <fa-icon [icon]="darkMode ? faSun : faMoon"></fa-icon>
     </button>
   </div>
 </nav>
