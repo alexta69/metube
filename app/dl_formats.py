@@ -60,7 +60,7 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
         opts["postprocessors"].append({
             "key": "FFmpegExtractAudio",
             "preferredcodec": "mp3",
-            "preferredquality": 0 if quality == "best" else quality},
+            "preferredquality": 0 if quality == "best" else quality,
         })
         opts["writethumbnail"] = True
         opts["postprocessors"].append({"key": "FFmpegMetadata"})
