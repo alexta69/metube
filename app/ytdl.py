@@ -172,7 +172,7 @@ class DownloadQueue:
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
-        elif etype == 'url':
+        elif etype.startswith('url'):
             return await self.add(entry['url'], quality, format, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
