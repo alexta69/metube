@@ -1,6 +1,6 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 
 import { DownloadsService, Status } from './downloads.service';
@@ -33,7 +33,8 @@ export class AppComponent implements AfterViewInit {
   faTimesCircle = faTimesCircle;
   faRedoAlt = faRedoAlt;
   faSun = faSun;
-  faMoon = faMoon;
+  faMoon = faMoon;  
+  faExternalLinkAlt = faExternalLinkAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
     this.format = cookieService.get('metube_format') || 'any';
