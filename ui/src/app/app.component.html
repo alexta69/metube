@@ -122,7 +122,7 @@
           <ng-template #noDownloadLink>{{ download.value.title }}</ng-template>
         </td>
         <td>
-          <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.quality)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
+          <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.url, download.value.quality)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
         </td>
         <td>
           <a href="{{download.value.url}}" target="_blank"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>

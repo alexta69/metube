@@ -130,8 +130,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, quality: string, format: string) {
-    this.addDownload(key, quality, format);
+  retryDownload(key: string, url: string, quality: string, format: string) {
+    this.addDownload(url, quality, format);
     this.downloads.delById('done', [key]).subscribe();
   }
 
