@@ -35,3 +35,12 @@ export class SpeedPipe implements PipeTransform {
     return parseFloat((value / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
   }
 }
+
+@Pipe({
+  name: 'encodeURIComponent'
+})
+export class EncodeURIComponent implements PipeTransform {
+  transform(value: string, ...args: any[]): any {
+    return encodeURIComponent(value);
+  }
+}

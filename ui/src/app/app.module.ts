@@ -7,7 +7,7 @@ import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { CookieService } from 'ngx-cookie-service';
 
 import { AppComponent } from './app.component';
-import { EtaPipe, SpeedPipe } from './downloads.pipe';
+import { EtaPipe, SpeedPipe, EncodeURIComponent } from './downloads.pipe';
 import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkbox.component';
 import { MeTubeSocket } from './metube-socket';
 
@@ -16,6 +16,7 @@ import { MeTubeSocket } from './metube-socket';
     AppComponent,
     EtaPipe,
     SpeedPipe,
+    EncodeURIComponent,
     MasterCheckboxComponent,
     SlaveCheckboxComponent
   ],
