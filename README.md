@@ -10,7 +10,7 @@ Web GUI for youtube-dl (using the [yt-dlp](https://github.com/yt-dlp/yt-dlp) for
 ## Run using Docker
 
 ```bash
-docker run -d -p 8081:8081 -v /path/to/downloads:/downloads --user 1001:1001 alexta69/metube
+docker run -d -p 8081:8081 -v /path/to/downloads:/downloads -v /path/to/queue:/queue --user 1001:1001 alexta69/metube
 ```
 
 ## Run using docker-compose
@@ -27,6 +27,7 @@ services:
       - "8081:8081"
     volumes:
       - /path/to/downloads:/downloads
+      - /path/to/queue:/queue
 ```
 ## Configuration via environment variables
 
