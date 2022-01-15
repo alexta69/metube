@@ -26,5 +26,6 @@ COPY --from=builder /metube/dist/metube ./ui/dist/metube
 
 ENV DOWNLOAD_DIR /downloads
 VOLUME /downloads
+VOLUME /queue
 EXPOSE 8081
 CMD ["python3", "app/main.py"]
