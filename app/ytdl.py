@@ -184,8 +184,8 @@ class DownloadQueue:
     def __init__(self, config, notifier):
         self.config = config
         self.notifier = notifier
-        self.queue = PersistentQueue('/queue/queue')
-        self.done = PersistentQueue('/queue/done', True)
+        self.queue = PersistentQueue(self.config.STATE_DIR + '/queue')
+        self.done = PersistentQueue(self.config.STATE_DIR + '/completed', True)
         self.initialized = False
         self.imported = False
     
