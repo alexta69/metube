@@ -2,6 +2,7 @@ import os
 import yt_dlp
 from collections import OrderedDict
 import shelve
+import time
 import asyncio
 import multiprocessing
 import logging
@@ -32,6 +33,7 @@ class DownloadInfo:
         self.format = format
         self.status = self.msg = self.percent = self.speed = self.eta = None
         self.filename = None
+        self.timestamp = time.time_ns()
 
 class Download:
     manager = None
@@ -145,9 +147,8 @@ class PersistentQueue:
         shelf.close()
 
     def __loadShelve(self):
-        with shelve.open(self.shelvePath, 'r') as shelf:
-            for key in shelf.keys():
-                self.dict[key] = shelf[key]
+        for k, v in self.savedItems():
+            self.dict[k] = Download(None, None, None, None, {}, v)
 
     def exists(self, key):
         return key in self.dict
@@ -160,9 +161,10 @@ class PersistentQueue:
 
     def savedItems(self):
         with shelve.open(self.shelvePath, 'r') as shelf:
-            return dict(shelf).items()
+            return sorted(shelf.items(), key=lambda item: item[1].timestamp)
 
-    def put(self, key, value):
+    def put(self, value):
+        key = value.info.id
         self.dict[key] = value
         with shelve.open(self.shelvePath, 'w') as shelf:
             shelf[key] = value.info
@@ -227,7 +229,7 @@ class DownloadQueue:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
-                self.queue.put(entry['id'], Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, format, self.config.YTDL_OPTIONS, dl))
+                self.queue.put(Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, format, self.config.YTDL_OPTIONS, dl))
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
@@ -298,5 +300,5 @@ class DownloadQueue:
                 if entry.canceled:
                     await self.notifier.canceled(id)
                 else:
-                    self.done.put(id, entry)
+                    self.done.put(entry)
                     await self.notifier.completed(entry.info)
