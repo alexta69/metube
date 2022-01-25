@@ -12,11 +12,13 @@
             "windows": {
                 "env": {
                     "DOWNLOAD_DIR": "${env:USERPROFILE}/Downloads",
+                    "STATE_DIR": "${env:TEMP}",
                 }
             },
             "osx": {
                 "env": {
                     "DOWNLOAD_DIR": "${env:HOME}/Downloads",
+                    "STATE_DIR": "${env:TMPDIR}",
                 }
             },
             "console": "integratedTerminal"

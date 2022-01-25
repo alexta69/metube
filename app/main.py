@@ -69,6 +69,7 @@ class Notifier(DownloadQueueNotifier):
         await sio.emit('cleared', serializer.encode(id))
 
 dqueue = DownloadQueue(config, Notifier())
+app.on_startup.append(lambda app: dqueue.initialize())
 
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
@@ -93,7 +94,6 @@ async def delete(request):
 
 @sio.event
 async def connect(sid, environ):
-    await dqueue.importQueue()
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
 
 @routes.get(config.URL_PREFIX)
