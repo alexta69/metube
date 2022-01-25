@@ -1,9 +1,9 @@
-FROM node as builder
+FROM node:lts-alpine as builder
 
 WORKDIR /metube
 COPY ui ./
 RUN npm ci && \
-    NODE_OPTIONS=--openssl-legacy-provider node_modules/.bin/ng build --prod
+    node_modules/.bin/ng build --prod
 
 
 FROM python:3.8-alpine
