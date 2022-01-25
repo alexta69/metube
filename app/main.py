@@ -16,6 +16,7 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
+        'STATE_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
@@ -68,6 +69,7 @@ class Notifier(DownloadQueueNotifier):
         await sio.emit('cleared', serializer.encode(id))
 
 dqueue = DownloadQueue(config, Notifier())
+app.on_startup.append(lambda app: dqueue.initialize())
 
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
