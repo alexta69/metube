@@ -120,6 +120,14 @@ example.com {
 }
 ```
 
+## Updating yt-dlp
+
+The engine which powers the actual video downloads in MeTube is [yt-dlp](https://github.com/yt-dlp/yt-dlp). Since video sites regularly change their layouts, frequent updates of yt-dlp are required to keep up.
+
+There's an automatic nightly build of MeTube which looks for a new version of yt-dlp, and if one exists, the build pulls it and publishes an updated docker image. Therefore, in order to keep up with the changes, it's recommended that you update your MeTube container regularly with the latest image.
+
+I recommend installing and setting up [watchtower](https://github.com/containrrr/watchtower) for this purpose.
+
 ## Build and run locally
 
 Make sure you have node.js and Python 3.8 installed.
