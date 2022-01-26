@@ -136,9 +136,12 @@ class Download:
 
 class PersistentQueue:
     def __init__(self, path):
-        self.path = path
+        pdir = os.path.dirname(path)
+        if not os.path.isdir(pdir):
+            os.mkdir(pdir)
         with shelve.open(path, 'c'):
             pass
+        self.path = path
         self.dict = OrderedDict()
     
     def load(self):
