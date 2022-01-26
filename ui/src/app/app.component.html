@@ -83,7 +83,7 @@
         <td>
           <app-slave-checkbox [id]="download.key" [master]="queueMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
         </td>
-        <td>{{ download.value.title }}</td>
+        <td title="{{ download.value.filename }}">{{ download.value.title }}</td>
         <td><ngb-progressbar height="1.5rem" [showValue]="download.value.status != 'preparing'" [striped]="download.value.status == 'preparing'" [animated]="download.value.status == 'preparing'" type="success" [value]="download.value.status == 'preparing' ? 100 : download.value.percent | number:'1.0-0'"></ngb-progressbar></td>
         <td>{{ download.value.speed | speed }}</td>
         <td>{{ download.value.eta | eta }}</td>
