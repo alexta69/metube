@@ -210,8 +210,14 @@ class DownloadQueue:
         if etype == 'playlist':
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
+            playlist_index_digits = len(str(len(entries)))
             results = []
-            for etr in entries:
+            for index, etr in enumerate(entries, start=1):
+                etr["playlist"] = entry["id"]
+                etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
+                for property in ("id", "title", "uploader", "uploader_id"):
+                    if property in entry:
+                        etr[f"playlist_{property}"] = entry[property]
                 results.append(await self.__add_entry(etr, quality, format, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
@@ -220,7 +226,11 @@ class DownloadQueue:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
-                self.queue.put(Download(dldirectory, self.config.OUTPUT_TEMPLATE, quality, format, self.config.YTDL_OPTIONS, dl))
+                output = self.config.OUTPUT_TEMPLATE
+                for property, value in entry.items():
+                    if property.startswith("playlist"):
+                        output = output.replace(f"%({property})s", str(value))
+                self.queue.put(Download(dldirectory, output, quality, format, self.config.YTDL_OPTIONS, dl))
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
