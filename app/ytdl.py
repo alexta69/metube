@@ -215,10 +215,9 @@ class DownloadQueue:
             for index, etr in enumerate(entries, start=1):
                 etr["playlist"] = entry["id"]
                 etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
-                etr["playlist_id"] = entry["id"]
-                etr["playlist_title"] = entry["title"]
-                etr["playlist_uploader"] = entry["uploader"]
-                etr["playlist_uploader_id"] = entry["uploader_id"]
+                for property in ("id", "title", "uploader", "uploader_id"):
+                    if property in entry:
+                        etr[f"playlist_{property}"] = entry[property]
                 results.append(await self.__add_entry(etr, quality, format, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
@@ -228,13 +227,9 @@ class DownloadQueue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
                 output = self.config.OUTPUT_TEMPLATE
-                if "playlist" in entry:
-                    output = output.replace("%(playlist_index)s",entry["playlist_index"])
-                    output = output.replace("%(playlist_id)s",entry["playlist_id"])
-                    output = output.replace("%(playlist_title)s",entry["playlist_title"])
-                    output = output.replace("%(playlist_uploader)s",str(entry["playlist_uploader"]))
-                    output = output.replace("%(playlist_uploader_id)s",str(entry["playlist_uploader_id"]))
-                    output = output.replace("%(playlist)s",entry["playlist"])
+                for property, value in entry.items():
+                    if property.startswith("playlist"):
+                        output = output.replace(f"%({property})s", str(value))
                 self.queue.put(Download(dldirectory, output, quality, format, self.config.YTDL_OPTIONS, dl))
                 self.event.set()
                 await self.notifier.added(dl)
