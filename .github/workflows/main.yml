@@ -10,6 +10,10 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       -
+        name: Get current date
+        id: date
+        run: echo "::set-output name=date::$(date +'%Y-%m-%d')"
+      -
         name: Checkout
         uses: actions/checkout@v2
       -
@@ -31,7 +35,9 @@ jobs:
           context: .
           platforms: linux/amd64,linux/arm64,linux/arm/v7
           push: true
-          tags: ${{ secrets.DOCKERHUB_REPOSITORY }}:latest
+          tags: |
+            ${{ secrets.DOCKERHUB_REPOSITORY }}:latest
+            ${{ secrets.DOCKERHUB_REPOSITORY }}:${{ steps.date.outputs.date }}
 
   dockerhub-sync-readme:
     needs: dockerhub-build-push

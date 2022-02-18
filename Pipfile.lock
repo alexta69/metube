@@ -128,11 +128,11 @@
         },
         "charset-normalizer": {
             "hashes": [
-                "sha256:2842d8f5e82a1f6aa437380934d5e1cd4fcf2003b06fed6940769c164a480a45",
-                "sha256:98398a9d69ee80548c762ba991a4728bfc3836768ed226b3945908d1a688371c"
+                "sha256:2857e29ff0d34db842cd7ca3230549d1a697f96ee6d3fb071cfa6c7393832597",
+                "sha256:6881edbebdb17b39b4eaaa821b438bf6eddffb4468cf344f09f89def34a8b1df"
             ],
             "markers": "python_version >= '3.5'",
-            "version": "==2.0.11"
+            "version": "==2.0.12"
         },
         "frozenlist": {
             "hashes": [
@@ -323,11 +323,11 @@
         },
         "python-socketio": {
             "hashes": [
-                "sha256:ac8e64d59a15d1c31a4fe8434f4ff16d0f640c824ba517dce7ca99e95f0cd36a",
-                "sha256:d0b98474064ac239a618649ca67f5288827705d36bd5f7615a473b37965baf61"
+                "sha256:5a1b173a4c3471bed363c502a93b36a02e2a29847645c5557237b3359d49caf0",
+                "sha256:6213f7dfbb87e554472d11151f96bae9059854aa88e4a1e0fa6e97cca1c3fcf4"
             ],
             "index": "pypi",
-            "version": "==5.5.1"
+            "version": "==5.5.2"
         },
         "websockets": {
             "hashes": [
@@ -539,11 +539,11 @@
         },
         "platformdirs": {
             "hashes": [
-                "sha256:1d7385c7db91728b83efd0ca99a5afb296cab9d0ed8313a45ed8ba17967ecfca",
-                "sha256:440633ddfebcc36264232365d7840a970e75e1018d15b4327d11f91909045fda"
+                "sha256:30671902352e97b1eafd74ade8e4a694782bd3471685e78c32d0fdfd3aa7e7bb",
+                "sha256:8ec11dfba28ecc0715eb5fb0147a87b1bf325f349f3da9aab2cd6b50b96b692b"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==2.4.1"
+            "version": "==2.5.0"
         },
         "pylint": {
             "hashes": [
@@ -552,14 +552,6 @@
             ],
             "index": "pypi",
             "version": "==2.12.2"
-        },
-        "setuptools": {
-            "hashes": [
-                "sha256:a4dc3af29a67e7a45620aba43dde2c1af2dd6bc49726d78168f0cc6c4fb0c01b",
-                "sha256:c9097cbcdefe88a64da966a764f2d95feb1cfaff77cc304528a23cefe3359d9a"
-            ],
-            "markers": "python_version >= '3.7'",
-            "version": "==60.7.1"
         },
         "toml": {
             "hashes": [
@@ -571,11 +563,11 @@
         },
         "typing-extensions": {
             "hashes": [
-                "sha256:4ca091dea149f945ec56afb48dae714f21e8692ef22a395223bcd328961b6a0e",
-                "sha256:7f001e5ac290a0c0401508864c7ec868be4e701886d5b573a9528ed3973d9d3b"
+                "sha256:1a9462dcc3347a79b1f1c0271fbe79e844580bb598bafa1ed208b94da3cdcd42",
+                "sha256:21c85e0fe4b9a155d0799430b0ad741cdce7e359660ccbd8b530613e8df88ce2"
             ],
             "markers": "python_version < '3.10'",
-            "version": "==4.0.1"
+            "version": "==4.1.1"
         },
         "wrapt": {
             "hashes": [
