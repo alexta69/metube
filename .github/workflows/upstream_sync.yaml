@@ -19,13 +19,13 @@ jobs:
         uses: actions/checkout@v2
         with:
           ref: sync/master
+          token: ${{ secrets.PAT }}
 
       - name: Sync changes with upstream
         id: sync
         uses: aormsby/Fork-Sync-With-Upstream-action@v3.2
         with:
           target_sync_branch: sync/master
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
           upstream_sync_branch: master
           upstream_sync_repo: alexta69/metube
 
