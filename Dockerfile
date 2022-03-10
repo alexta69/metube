@@ -13,7 +13,7 @@ WORKDIR /app
 COPY Pipfile* ./
 
 RUN apk add --update ffmpeg && \
-    apk add --update --virtual .build-deps gcc musl-dev && \
+    apk add --update --virtual .build-deps gcc g++ musl-dev && \
     pip install --no-cache-dir pipenv && \
     pipenv install --system --deploy --clear && \
     pip uninstall pipenv -y && \
