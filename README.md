@@ -64,7 +64,7 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 
 ## Browser extensions
 
-Browser extensions allow right-clicking videos and sending them directly to MeTube.
+Browser extensions allow right-clicking videos and sending them directly to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for the extensions to work.
 
 __Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
 
@@ -95,7 +95,7 @@ If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag)
 
 ### NGINX
 
-```
+```nginx
 location /metube/ {
         proxy_pass http://metube:8081;
         proxy_http_version 1.1;
@@ -107,9 +107,30 @@ location /metube/ {
 
 Note: the extra `proxy_set_header` directives are there to make WebSocket work.
 
+### Apache
+
+Contributed by [PIE-yt](https://github.com/PIE-yt). Source [here](https://gist.github.com/PIE-yt/29e7116588379032427f5bd446b2cac4).
+
+```apache
+# For putting in your Apache sites site.conf
+# Serves MeTube under a /metube/ subdir (http://yourdomain.com/metube/)
+<Location /metube/>
+    ProxyPass http://localhost:8081/ retry=0 timeout=30
+    ProxyPassReverse http://localhost:8081/
+</Location>
+
+<Location /metube/socket.io>
+    RewriteEngine On
+    RewriteCond %{QUERY_STRING} transport=websocket    [NC]
+    RewriteRule /(.*) ws://localhost:8081/socket.io/$1 [P,L]
+    ProxyPass http://localhost:8081/socket.io retry=0 timeout=30
+    ProxyPassReverse http://localhost:8081/socket.io
+</Location>
+```
+
 ### Caddy
 
-The following example Caddyfile gets a reverse proxy going behind [caddy](https://caddyserver.com) 
+The following example Caddyfile gets a reverse proxy going behind [caddy](https://caddyserver.com).
 
 ```caddyfile
 example.com {
