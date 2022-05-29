@@ -41,6 +41,7 @@ COPY --from=gosu-builder /src/bin/ /bin
 ENV UID=99
 ENV GID=100
 ENV UMASK=002
+ENV TZ=Etc/UTC
 
 ENV DOWNLOAD_DIR /downloads
 ENV STATE_DIR /downloads/.metube
