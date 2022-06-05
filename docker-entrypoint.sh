@@ -1,19 +1,18 @@
 #!/bin/sh
 
-USER=metube
+echo "You are running with user `id -u`:`id -g`"
 
-echo "---Setup Timezone to ${TZ}---"
-echo "${TZ}" > /etc/timezone
-echo "---Checking if UID: ${UID} matches user---"
-usermod -o -u ${UID} ${USER}
-echo "---Checking if GID: ${GID} matches user---"
-groupmod -o -g ${GID} ${USER} > /dev/null 2>&1 ||:
-usermod -g ${GID} ${USER}
-echo "---Setting umask to ${UMASK}---"
-umask ${UMASK}
-
-mkdir -p ${DOWNLOAD_DIR} ${STATE_DIR}
-
-chown -R ${UID}:${GID} /app ${DOWNLOAD_DIR} ${STATE_DIR}
-
-gosu ${USER} python3 app/main.py
+if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
+    echo "Running in New Mode"
+    if [ "${UID}" -eq 0 ]; then
+        echo "Waring, it is not recommended to run as root user, please check if you have set the UID environment variable"
+    fi
+    echo "Setting umask to ${UMASK}"
+    umask ${UMASK}
+    mkdir -p "${DOWNLOAD_DIR}" "${STATE_DIR}"
+    chown -R "${UID}":"${GID}" /app "${DOWNLOAD_DIR}" "${STATE_DIR}"
+    su-exec "${UID}":"${GID}" python3 app/main.py
+else
+    echo "Running in Legacy Mode"
+    python3 app/main.py
+fi
