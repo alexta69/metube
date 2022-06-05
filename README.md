@@ -9,11 +9,44 @@ Web GUI for youtube-dl (using the [yt-dlp](https://github.com/yt-dlp/yt-dlp) for
 
 ## Run using Docker
 
+### New Mode(recommend)
+
+```bash
+docker run -d -p 8081:8081 -v /path/to/downloads:/downloads -e UID=1001 -e GID=1001 -e UMASK=000 alexta69/metube
+```
+
+***Warning, if you also set the `--user` parameter, the `UID` and `GID` environment variable will be invalid. And it will run in legacy mode.***
+
+### Legacy Mode(not recommend)
+
 ```bash
 docker run -d -p 8081:8081 -v /path/to/downloads:/downloads --user 1001:1001 alexta69/metube
 ```
 
 ## Run using docker-compose
+
+### New Mode(recommend)
+
+```yaml
+version: "3"
+services:
+  metube:
+    image: alexta69/metube
+    container_name: metube
+    restart: unless-stopped
+    environment:
+      - UID=1001
+      - GID=1001
+      - UMASK=000
+    ports:
+      - "8081:8081"
+    volumes:
+      - /path/to/downloads:/downloads
+```
+
+***Warning, if you also set the `--user` parameter, the `UID` and `GID` environment variable will be invalid. And it will run in legacy mode.***
+
+### Legacy Mode(not recommend)
 
 ```yaml
 version: "3"
@@ -28,6 +61,7 @@ services:
     volumes:
       - /path/to/downloads:/downloads
 ```
+
 ## Configuration via environment variables
 
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
