@@ -38,9 +38,10 @@ class DownloadInfo:
 class Download:
     manager = None
 
-    def __init__(self, download_dir, output_template, quality, format, ytdl_opts, info):
+    def __init__(self, download_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.output_template = output_template
+        self.output_template_chapter = output_template_chapter
         self.format = get_format(format, quality)
         self.ytdl_opts = get_opts(format, quality, ytdl_opts)
         self.info = info
@@ -73,7 +74,7 @@ class Download:
                 'no_color': True,
                 #'skip_download': True,
                 'paths': {"home": self.download_dir},
-                'outtmpl': { "default": self.output_template},
+                'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
                 'cachedir': False,
                 'socket_timeout': 30,
@@ -147,7 +148,7 @@ class PersistentQueue:
     
     def load(self):
         for k, v in self.saved_items():
-            self.dict[k] = Download(None, None, None, None, {}, v)
+            self.dict[k] = Download(None, None, None, None, None, {}, v)
 
     def exists(self, key):
         return key in self.dict
@@ -228,10 +229,11 @@ class DownloadQueue:
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
                 dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
                 output = self.config.OUTPUT_TEMPLATE
+                output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
                 for property, value in entry.items():
                     if property.startswith("playlist"):
                         output = output.replace(f"%({property})s", str(value))
-                self.queue.put(Download(dldirectory, output, quality, format, self.config.YTDL_OPTIONS, dl))
+                self.queue.put(Download(dldirectory, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
                 self.event.set()
                 await self.notifier.added(dl)
             return {'status': 'ok'}
