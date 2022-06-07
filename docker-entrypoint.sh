@@ -5,7 +5,7 @@ echo "You are running with user `id -u`:`id -g`"
 if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
     echo "Running in New Mode"
     if [ "${UID}" -eq 0 ]; then
-        echo "Waring, it is not recommended to run as root user, please check if you have set the UID environment variable"
+        echo "Warning, it is not recommended to run as root user, please check if you have set the UID environment variable"
     fi
     echo "Setting umask to ${UMASK}"
     umask ${UMASK}
