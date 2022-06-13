@@ -23,6 +23,15 @@ export const Formats: Format[] = [
     ],
   },
   {
+    id: 'm4a',
+    text: 'M4A',
+    qualities: [
+      { id: 'best', text: 'Best' },
+      { id: '192', text: '192 kbps' },
+      { id: '128', text: '128 kbps' },
+    ],
+  },
+  {
     id: 'mp4',
     text: 'MP4',
     qualities: [
