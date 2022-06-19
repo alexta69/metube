@@ -9,24 +9,11 @@ Web GUI for youtube-dl (using the [yt-dlp](https://github.com/yt-dlp/yt-dlp) for
 
 ## Run using Docker
 
-### New Mode(recommend)
-
 ```bash
-docker run -d -p 8081:8081 -v /path/to/downloads:/downloads -e UID=1001 -e GID=1001 -e UMASK=000 alexta69/metube
+docker run -d -p 8081:8081 -v /path/to/downloads:/downloads alexta69/metube
 ```
-
-***Warning, if you also set the `--user` parameter, the `UID` and `GID` environment variable will be invalid. And it will run in legacy mode.***
-
-### Legacy Mode(not recommend)
-
-```bash
-docker run -d -p 8081:8081 -v /path/to/downloads:/downloads --user 1001:1001 alexta69/metube
-```
-
 ## Run using docker-compose
 
-### New Mode(recommend)
-
 ```yaml
 version: "3"
 services:
@@ -34,28 +21,6 @@ services:
     image: alexta69/metube
     container_name: metube
     restart: unless-stopped
-    environment:
-      - UID=1001
-      - GID=1001
-      - UMASK=000
-    ports:
-      - "8081:8081"
-    volumes:
-      - /path/to/downloads:/downloads
-```
-
-***Warning, if you also set the `--user` parameter, the `UID` and `GID` environment variable will be invalid. And it will run in legacy mode.***
-
-### Legacy Mode(not recommend)
-
-```yaml
-version: "3"
-services:
-  metube:
-    image: alexta69/metube
-    container_name: metube
-    restart: unless-stopped
-    user: "1001:1001"
     ports:
       - "8081:8081"
     volumes:
@@ -66,6 +31,9 @@ services:
 
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
 
+* __UID__: user under which MeTube will run. Defaults to `1000`.
+* __GID__: group under which MeTube will run. Defaults to `1000`.
+* __UMASK__: umask value used by MeTube. Defaults to `022`.
 * __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
 * __AUDIO_DOWNLOAD_DIR__: path to where audio-only downloads will be saved, if you wish to separate them from the video downloads. Defaults to the value of `DOWNLOAD_DIR`.
 * __STATE_DIR__: path to where the queue persistence files will be saved. Defaults to `/downloads/.metube` in the docker image, and `.` otherwise.
