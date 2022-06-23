@@ -7,9 +7,9 @@ interface Checkable {
 @Component({
   selector: 'app-master-checkbox',
   template: `
-  <div class="custom-control custom-checkbox">
-    <input type="checkbox" class="custom-control-input" id="{{id}}-select-all" #masterCheckbox [(ngModel)]="selected" (change)="clicked()">
-    <label class="custom-control-label" for="{{id}}-select-all"></label>
+  <div class="form-check">
+    <input type="checkbox" class="form-check-input" id="{{id}}-select-all" #masterCheckbox [(ngModel)]="selected" (change)="clicked()">
+    <label class="form-check-label" for="{{id}}-select-all"></label>
   </div>
 `
 })
@@ -40,9 +40,9 @@ export class MasterCheckboxComponent {
 @Component({
   selector: 'app-slave-checkbox',
   template: `
-  <div class="custom-control custom-checkbox">
-    <input type="checkbox" class="custom-control-input" id="{{master.id}}-{{id}}-select" [(ngModel)]="checkable.checked" (change)="master.selectionChanged()">
-    <label class="custom-control-label" for="{{master.id}}-{{id}}-select"></label>
+  <div class="form-check">
+    <input type="checkbox" class="form-check-input" id="{{master.id}}-{{id}}-select" [(ngModel)]="checkable.checked" (change)="master.selectionChanged()">
+    <label class="form-check-label" for="{{master.id}}-{{id}}-select"></label>
   </div>
 `
 })

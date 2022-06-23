@@ -42,13 +42,13 @@ export class DownloadsService {
       data[0].forEach(entry => this.queue.set(...entry));
       this.done.clear();
       data[1].forEach(entry => this.done.set(...entry));
-      this.queueChanged.next();
-      this.doneChanged.next();
+      this.queueChanged.next(null);
+      this.doneChanged.next(null);
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
       this.queue.set(data.id, data);
-      this.queueChanged.next();
+      this.queueChanged.next(null);
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
@@ -61,18 +61,18 @@ export class DownloadsService {
       let data: Download = JSON.parse(strdata);
       this.queue.delete(data.id);
       this.done.set(data.id, data);
-      this.queueChanged.next();
-      this.doneChanged.next();
+      this.queueChanged.next(null);
+      this.doneChanged.next(null);
     });
     socket.fromEvent('canceled').subscribe((strdata: string) => {
       let data: string = JSON.parse(strdata);
       this.queue.delete(data);
-      this.queueChanged.next();
+      this.queueChanged.next(null);
     });
     socket.fromEvent('cleared').subscribe((strdata: string) => {
       let data: string = JSON.parse(strdata);
       this.done.delete(data);
-      this.doneChanged.next();
+      this.doneChanged.next(null);
     });
   }
 

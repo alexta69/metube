@@ -1,25 +1,27 @@
 <nav class="navbar navbar-expand-md navbar-dark bg-dark">
-  <a class="navbar-brand" href="#">MeTube</a>
-  <!--
-  <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
-    <span class="navbar-toggler-icon"></span>
-  </button>
-  <div class="collapse navbar-collapse" id="navbarsDefault">
-    <ul class="navbar-nav mr-auto">
-      <li class="nav-item active">
-        <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
-      </li>
-    </ul>
-  </div>
-  -->
-  <div class="ml-auto">
-    <button class="btn btn-outline-light button-toggle-theme" aria-label="Toggle theme" (click)="themeChanged()">
-      <fa-icon [icon]="darkMode ? faSun : faMoon"></fa-icon>
+  <div class="container-fluid">
+    <a class="navbar-brand" href="#">MeTube</a>
+    <!--
+    <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
+      <span class="navbar-toggler-icon"></span>
     </button>
+    <div class="collapse navbar-collapse" id="navbarsDefault">
+      <ul class="navbar-nav mr-auto">
+        <li class="nav-item active">
+          <a class="nav-link" href="#">Home <span class="sr-only">(current)</span></a>
+        </li>
+      </ul>
+    </div>
+    -->
+    <div class="ms-auto">
+      <button class="btn btn-outline-light button-toggle-theme" aria-label="Toggle theme" (click)="themeChanged()">
+        <fa-icon [icon]="darkMode ? faSun : faMoon"></fa-icon>
+      </button>
+    </div>
   </div>
 </nav>
 
-<main role="main" class="container">
+<main role="main" class="container container-xl">
   <form #f="ngForm">
     <div class="container add-url-box">
       <div class="row">
@@ -30,20 +32,16 @@
       <div class="row">
         <div class="col-md-5 add-url-component">
           <div class="input-group">
-            <div class="input-group-prepend">
-              <span class="input-group-text">Quality</span>
-            </div>
-            <select class="custom-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
+            <span class="input-group-text">Quality</span>
+            <select class="form-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
             </select>
           </div>
         </div>
         <div class="col-md-4 add-url-component">
           <div class="input-group">
-            <div class="input-group-prepend">
-              <span class="input-group-text">Format</span>
-            </div>
-            <select class="custom-select" name="format" [(ngModel)]="format" (change)="formatChanged()" [disabled]="addInProgress || downloads.loading">
+            <span class="input-group-text">Format</span>
+            <select class="form-select" name="format" [(ngModel)]="format" (change)="formatChanged()" [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
             </select>
           </div>
@@ -69,7 +67,7 @@
           <app-master-checkbox #queueMasterCheckbox [id]="'queue'" [list]="downloads.queue" (changed)="queueSelectionChanged($event)"></app-master-checkbox>
         </th>
         <th scope="col">
-          <button type="button" class="btn btn-link px-0 mr-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Cancel selected</button>
+          <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Cancel selected</button>
         </th>
         <th scope="col" style="width: 14rem;"></th>
         <th scope="col" style="width: 8rem;">Speed</th>
@@ -101,9 +99,9 @@
           <app-master-checkbox #doneMasterCheckbox [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)"></app-master-checkbox>
         </th>
         <th scope="col">
-          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
-          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle"></fa-icon>&nbsp; Clear completed</button>
-          <button type="button" class="btn btn-link px-0 mr-4" disabled #doneClearFailed (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle"></fa-icon>&nbsp; Clear failed</button>
+          <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
+          <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle"></fa-icon>&nbsp; Clear completed</button>
+          <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearFailed (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle"></fa-icon>&nbsp; Clear failed</button>
         </th>
         <th scope="col" style="width: 2rem;"></th>
         <th scope="col" style="width: 2rem;"></th>
