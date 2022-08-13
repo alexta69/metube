@@ -13,7 +13,7 @@ WORKDIR /app
 COPY Pipfile* docker-entrypoint.sh ./
 
 RUN chmod +x docker-entrypoint.sh && \
-    apk add --update ffmpeg coreutils shadow su-exec && \
+    apk add --update ffmpeg aria2 coreutils shadow su-exec && \
     apk add --update --virtual .build-deps gcc g++ musl-dev && \
     pip install --no-cache-dir pipenv && \
     pipenv install --system --deploy --clear && \
