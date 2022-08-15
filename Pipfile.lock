@@ -529,11 +529,11 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:15cab6126e12af11134213806e6a5cf97d1c6221e148aa2618ddd42939a30a8d",
-                "sha256:3ce32a1d3e444365fc7d733dbc057808346abb2d137101f06e5cccdc69f42651"
+                "sha256:9a2ceb76a4cc48aa80127eff8a853d9c8b7efe8be121c2123dcbfd3d06bc945f",
+                "sha256:b84f94a01b0a743c14607cc27840b5a09daba16005372cce747455d8ca2f25fd"
             ],
             "index": "pypi",
-            "version": "==2022.8.8"
+            "version": "==2022.8.14"
         }
     },
     "develop": {
@@ -630,11 +630,11 @@
         },
         "setuptools": {
             "hashes": [
-                "sha256:73bfae4791da7c1c56882ab17577d00f7a37a0347162aeb9360058de0dc25083",
-                "sha256:abcb76aa4decd7a17cbe0e4b31bdf549d106ba7f668e87e0860f5f7b84b9b3fe"
+                "sha256:d73f8cd714a1a6691f5eb5abeeacbf313242b7aa2f5eba93776542c1aad90c6f",
+                "sha256:fe9a97f68b064a6ddd4bacfb0b4b93a4c65a556d97ce906255540439d0c35cef"
             ],
             "markers": "python_version >= '3.7'",
-            "version": "==63.4.2"
+            "version": "==65.0.0"
         },
         "tomli": {
             "hashes": [
@@ -646,11 +646,11 @@
         },
         "tomlkit": {
             "hashes": [
-                "sha256:69e0675671a2eed1c08a53f342c955c4ead5d373a10f756219bf39f3d4f0018a",
-                "sha256:d1b49c3e460f5910b22d799b13513504acb4f5fcaee01660ee66f07bd45a271c"
+                "sha256:25d4e2e446c453be6360c67ddfb88838cfc42026322770ba13d1fbd403a93a5c",
+                "sha256:3235a9010fae54323e727c3ac06fb720752fe6635b3426e379daec60fbd44a83"
             ],
             "markers": "python_version >= '3.6' and python_version < '4.0'",
-            "version": "==0.11.2"
+            "version": "==0.11.4"
         },
         "typing-extensions": {
             "hashes": [
