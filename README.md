@@ -35,6 +35,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __GID__: group under which MeTube will run. Defaults to `1000`.
 * __UMASK__: umask value used by MeTube. Defaults to `022`.
 * __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
+* __CUSTOM_DIR__: whether to enable downloading videos into folders within the __DOWNLOAD_DIR__. Defaults to `true`.
+* __AUTO_CREATE_CUSTOM_DIR__: whether to support automatically creating folders within the __DOWNLOAD_DIR__ if they do not exist. Defaults to `false`.
 * __AUDIO_DOWNLOAD_DIR__: path to where audio-only downloads will be saved, if you wish to separate them from the video downloads. Defaults to the value of `DOWNLOAD_DIR`.
 * __STATE_DIR__: path to where the queue persistence files will be saved. Defaults to `/downloads/.metube` in the docker image, and `.` otherwise.
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
