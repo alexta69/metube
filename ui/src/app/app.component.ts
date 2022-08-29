@@ -19,6 +19,7 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   addInProgress = false;
+  showFolderDropdown = false;
   darkMode: boolean;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
@@ -112,6 +113,10 @@ export class AppComponent implements AfterViewInit {
     this.qualities = this.formats.find(el => el.id == this.format).qualities
     const exists = this.qualities.find(el => el.id === this.quality)
     this.quality = exists ? this.quality : 'best'
+  }
+
+  clickFolderDropdown() {
+    this.showFolderDropdown = !this.showFolderDropdown;
   }
 
   addDownload(url?: string, quality?: string, format?: string) {

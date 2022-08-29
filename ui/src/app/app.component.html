@@ -47,10 +47,22 @@
           </div>
         </div>
         <div class="col-md-3 add-url-component">
-          <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
-            <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
-            {{ addInProgress ? "Adding..." : "Add" }}
-          </button>
+          <div class="btn-group add-url-group">
+            <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
+              <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
+              {{ addInProgress ? "Adding..." : "Add" }}
+            </button>
+            <button class="btn btn-primary set-download-folder dropdown-toggle dropdown-toggle-split" data-toggle="dropdown" aria-haspopup="true" type="button" (click)="clickFolderDropdown()" [disabled]="addInProgress || downloads.loading">
+              <span class="sr-only">Set download folder</span>
+            </button>
+            <div class="dropdown-menu show" *ngIf="showFolderDropdown">
+              <a class="dropdown-item" href="#">Action</a>
+              <a class="dropdown-item" href="#">Another action</a>
+              <a class="dropdown-item" href="#">Something else here</a>
+              <div class="dropdown-divider"></div>
+              <a class="dropdown-item" href="#">Separated link</a>
+            </div>
+          </div>
         </div>
       </div>
     </div>
