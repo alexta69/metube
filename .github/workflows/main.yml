@@ -4,7 +4,7 @@ on:
   push:
     branches:
       - 'master'
-  workflow_dispatch:
+      - 'custom-download-folder'
 
 jobs:
   dockerhub-build-push:
