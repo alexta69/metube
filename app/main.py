@@ -116,7 +116,13 @@ if config.URL_PREFIX != '/':
 routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
 routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
 routes.static(config.URL_PREFIX, 'ui/dist/metube')
-app.add_routes(routes)
+try:
+    app.add_routes(routes)
+except ValueError as e:
+    if 'ui/dist/metube' in str(e):
+        raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build`') from e
+    raise e
+
 
 
 # https://github.com/aio-libs/aiohttp/pull/4615 waiting for release
