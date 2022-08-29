@@ -27,10 +27,11 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format):
+    def __init__(self, id, title, url, quality, format, folder):
         self.id, self.title, self.url = id, title, url
         self.quality = quality
         self.format = format
+        self.folder = folder
         self.status = self.msg = self.percent = self.speed = self.eta = None
         self.filename = None
         self.timestamp = time.time_ns()
@@ -192,7 +193,7 @@ class DownloadQueue:
     
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format)
+            await self.add(v.url, v.quality, v.format, folder=v.folder)
 
     async def initialize(self):
         self.event = asyncio.Event()
@@ -207,7 +208,7 @@ class DownloadQueue:
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
-    async def __add_entry(self, entry, quality, format, already):
+    async def __add_entry(self, entry, quality, format, already, folder=None):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
@@ -220,14 +221,26 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, already))
+                results.append(await self.__add_entry(etr, quality, format, already, folder=folder))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if not self.queue.exists(entry['id']):
-                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format)
-                dldirectory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
+                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder)
+                base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
+                if folder:
+                    if self.config.CUSTOM_DIR != 'true':
+                        return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIR is not true in the configuration.'}
+                    dldirectory = os.path.realpath(os.path.join(base_directory, folder))
+                    if not dldirectory.startswith(base_directory):
+                        return {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{base_directory}"'}
+                    if not os.path.isdir(dldirectory):
+                        if self.config.AUTO_CREATE_CUSTOM_DIR != 'true':
+                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist, and AUTO_CREATE_CUSTOM_DIR is not true in the configuration.'}
+                        os.makedirs(dldirectory, exist_ok=True)
+                else:
+                    dldirectory = base_directory
                 output = self.config.OUTPUT_TEMPLATE
                 output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
                 for property, value in entry.items():
@@ -238,11 +251,11 @@ class DownloadQueue:
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, already)
+            return await self.add(entry['url'], quality, format, already, folder=folder)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, already=None):
-        log.info(f'adding {url}')
+    async def add(self, url, quality, format, already=None, folder=None):
+        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=}')
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -253,7 +266,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, already)
+        return await self.__add_entry(entry, quality, format, already, folder=folder)
 
     async def cancel(self, ids):
         for id in ids:

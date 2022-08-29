@@ -16,11 +16,13 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
+        'CUSTOM_DIR': 'true',
+        'AUTO_CREATE_CUSTOM_DIR': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
-        'YTDL_OPTIONS': '{}',
+        'YTDL_OPTIONS': '{}'
     }
 
     def __init__(self):
@@ -80,7 +82,8 @@ async def add(request):
     if not url or not quality:
         raise web.HTTPBadRequest()
     format = post.get('format')
-    status = await dqueue.add(url, quality, format)
+    folder = post.get('folder')
+    status = await dqueue.add(url, quality, format, folder)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')
