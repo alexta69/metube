@@ -4,7 +4,6 @@ on:
   push:
     branches:
       - 'master'
-      - 'custom-download-folder'
 
 jobs:
   dockerhub-build-push:
