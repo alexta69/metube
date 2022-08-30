@@ -4,7 +4,7 @@ import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-s
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of } from 'rxjs';
 
-import { DownloadsService, Status } from './downloads.service';
+import { Download, DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
 
@@ -89,15 +89,19 @@ export class AppComponent implements AfterViewInit {
     return this.downloads.configuration['CREATE_DIRS'] == 'true';
   }
 
+  isAudioType() {
+    return this.quality == 'audio' || this.format == 'mp3';
+  }
+
   getMatchingCustomDir() : Observable<string[]> {
     return this.downloads.customDirsChanged.asObservable().pipe(map((output) => {
       // Keep logic consistent with app/ytdl.py
-      if (this.quality != 'audio' && this.format != 'mp3') {
-        console.debug("Showing default download directories");
-        return output["download_dir"];
-      } else {
+      if (this.isAudioType()) {
         console.debug("Showing audio-specific download directories");
         return output["audio_download_dir"];
+      } else {
+        console.debug("Showing default download directories");
+        return output["download_dir"];
       }
     }));
   }
@@ -146,13 +150,14 @@ export class AppComponent implements AfterViewInit {
     this.quality = exists ? this.quality : 'best'
   }
 
-  addDownload(url?: string, quality?: string, format?: string) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
+    folder = folder ?? this.folder
 
     this.addInProgress = true;
-    this.downloads.add(url, quality, format).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -162,8 +167,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, url: string, quality: string, format: string) {
-    this.addDownload(url, quality, format);
+  retryDownload(key: string, url: string, quality: string, format: string, folder: string) {
+    this.addDownload(url, quality, format, folder);
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -181,5 +186,18 @@ export class AppComponent implements AfterViewInit {
 
   clearFailedDownloads() {
     this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe();
+  }
+
+  buildDownloadLink(download: Download) {
+    let baseDir = 'download/';
+    if (download.quality == 'audio' || download.filename.endsWith('.mp3')) {
+      baseDir = 'audio_download/';
+    }
+
+    if (download.folder) {
+      baseDir += download.folder + '/';
+    }
+
+    return baseDir + encodeURIComponent(download.filename);
   }
 }

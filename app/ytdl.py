@@ -208,7 +208,7 @@ class DownloadQueue:
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
-    async def __add_entry(self, entry, quality, format, already, folder=None):
+    async def __add_entry(self, entry, quality, format, folder, already):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
@@ -221,7 +221,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, already, folder=folder))
+                results.append(await self.__add_entry(etr, quality, format, folder, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -252,10 +252,10 @@ class DownloadQueue:
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, already, folder=folder)
+            return await self.add(entry['url'], quality, format, folder, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, already=None, folder=None):
+    async def add(self, url, quality, format, folder, already=None):
         log.info(f'adding {url}: {quality=} {format=} {already=} {folder=}')
         already = set() if already is None else already
         if url in already:
@@ -267,7 +267,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, already, folder=folder)
+        return await self.__add_entry(entry, quality, format, folder, already)
 
     async def cancel(self, ids):
         for id in ids:

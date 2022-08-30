@@ -150,6 +150,7 @@ if config.URL_PREFIX != '/':
 
 routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
 routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
+routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR)
 routes.static(config.URL_PREFIX, 'ui/dist/metube')
 try:
     app.add_routes(routes)

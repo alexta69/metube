@@ -9,13 +9,14 @@ export interface Status {
   msg?: string;
 }
 
-interface Download {
+export interface Download {
   id: string;
   title: string;
   url: string,
   status: string;
   msg: string;
   filename: string;
+  folder: string;
   quality: string;
   percent: number;
   speed: number;
@@ -96,8 +97,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format}).pipe(
+  public add(url: string, quality: string, format: string, folder: string) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder}).pipe(
       catchError(this.handleHTTPError)
     );
   }
