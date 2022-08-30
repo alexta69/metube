@@ -33,8 +33,8 @@ export class DownloadsService {
   done = new Map<string, Download>();
   queueChanged = new Subject();
   doneChanged = new Subject();
+  customDirsChanged = new Subject<string[]>();
   configuration = {};
-  custom_directories = {};
 
   constructor(private http: HttpClient, private socket: MeTubeSocket) {
     socket.fromEvent('all').subscribe((strdata: string) => {
@@ -84,7 +84,8 @@ export class DownloadsService {
     socket.fromEvent('custom_directories').subscribe((strdata: string) => {
       let data = JSON.parse(strdata);
       console.debug("got custom_directories:", data);
-      this.custom_directories = data["directories"];
+      let customDirectories = data["directories"];
+      this.customDirsChanged.next(customDirectories);
     });
   }
 

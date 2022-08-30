@@ -58,7 +58,8 @@
             <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
               <div class="input-group">
                 <span class="input-group-text">Download Folder</span>
-                <input type="text" class="form-select" name="folder" [(ngModel)]="folder" (change)="folderChanged()" [disabled]="addInProgress || downloads.loading" />
+                <select class="form-select" name="folder" #folderSelect [(ngModel)]="folder" (change)="folderChanged()" [disabled]="addInProgress || downloads.loading">
+                </select>
               </div>
             </div>
           </div>

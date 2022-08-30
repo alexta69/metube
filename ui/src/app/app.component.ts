@@ -1,4 +1,4 @@
-import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { Component, ViewChild, ElementRef, AfterViewInit, ChangeDetectorRef } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
@@ -7,10 +7,13 @@ import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
 
+// jQuery is loaded in angular.json for selectize
+declare var $: any;
+
 @Component({
   selector: 'app-root',
   templateUrl: './app.component.html',
-  styleUrls: ['./app.component.sass']
+  styleUrls: ['./app.component.sass'],
 })
 export class AppComponent implements AfterViewInit {
   addUrl: string;
@@ -19,6 +22,7 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   folder: string;
+  customDirs: string[] = [];
   addInProgress = false;
   darkMode: boolean;
 
@@ -28,6 +32,7 @@ export class AppComponent implements AfterViewInit {
   @ViewChild('doneDelSelected') doneDelSelected: ElementRef;
   @ViewChild('doneClearCompleted') doneClearCompleted: ElementRef;
   @ViewChild('doneClearFailed') doneClearFailed: ElementRef;
+  @ViewChild('folderSelect') folderSelect: ElementRef;
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
@@ -46,6 +51,13 @@ export class AppComponent implements AfterViewInit {
   }
 
   ngAfterViewInit() {
+    // Trigger folderSelect to update
+    this.downloads.customDirsChanged.subscribe((dirs: string[]) => {
+      console.log("customDirsChanged:", dirs);
+    $(this.folderSelect.nativeElement).selectize({options: dirs});
+      this.customDirs = dirs;
+    });
+
     this.downloads.queueChanged.subscribe(() => {
       this.queueMasterCheckbox.selectionChanged();
     });
