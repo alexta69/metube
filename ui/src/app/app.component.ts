@@ -1,14 +1,12 @@
-import { Component, ViewChild, ElementRef, AfterViewInit, ChangeDetectorRef } from '@angular/core';
+import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
+import { map, Observable, of } from 'rxjs';
 
 import { DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
-
-// jQuery is loaded in angular.json for selectize
-declare var $: any;
 
 @Component({
   selector: 'app-root',
@@ -22,9 +20,9 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   folder: string;
-  customDirs: string[] = [];
   addInProgress = false;
   darkMode: boolean;
+  customDirs$: Observable<string[]>;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -32,7 +30,6 @@ export class AppComponent implements AfterViewInit {
   @ViewChild('doneDelSelected') doneDelSelected: ElementRef;
   @ViewChild('doneClearCompleted') doneClearCompleted: ElementRef;
   @ViewChild('doneClearFailed') doneClearFailed: ElementRef;
-  @ViewChild('folderSelect') folderSelect: ElementRef;
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
@@ -50,14 +47,11 @@ export class AppComponent implements AfterViewInit {
     this.setupTheme(cookieService)
   }
 
-  ngAfterViewInit() {
-    // Trigger folderSelect to update
-    this.downloads.customDirsChanged.subscribe((dirs: string[]) => {
-      console.log("customDirsChanged:", dirs);
-    $(this.folderSelect.nativeElement).selectize({options: dirs});
-      this.customDirs = dirs;
-    });
+  ngOnInit() {
+    this.customDirs$ = this.getMatchingCustomDir();
+  }
 
+  ngAfterViewInit() {
     this.downloads.queueChanged.subscribe(() => {
       this.queueMasterCheckbox.selectionChanged();
     });
@@ -86,11 +80,24 @@ export class AppComponent implements AfterViewInit {
   }
 
   showAdvanced() {
-    return this.downloads.configuration['CUSTOM_DIR'] == 'true';
+    return this.downloads.configuration['CUSTOM_DIRS'] == 'true';
   }
 
-  folderChanged() {
-    console.log("folder changed", this.folder);
+  allowCustomDir() {
+    return this.downloads.configuration['CREATE_DIRS'] == 'true';
+  }
+
+  getMatchingCustomDir() : Observable<string[]> {
+    return this.downloads.customDirs.asObservable().pipe(map((output) => {
+      // Keep logic consistent with app/ytdl.py
+      if (this.quality != 'audio' && this.format != 'mp3') {
+        console.debug("download_dir", output["download_dir"])
+        return output["download_dir"];
+      } else {
+        console.debug("audio_download_dir", output["audio_download_dir"])
+        return output["audio_download_dir"];
+      }
+    }));
   }
 
   setupTheme(cookieService) {

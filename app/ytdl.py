@@ -228,16 +228,17 @@ class DownloadQueue:
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder)
+                # Keep consistent with frontend
                 base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
                 if folder:
-                    if self.config.CUSTOM_DIR != 'true':
-                        return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIR is not true in the configuration.'}
+                    if self.config.CUSTOM_DIRS != 'true':
+                        return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
                     dldirectory = os.path.realpath(os.path.join(base_directory, folder))
                     if not dldirectory.startswith(base_directory):
                         return {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{base_directory}"'}
                     if not os.path.isdir(dldirectory):
-                        if self.config.AUTO_CREATE_CUSTOM_DIR != 'true':
-                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist, and AUTO_CREATE_CUSTOM_DIR is not true in the configuration.'}
+                        if self.config.CREATE_DIRS != 'true':
+                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{base_directory}", and CREATE_DIRS is not true in the configuration.'}
                         os.makedirs(dldirectory, exist_ok=True)
                 else:
                     dldirectory = base_directory

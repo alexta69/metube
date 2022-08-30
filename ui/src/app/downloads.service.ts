@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket';
 
@@ -33,7 +33,7 @@ export class DownloadsService {
   done = new Map<string, Download>();
   queueChanged = new Subject();
   doneChanged = new Subject();
-  customDirsChanged = new Subject<string[]>();
+  customDirs = new Subject<Map<string, string[]>>();
   configuration = {};
 
   constructor(private http: HttpClient, private socket: MeTubeSocket) {
@@ -81,11 +81,10 @@ export class DownloadsService {
       console.debug("got configuration:", data);
       this.configuration = data;
     });
-    socket.fromEvent('custom_directories').subscribe((strdata: string) => {
+    socket.fromEvent('custom_dirs').subscribe((strdata: string) => {
       let data = JSON.parse(strdata);
-      console.debug("got custom_directories:", data);
-      let customDirectories = data["directories"];
-      this.customDirsChanged.next(customDirectories);
+      console.debug("got custom_dirs:", data);
+      this.customDirs.next(data);
     });
   }
 
