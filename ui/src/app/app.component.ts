@@ -77,6 +77,8 @@ export class AppComponent implements AfterViewInit {
 
   qualityChanged() {
     this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+    // Re-trigger custom directory change
+    this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   showAdvanced() {
@@ -88,13 +90,13 @@ export class AppComponent implements AfterViewInit {
   }
 
   getMatchingCustomDir() : Observable<string[]> {
-    return this.downloads.customDirs.asObservable().pipe(map((output) => {
+    return this.downloads.customDirsChanged.asObservable().pipe(map((output) => {
       // Keep logic consistent with app/ytdl.py
       if (this.quality != 'audio' && this.format != 'mp3') {
-        console.debug("download_dir", output["download_dir"])
+        console.debug("Showing default download directories");
         return output["download_dir"];
       } else {
-        console.debug("audio_download_dir", output["audio_download_dir"])
+        console.debug("Showing audio-specific download directories");
         return output["audio_download_dir"];
       }
     }));
@@ -125,6 +127,8 @@ export class AppComponent implements AfterViewInit {
     this.cookieService.set('metube_format', this.format, { expires: 3650 });
     // Updates to use qualities available
     this.setQualities()
+    // Re-trigger custom directory change
+    this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   queueSelectionChanged(checked: number) {
