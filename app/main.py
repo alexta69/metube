@@ -99,6 +99,7 @@ async def delete(request):
 @sio.event
 async def connect(sid, environ):
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
+    await sio.emit('configuration', serializer.encode(config), to=sid)
 
 @routes.get(config.URL_PREFIX)
 def index(request):

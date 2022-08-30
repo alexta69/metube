@@ -18,8 +18,8 @@ export class AppComponent implements AfterViewInit {
   qualities: Quality[];
   quality: string;
   format: string;
+  folder: string;
   addInProgress = false;
-  showFolderDropdown = false;
   darkMode: boolean;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
@@ -73,6 +73,14 @@ export class AppComponent implements AfterViewInit {
     this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
   }
 
+  showAdvanced() {
+    return this.downloads.configuration['CUSTOM_DIR'] == 'true';
+  }
+
+  folderChanged() {
+    console.log("folder changed", this.folder);
+  }
+
   setupTheme(cookieService) {
     if (cookieService.check('metube_dark')) {
       this.darkMode = cookieService.get('metube_dark') === "true"
@@ -113,10 +121,6 @@ export class AppComponent implements AfterViewInit {
     this.qualities = this.formats.find(el => el.id == this.format).qualities
     const exists = this.qualities.find(el => el.id === this.quality)
     this.quality = exists ? this.quality : 'best'
-  }
-
-  clickFolderDropdown() {
-    this.showFolderDropdown = !this.showFolderDropdown;
   }
 
   addDownload(url?: string, quality?: string, format?: string) {
