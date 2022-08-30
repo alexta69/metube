@@ -34,6 +34,7 @@ export class DownloadsService {
   queueChanged = new Subject();
   doneChanged = new Subject();
   configuration = {};
+  custom_directories = {};
 
   constructor(private http: HttpClient, private socket: MeTubeSocket) {
     socket.fromEvent('all').subscribe((strdata: string) => {
@@ -76,10 +77,15 @@ export class DownloadsService {
       this.doneChanged.next(null);
     });
     socket.fromEvent('configuration').subscribe((strdata: string) => {
-      let data: string = JSON.parse(strdata);
+      let data = JSON.parse(strdata);
       console.debug("got configuration:", data);
       this.configuration = data;
-    })
+    });
+    socket.fromEvent('custom_directories').subscribe((strdata: string) => {
+      let data = JSON.parse(strdata);
+      console.debug("got custom_directories:", data);
+      this.custom_directories = data["directories"];
+    });
   }
 
   handleHTTPError(error: HttpErrorResponse) {

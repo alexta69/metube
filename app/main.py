@@ -7,6 +7,7 @@ from aiohttp import web
 import socketio
 import logging
 import json
+import pathlib
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
@@ -100,6 +101,18 @@ async def delete(request):
 async def connect(sid, environ):
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('configuration', serializer.encode(config), to=sid)
+    if config.CUSTOM_DIR:
+        await sio.emit('custom_directories', serializer.encode(get_custom_directories()), to=sid)
+
+def get_custom_directories():
+    path = pathlib.Path(config.DOWNLOAD_DIR)
+    # Recursively lists all subdirectories, and converts PosixPath objects to string
+    dirs = list(map(str, path.glob('**')))
+    
+    if '.' in dirs:
+        dirs.remove('.')
+
+    return {"directories": dirs}
 
 @routes.get(config.URL_PREFIX)
 def index(request):
@@ -121,7 +134,7 @@ try:
     app.add_routes(routes)
 except ValueError as e:
     if 'ui/dist/metube' in str(e):
-        raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build`') from e
+        raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build` inside the ui folder') from e
     raise e
 
 
