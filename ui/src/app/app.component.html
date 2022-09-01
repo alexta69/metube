@@ -1,6 +1,6 @@
 <nav class="navbar navbar-expand-md navbar-dark bg-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="#">MeTube</a>
+    <a class="navbar-brand" href="#">Youtube downloader</a>
     <!--
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -106,6 +106,7 @@
         <th scope="col" style="width: 2rem;"></th>
         <th scope="col" style="width: 2rem;"></th>
         <th scope="col" style="width: 2rem;"></th>
+        <th scope="col" style="width: 2rem;"></th>
       </tr>
     </thead>
     <tbody>
@@ -123,6 +124,9 @@
         </td>
         <td>
           <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.url, download.value.quality)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
+        </td>
+        <td>
+          <a *ngIf="!!download.value.filename; else noDownloadLink" href="download/{{download.value.filename | encodeURIComponent}}" download target="_blank"><fa-icon [icon]="faDownload"></fa-icon></a>
         </td>
         <td>
           <a href="{{download.value.url}}" target="_blank"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>
