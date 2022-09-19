@@ -85,8 +85,11 @@ export class AppComponent implements AfterViewInit {
     return this.downloads.configuration['CUSTOM_DIRS'] == 'true';
   }
 
-  allowCustomDir() {
-    return this.downloads.configuration['CREATE_CUSTOM_DIRS'] == 'true';
+  allowCustomDir(tag: string) {
+    if (this.downloads.configuration['CREATE_CUSTOM_DIRS'] == 'true') {
+      return tag;
+    }
+    return false;
   }
 
   isAudioType() {
