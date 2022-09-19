@@ -237,8 +237,8 @@ class DownloadQueue:
                     if not dldirectory.startswith(base_directory):
                         return {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{base_directory}"'}
                     if not os.path.isdir(dldirectory):
-                        if self.config.CREATE_DIRS != 'true':
-                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{base_directory}", and CREATE_DIRS is not true in the configuration.'}
+                        if self.config.CREATE_CUSTOM_DIRS != 'true':
+                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{base_directory}", and CREATE_CUSTOM_DIRS is not true in the configuration.'}
                         os.makedirs(dldirectory, exist_ok=True)
                 else:
                     dldirectory = base_directory

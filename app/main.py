@@ -18,12 +18,12 @@ class Config:
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
         'CUSTOM_DIRS': 'true',
-        'CREATE_DIRS': 'false',
+        'CREATE_CUSTOM_DIRS': 'true',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
-        'YTDL_OPTIONS': '{}'
+        'YTDL_OPTIONS': '{}',
     }
 
     def __init__(self):
