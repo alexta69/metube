@@ -156,6 +156,7 @@ export class AppComponent implements AfterViewInit {
     format = format ?? this.format
     folder = folder ?? this.folder
 
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder);
     this.addInProgress = true;
     this.downloads.add(url, quality, format, folder).subscribe((status: Status) => {
       if (status.status === 'error') {
