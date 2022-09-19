@@ -58,7 +58,7 @@
             <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
               <div class="input-group">
                 <span class="input-group-text">Download Folder</span>
-                <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir()" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
+                <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir.bind(this)" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
               </div>
             </div>
           </div>
