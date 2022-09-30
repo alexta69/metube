@@ -6,6 +6,7 @@ import time
 import asyncio
 import multiprocessing
 import logging
+import re
 from dl_formats import get_format, get_opts
 
 log = logging.getLogger('ytdl')
@@ -127,6 +128,10 @@ class Download:
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
                 self.info.filename = os.path.relpath(status.get('filename'), self.download_dir)
+
+                # Set correct file extension for thumbnails
+                if(self.info.format == 'thumbnail'):
+                    self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
