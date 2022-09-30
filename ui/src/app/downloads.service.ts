@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket';
 
@@ -9,13 +9,14 @@ export interface Status {
   msg?: string;
 }
 
-interface Download {
+export interface Download {
   id: string;
   title: string;
   url: string,
   status: string;
   msg: string;
   filename: string;
+  folder: string;
   quality: string;
   percent: number;
   speed: number;
@@ -33,6 +34,10 @@ export class DownloadsService {
   done = new Map<string, Download>();
   queueChanged = new Subject();
   doneChanged = new Subject();
+  customDirsChanged = new Subject();
+
+  configuration = {};
+  customDirs = {};
 
   constructor(private http: HttpClient, private socket: MeTubeSocket) {
     socket.fromEvent('all').subscribe((strdata: string) => {
@@ -74,6 +79,17 @@ export class DownloadsService {
       this.done.delete(data);
       this.doneChanged.next(null);
     });
+    socket.fromEvent('configuration').subscribe((strdata: string) => {
+      let data = JSON.parse(strdata);
+      console.debug("got configuration:", data);
+      this.configuration = data;
+    });
+    socket.fromEvent('custom_dirs').subscribe((strdata: string) => {
+      let data = JSON.parse(strdata);
+      console.debug("got custom_dirs:", data);
+      this.customDirs = data;
+      this.customDirsChanged.next(data);
+    });
   }
 
   handleHTTPError(error: HttpErrorResponse) {
@@ -81,8 +97,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format}).pipe(
+  public add(url: string, quality: string, format: string, folder: string) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder}).pipe(
       catchError(this.handleHTTPError)
     );
   }

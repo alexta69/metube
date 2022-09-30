@@ -47,10 +47,21 @@
           </div>
         </div>
         <div class="col-md-3 add-url-component">
-          <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
-            <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
-            {{ addInProgress ? "Adding..." : "Add" }}
-          </button>
+          <div [attr.class]="showAdvanced() ? 'btn-group add-url-group' : 'add-url-group'" ngbDropdown #advancedDropdown="ngbDropdown" display="dynamic" placement="bottom-end">
+            <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
+              <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
+              {{ addInProgress ? "Adding..." : "Add" }}
+            </button>
+            <button class="btn btn-primary dropdown-toggle dropdown-toggle-split" id="advancedButton" type="button" title="Advanced options" [disabled]="addInProgress || downloads.loading" ngbDropdownAnchor (focus)="advancedDropdown.open()" *ngIf="showAdvanced()">
+              <span class="sr-only">Advanced options</span>
+            </button>
+            <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
+              <div class="input-group">
+                <span class="input-group-text">Download Folder</span>
+                <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir.bind(this)" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
+              </div>
+            </div>
+          </div>
         </div>
       </div>
     </div>
@@ -118,11 +129,11 @@
             <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" style="color: green;"></fa-icon>
             <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" style="color: red;"></fa-icon>
           </div>
-          <span ngbTooltip="{{download.value.msg}}"><a *ngIf="!!download.value.filename; else noDownloadLink" href="download/{{download.value.filename | encodeURIComponent}}" target="_blank">{{ download.value.title }}</a></span>
+          <span ngbTooltip="{{download.value.msg}}"><a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a></span>
           <ng-template #noDownloadLink>{{ download.value.title }}</ng-template>
         </td>
         <td>
-          <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.url, download.value.quality)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
+          <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.url, download.value.quality, download.value.folder)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
         </td>
         <td>
           <a href="{{download.value.url}}" target="_blank"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>
