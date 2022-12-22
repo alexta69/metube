@@ -67,6 +67,7 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
             "preferredquality": 0 if quality == "best" else quality,
         })
         opts["writethumbnail"] = True
+        opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
         opts["postprocessors"].append({"key": "FFmpegMetadata"})
         opts["postprocessors"].append({"key": "EmbedThumbnail"})
     
