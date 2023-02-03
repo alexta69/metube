@@ -170,7 +170,7 @@ class PersistentQueue:
             return sorted(shelf.items(), key=lambda item: item[1].timestamp)
 
     def put(self, value):
-        key = value.info.id
+        key = value.info.url
         self.dict[key] = value
         with shelve.open(self.path, 'w') as shelf:
             shelf[key] = value.info
