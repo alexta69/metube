@@ -52,20 +52,20 @@ export class DownloadsService {
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
       this.queueChanged.next(null);
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      let dl: Download = this.queue.get(data.id);
+      let dl: Download = this.queue.get(data.url);
       data.checked = dl.checked;
       data.deleting = dl.deleting;
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
     });
     socket.fromEvent('completed').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.delete(data.id);
-      this.done.set(data.id, data);
+      this.queue.delete(data.url);
+      this.done.set(data.url, data);
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
@@ -110,7 +110,7 @@ export class DownloadsService {
 
   public delByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
   }
 }
