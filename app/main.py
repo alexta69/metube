@@ -26,12 +26,19 @@ class Config:
         'YTDL_OPTIONS': '{}',
     }
 
+    _BOOLEAN = ('CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS')
+
     def __init__(self):
         for k, v in self._DEFAULTS.items():
             setattr(self, k, os.environ[k] if k in os.environ else v)
         for k, v in self.__dict__.items():
             if v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
+            if k in self._BOOLEAN:
+                if v not in ('true', 'false', 'True', 'False', 'on', 'off', '1', '0'):
+                    log.error(f'Environment variable "{k}" is set to a non-boolean value "{v}"')
+                    sys.exit(1)
+                setattr(self, k, v in ('true', 'True', 'on', '1'))
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
         try:

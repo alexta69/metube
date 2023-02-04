@@ -82,11 +82,11 @@ export class AppComponent implements AfterViewInit {
   }
 
   showAdvanced() {
-    return this.downloads.configuration['CUSTOM_DIRS'] == 'true';
+    return this.downloads.configuration['CUSTOM_DIRS'];
   }
 
   allowCustomDir(tag: string) {
-    if (this.downloads.configuration['CREATE_CUSTOM_DIRS'] == 'true') {
+    if (this.downloads.configuration['CREATE_CUSTOM_DIRS']) {
       return tag;
     }
     return false;

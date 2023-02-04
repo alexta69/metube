@@ -236,14 +236,14 @@ class DownloadQueue:
                 # Keep consistent with frontend
                 base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format != 'mp3') else self.config.AUDIO_DOWNLOAD_DIR
                 if folder:
-                    if self.config.CUSTOM_DIRS != 'true':
+                    if not self.config.CUSTOM_DIRS:
                         return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
                     dldirectory = os.path.realpath(os.path.join(base_directory, folder))
                     real_base_directory = os.path.realpath(base_directory)
                     if not dldirectory.startswith(real_base_directory):
                         return {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
                     if not os.path.isdir(dldirectory):
-                        if self.config.CREATE_CUSTOM_DIRS != 'true':
+                        if not self.config.CREATE_CUSTOM_DIRS:
                             return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{real_base_directory}", and CREATE_CUSTOM_DIRS is not true in the configuration.'}
                         os.makedirs(dldirectory, exist_ok=True)
                 else:

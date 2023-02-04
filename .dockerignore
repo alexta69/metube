@@ -1,0 +1,4 @@
+.git
+.venv
+ui/.angular
+ui/node_modules
