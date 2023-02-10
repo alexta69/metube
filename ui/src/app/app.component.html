@@ -117,6 +117,7 @@
         <th scope="col" style="width: 2rem;"></th>
         <th scope="col" style="width: 2rem;"></th>
         <th scope="col" style="width: 2rem;"></th>
+        <th scope="col" style="width: 2rem;"></th>
       </tr>
     </thead>
     <tbody>
@@ -134,6 +135,9 @@
         </td>
         <td>
           <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value.url, download.value.quality, download.value.folder)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
+        </td>
+        <td>
+          <a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" download><fa-icon [icon]="faDownload"></fa-icon></a>
         </td>
         <td>
           <a href="{{download.value.url}}" target="_blank"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>

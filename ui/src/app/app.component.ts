@@ -1,6 +1,6 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faExternalLinkAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of } from 'rxjs';
 
@@ -37,6 +37,7 @@ export class AppComponent implements AfterViewInit {
   faRedoAlt = faRedoAlt;
   faSun = faSun;
   faMoon = faMoon;  
+  faDownload = faDownload;  
   faExternalLinkAlt = faExternalLinkAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
