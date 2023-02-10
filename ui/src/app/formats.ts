@@ -43,4 +43,11 @@ export const Formats: Format[] = [
       { id: '128', text: '128 kbps' },
     ],
   },
+  {
+    id: 'thumbnail',
+    text: 'Thumbnail',
+    qualities: [
+      { id: 'best', text: 'Best' }
+    ],
+  },
 ];

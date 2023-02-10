@@ -10,6 +10,7 @@ import { AppComponent } from './app.component';
 import { EtaPipe, SpeedPipe, EncodeURIComponent } from './downloads.pipe';
 import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkbox.component';
 import { MeTubeSocket } from './metube-socket';
+import { NgSelectModule } from '@ng-select/ng-select';
 
 @NgModule({
   declarations: [
@@ -25,7 +26,8 @@ import { MeTubeSocket } from './metube-socket';
     FormsModule,
     NgbModule,
     HttpClientModule,
-    FontAwesomeModule
+    FontAwesomeModule,
+    NgSelectModule
   ],
   providers: [CookieService, MeTubeSocket],
   bootstrap: [AppComponent]
