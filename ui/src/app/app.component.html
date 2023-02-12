@@ -52,7 +52,7 @@
               <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
               {{ addInProgress ? "Adding..." : "Add" }}
             </button>
-            <button class="btn btn-primary dropdown-toggle dropdown-toggle-split" id="advancedButton" type="button" title="Advanced options" [disabled]="addInProgress || downloads.loading" ngbDropdownAnchor (focus)="advancedDropdown.open()" *ngIf="showAdvanced()">
+            <button class="btn btn-primary dropdown-toggle dropdown-toggle-split" id="advancedButton" type="button" title="Advanced options" [disabled]="addInProgress || downloads.loading" ngbDropdownAnchor (click)="advancedDropdown.open()" *ngIf="showAdvanced()">
               <span class="sr-only">Advanced options</span>
             </button>
             <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
