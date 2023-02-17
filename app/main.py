@@ -24,6 +24,9 @@ class Config:
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
+        'HOST': '0.0.0.0',
+        'PORT': '8081',
+        'BASE_DIR': ''
     }
 
     _BOOLEAN = ('CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS')
@@ -144,7 +147,7 @@ def get_custom_dirs():
 
 @routes.get(config.URL_PREFIX)
 def index(request):
-    return web.FileResponse('ui/dist/metube/index.html')
+    return web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
 
 if config.URL_PREFIX != '/':
     @routes.get('/')
@@ -155,18 +158,16 @@ if config.URL_PREFIX != '/':
     def index_redirect_dir(request):
         return web.HTTPFound(config.URL_PREFIX)
 
-routes.static(config.URL_PREFIX + 'favicon/', 'favicon')
+routes.static(config.URL_PREFIX + 'favicon/', os.path.join(config.BASE_DIR, 'favicon'))
 routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
 routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR)
-routes.static(config.URL_PREFIX, 'ui/dist/metube')
+routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))
 try:
     app.add_routes(routes)
 except ValueError as e:
     if 'ui/dist/metube' in str(e):
         raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build` inside the ui folder') from e
     raise e
-
-
 
 # https://github.com/aio-libs/aiohttp/pull/4615 waiting for release
 # @routes.options(config.URL_PREFIX + 'add')
@@ -186,4 +187,4 @@ app.on_response_prepare.append(on_prepare)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    web.run_app(app, port=8081)
+    web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
