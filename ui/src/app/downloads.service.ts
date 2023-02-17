@@ -1,6 +1,6 @@
 import { Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { of, Subject } from 'rxjs';
+import { Observable, of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket';
 
@@ -9,13 +9,14 @@ export interface Status {
   msg?: string;
 }
 
-interface Download {
+export interface Download {
   id: string;
   title: string;
   url: string,
   status: string;
   msg: string;
   filename: string;
+  folder: string;
   quality: string;
   percent: number;
   speed: number;
@@ -33,6 +34,10 @@ export class DownloadsService {
   done = new Map<string, Download>();
   queueChanged = new Subject();
   doneChanged = new Subject();
+  customDirsChanged = new Subject();
+
+  configuration = {};
+  customDirs = {};
 
   constructor(private http: HttpClient, private socket: MeTubeSocket) {
     socket.fromEvent('all').subscribe((strdata: string) => {
@@ -47,20 +52,20 @@ export class DownloadsService {
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
       this.queueChanged.next(null);
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      let dl: Download = this.queue.get(data.id);
+      let dl: Download = this.queue.get(data.url);
       data.checked = dl.checked;
       data.deleting = dl.deleting;
-      this.queue.set(data.id, data);
+      this.queue.set(data.url, data);
     });
     socket.fromEvent('completed').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.delete(data.id);
-      this.done.set(data.id, data);
+      this.queue.delete(data.url);
+      this.done.set(data.url, data);
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
@@ -74,6 +79,17 @@ export class DownloadsService {
       this.done.delete(data);
       this.doneChanged.next(null);
     });
+    socket.fromEvent('configuration').subscribe((strdata: string) => {
+      let data = JSON.parse(strdata);
+      console.debug("got configuration:", data);
+      this.configuration = data;
+    });
+    socket.fromEvent('custom_dirs').subscribe((strdata: string) => {
+      let data = JSON.parse(strdata);
+      console.debug("got custom_dirs:", data);
+      this.customDirs = data;
+      this.customDirsChanged.next(data);
+    });
   }
 
   handleHTTPError(error: HttpErrorResponse) {
@@ -81,8 +97,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format}).pipe(
+  public add(url: string, quality: string, format: string, folder: string) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder}).pipe(
       catchError(this.handleHTTPError)
     );
   }
@@ -94,7 +110,7 @@ export class DownloadsService {
 
   public delByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
   }
 }
