@@ -234,7 +234,7 @@ class DownloadQueue:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder)
                 # Keep consistent with frontend
-                base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format  not in ("m4a", "mp3")) else self.config.AUDIO_DOWNLOAD_DIR
+                base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format  not in ("m4a", "mp3", "opus", "wav")) else self.config.AUDIO_DOWNLOAD_DIR
                 if folder:
                     if not self.config.CUSTOM_DIRS:
                         return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}

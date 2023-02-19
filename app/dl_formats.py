@@ -23,7 +23,7 @@ def get_format(format: str, quality: str) -> str:
         # Quality is irrelevant in this case since we skip the download
         return "bestaudio/best"
 
-    if format in ("m4a", "mp3"):
+    if format in ("m4a", "mp3", "opus", "wav"):
         # Audio quality needs to be set post-download, set in opts
         return "bestaudio/best"
 
@@ -59,17 +59,17 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
     if "postprocessors" not in opts:
         opts["postprocessors"] = []
 
-    if format in ("m4a", "mp3"):
+    if format in ("m4a", "mp3", "opus", "wav"):
         opts["postprocessors"].append({
             "key": "FFmpegExtractAudio",
             "preferredcodec": format,
             "preferredquality": 0 if quality == "best" else quality,
         })
-
-        opts["writethumbnail"] = True
-        opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
-        opts["postprocessors"].append({"key": "FFmpegMetadata"})
-        opts["postprocessors"].append({"key": "EmbedThumbnail"})
+        if format not in ("wav"):
+            opts["writethumbnail"] = True
+            opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
+            opts["postprocessors"].append({"key": "FFmpegMetadata"})
+            opts["postprocessors"].append({"key": "EmbedThumbnail"})
     
     if format == "thumbnail":
         opts["skip_download"] = True
