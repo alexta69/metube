@@ -94,7 +94,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   isAudioType() {
-    return this.quality == 'audio' || this.format == 'mp3';
+    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a';
   }
 
   getMatchingCustomDir() : Observable<string[]> {
