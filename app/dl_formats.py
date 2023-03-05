@@ -1,5 +1,7 @@
 import copy
 
+AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav")
+
 def get_format(format: str, quality: str) -> str:
     """
     Returns format for download
@@ -23,7 +25,7 @@ def get_format(format: str, quality: str) -> str:
         # Quality is irrelevant in this case since we skip the download
         return "bestaudio/best"
 
-    if format in ("m4a", "mp3", "opus", "wav"):
+    if format in AUDIO_FORMATS:
         # Audio quality needs to be set post-download, set in opts
         return "bestaudio/best"
 
@@ -59,12 +61,14 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
     if "postprocessors" not in opts:
         opts["postprocessors"] = []
 
-    if format in ("m4a", "mp3", "opus", "wav"):
+    if format in AUDIO_FORMATS:
         opts["postprocessors"].append({
             "key": "FFmpegExtractAudio",
             "preferredcodec": format,
             "preferredquality": 0 if quality == "best" else quality,
         })
+
+        #Audio formats without thumbnail
         if format not in ("wav"):
             opts["writethumbnail"] = True
             opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
