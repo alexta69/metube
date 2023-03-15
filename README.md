@@ -62,7 +62,7 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 ```
 * Install in your browser an extension to extract cookies:
     * [Firefox](https://addons.mozilla.org/en-US/firefox/addon/export-cookies-txt/)
-    * [Chrome](https://chrome.google.com/webstore/detail/get-cookiestxt/bgaddhkoddajcdgocldbbfleckgcbcid) 
+    * [Chrome](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc) 
 * Extract the cookies you need with the extension and rename the file `cookies.txt`
 * Drop the file in the folder you configured in the docker-compose.yml above
 * Restart the container
