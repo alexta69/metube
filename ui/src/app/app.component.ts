@@ -20,6 +20,7 @@ export class AppComponent implements AfterViewInit {
   quality: string;
   format: string;
   folder: string;
+  customNamePrefix: string;
   addInProgress = false;
   darkMode: boolean;
   customDirs$: Observable<string[]>;
@@ -154,15 +155,16 @@ export class AppComponent implements AfterViewInit {
     this.quality = exists ? this.quality : 'best'
   }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
     folder = folder ?? this.folder
+    customNamePrefix = customNamePrefix ?? this.customNamePrefix
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder);
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -172,8 +174,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, url: string, quality: string, format: string, folder: string) {
-    this.addDownload(url, quality, format, folder);
+  retryDownload(key: string, url: string, quality: string, format: string, folder: string, customNamePrefix: string) {
+    this.addDownload(url, quality, format, folder, customNamePrefix);
     this.downloads.delById('done', [key]).subscribe();
   }
 
