@@ -19,7 +19,8 @@ RUN chmod +x docker-entrypoint.sh && \
     pipenv install --system --deploy --clear && \
     pip uninstall pipenv -y && \
     apk del .build-deps && \
-    rm -rf /var/cache/apk/*
+    rm -rf /var/cache/apk/* && \
+    mkdir /.cache && chmod 777 /.cache
 
 COPY favicon ./favicon
 COPY app ./app
