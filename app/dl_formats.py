@@ -58,26 +58,26 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
     
     opts = copy.deepcopy(ytdl_opts)
 
-    if "postprocessors" not in opts:
-        opts["postprocessors"] = []
+    postprocessors = []
 
     if format in AUDIO_FORMATS:
-        opts["postprocessors"].append({
+        postprocessors.append({
             "key": "FFmpegExtractAudio",
             "preferredcodec": format,
             "preferredquality": 0 if quality == "best" else quality,
         })
 
         #Audio formats without thumbnail
-        if format not in ("wav"):
+        if format not in ("wav") and "writethumbnail" not in opts:
             opts["writethumbnail"] = True
-            opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
-            opts["postprocessors"].append({"key": "FFmpegMetadata"})
-            opts["postprocessors"].append({"key": "EmbedThumbnail"})
+            postprocessors.append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
+            postprocessors.append({"key": "FFmpegMetadata"})
+            postprocessors.append({"key": "EmbedThumbnail"})
     
     if format == "thumbnail":
         opts["skip_download"] = True
         opts["writethumbnail"] = True
-        opts["postprocessors"].append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
+        postprocessors.append({"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"})
     
+    opts["postprocessors"] = postprocessors + (opts["postprocessors"] if "postprocessors" in opts else [])
     return opts
