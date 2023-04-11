@@ -79,7 +79,6 @@ class Download:
                 'paths': {"home": self.download_dir},
                 'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
-                'cachedir': False,
                 'socket_timeout': 30,
                 'progress_hooks': [put_status],
                 'postprocessor_hooks': [put_status_postprocessor],
