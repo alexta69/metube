@@ -71,7 +71,7 @@ class Download:
                 )})
             def put_status_postprocessor(d):
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
-                    self.status_queue.put({'status': 'finished', 'filename': d['info_dict']['filepath']})
+                    self.status_queue.put({'status': 'finished', 'filename': d['info_dict']['_filename']})
             ret = yt_dlp.YoutubeDL(params={
                 'quiet': True,
                 'no_color': True,
