@@ -56,9 +56,15 @@
               <span class="sr-only">Advanced options</span>
             </button>
             <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
-              <div class="input-group">
-                <span class="input-group-text">Download Folder</span>
-                <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir.bind(this)" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
+              <div class="container">
+                <div class="input-group add-url-component">
+                  <span class="input-group-text">Download Folder</span>
+                  <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir.bind(this)" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
+                </div>
+                <div class="input-group add-url-component">
+                  <span class="input-group-text">Custom Name Prefix</span>
+                  <input type="text" autocomplete="off" spellcheck="false" class="form-control" placeholder="Default" name="customNamePrefix" [(ngModel)]="customNamePrefix" [disabled]="addInProgress || downloads.loading">
+                </div>
               </div>
             </div>
           </div>
