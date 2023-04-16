@@ -17,6 +17,7 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
+        'DOWNLOAD_DIRS_INDEXABLE': 'false',
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
         'DELETE_FILE_ON_TRASHCAN': 'false',
@@ -30,7 +31,7 @@ class Config:
         'BASE_DIR': ''
     }
 
-    _BOOLEAN = ('CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -163,8 +164,8 @@ if config.URL_PREFIX != '/':
         return web.HTTPFound(config.URL_PREFIX)
 
 routes.static(config.URL_PREFIX + 'favicon/', os.path.join(config.BASE_DIR, 'favicon'))
-routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR)
-routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR)
+routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
 routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))
 try:
     app.add_routes(routes)
