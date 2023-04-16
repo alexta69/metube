@@ -292,6 +292,9 @@ class DownloadQueue:
             if not self.done.exists(id):
                 log.warn(f'requested delete for non-existent download {id}')
                 continue
+            if self.config.DELETE_FILE_ON_TRASHCAN:
+                dl = self.done.get(id)
+                os.remove(os.path.join(dl.download_dir, dl.info.filename))
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
