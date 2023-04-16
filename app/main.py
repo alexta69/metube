@@ -19,6 +19,7 @@ class Config:
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
+        'DELETE_FILE_ON_TRASHCAN': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
@@ -29,7 +30,7 @@ class Config:
         'BASE_DIR': ''
     }
 
-    _BOOLEAN = ('CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS')
+    _BOOLEAN = ('CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
