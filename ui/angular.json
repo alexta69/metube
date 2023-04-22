@@ -124,6 +124,9 @@
           }
         }
       }
-    }},
-  "defaultProject": "metube"
+    }
+  },
+  "cli": {
+    "analytics": false
+  }
 }
