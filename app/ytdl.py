@@ -202,7 +202,7 @@ class DownloadQueue:
     
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, folder=v.folder)
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix)
 
     async def initialize(self):
         self.event = asyncio.Event()
