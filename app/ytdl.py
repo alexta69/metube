@@ -35,6 +35,7 @@ class DownloadInfo:
         self.quality = quality
         self.format = format
         self.folder = folder
+        self.custom_name_prefix = custom_name_prefix
         self.status = self.msg = self.percent = self.speed = self.eta = None
         self.timestamp = time.time_ns()
 
