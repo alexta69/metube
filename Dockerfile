@@ -10,10 +10,13 @@ FROM python:3.8-alpine
 
 WORKDIR /app
 
-COPY Pipfile* .
+COPY Pipfile* docker-entrypoint.sh .
 
+# Use sed to strip carriage-return characters from the entrypoint script (in case building on Windows)
 # Install dependencies
-RUN apk add --update ffmpeg aria2 coreutils shadow su-exec && \
+RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
+    chmod +x docker-entrypoint.sh && \
+    apk add --update ffmpeg aria2 coreutils shadow su-exec && \
     apk add --update --virtual .build-deps gcc g++ musl-dev && \
     pip install --no-cache-dir pipenv && \
     pipenv install --system --deploy --clear && \
@@ -23,11 +26,6 @@ RUN apk add --update ffmpeg aria2 coreutils shadow su-exec && \
     mkdir /.cache && chmod 777 /.cache
 
 COPY favicon ./favicon
-COPY docker-entrypoint.sh .
-
-# Use sed to strip carriage-return characters from the entrypoint script (in case building on Windows)
-RUN sed -i 's/\r$//g' docker-entrypoint.sh && chmod +x docker-entrypoint.sh
-
 COPY app ./app
 COPY --from=builder /metube/dist/metube ./ui/dist/metube
 

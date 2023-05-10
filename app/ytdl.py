@@ -45,9 +45,7 @@ class DownloadInfo:
 class Download:
     manager = None
 
-    def __init__(
-        self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info
-    ):
+    def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.temp_dir = temp_dir
         self.output_template = output_template
@@ -66,24 +64,17 @@ class Download:
         try:
 
             def put_status(st):
-                self.status_queue.put(
-                    {
-                        k: v
-                        for k, v in st.items()
-                        if k
-                        in (
-                            "tmpfilename",
-                            "filename",
-                            "status",
-                            "msg",
-                            "total_bytes",
-                            "total_bytes_estimate",
-                            "downloaded_bytes",
-                            "speed",
-                            "eta",
-                        )
-                    }
-                )
+                self.status_queue.put({k: v for k, v in st.items() if k in (
+                    'tmpfilename',
+                    'filename',
+                    'status',
+                    'msg',
+                    'total_bytes',
+                    'total_bytes_estimate',
+                    'downloaded_bytes',
+                    'speed',
+                    'eta',
+                )})
 
             def put_status_postprocessor(d):
                 if d["postprocessor"] == "MoveFiles" and d["status"] == "finished":
