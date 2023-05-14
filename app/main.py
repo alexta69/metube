@@ -139,13 +139,13 @@ def get_custom_dirs():
         dirs = list(filter(None, map(convert, path.glob('**'))))
 
         return dirs
-
+    
     download_dir = recursive_dirs(config.DOWNLOAD_DIR)
 
     audio_download_dir = download_dir
     if config.DOWNLOAD_DIR != config.AUDIO_DOWNLOAD_DIR:
         audio_download_dir = recursive_dirs(config.AUDIO_DOWNLOAD_DIR)
-
+    
     return {
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
