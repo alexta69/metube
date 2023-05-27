@@ -17,6 +17,7 @@ class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
+        'TEMP_DIR': '%%DOWNLOAD_DIR',
         'DOWNLOAD_DIRS_INDEXABLE': 'false',
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
@@ -192,4 +193,5 @@ app.on_response_prepare.append(on_prepare)
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
+    log.info(f"Listening on {config.HOST}:{config.PORT}")
     web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
