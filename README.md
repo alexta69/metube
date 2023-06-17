@@ -84,6 +84,10 @@ __Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it f
 
 __Firefox:__ contributed by [nanocortex](https://github.com/nanocortex). You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
 
+## iOS Shortcut
+
+[rithask](https://githbu.com/rithask) has create an iOS shortcut to send the URL to MeTube from Safari. Initially, you'll need to enter the server address and port, but after that, it will be saved and you can just run the shortcut from the share menu in Safari. The address should include the protocol (http/https) and the port, if it's not the default 80/443. For example: `https://metube.example.com` or `http://192.168.1.1:8081`. The shortcut can be found [here](https://www.icloud.com/shortcuts/f1548df15b734418a77a709103bc1dd5).
+
 ## Bookmarklet
 
 [kushfest](https://github.com/kushfest) has created a Chrome bookmarklet for sending the currently open webpage to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for the bookmarklet to work.
