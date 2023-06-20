@@ -29,10 +29,11 @@ class Config:
         'YTDL_OPTIONS': '{}',
         'HOST': '0.0.0.0',
         'PORT': '8081',
-        'BASE_DIR': ''
+        'BASE_DIR': '',
+        'DARK_MODE': 'false'
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DARK_MODE')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -153,7 +154,9 @@ def get_custom_dirs():
 
 @routes.get(config.URL_PREFIX)
 def index(request):
-    return web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
+    response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
+    response.set_cookie('metube_dark', 'true' if config.DARK_MODE else 'false')
+    return response
 
 if config.URL_PREFIX != '/':
     @routes.get('/')
