@@ -706,11 +706,11 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:56c35d1ad3ecfb828c3b89ffe07b235b354eddd82e1a31ddc3d16eb8c3e71e8e",
-                "sha256:e4117b1ee07878c7dade2a64e6102fb7840fa1e3f19365cca42ce291754f35cf"
+                "sha256:c559885322f7f492c1e7fc8f5a59e2a72e47719b59575599cf8b0e69ea70d0a8",
+                "sha256:ed6a8b8e0ad08a4540d4afa0fd08a7f980022c79b9081bd9e63ddc00aeeee5a8"
             ],
             "index": "pypi",
-            "version": "==2023.6.21"
+            "version": "==2023.6.22"
         }
     },
     "develop": {
