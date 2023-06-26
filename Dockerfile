@@ -10,7 +10,7 @@ FROM python:3.8-alpine
 
 WORKDIR /app
 
-COPY Pipfile* docker-entrypoint.sh .
+COPY Pipfile* docker-entrypoint.sh ./
 
 # Use sed to strip carriage-return characters from the entrypoint script (in case building on Windows)
 # Install dependencies
