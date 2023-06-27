@@ -219,6 +219,29 @@ class DownloadQueue:
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
+    def __calc_download_path(self, quality, format, folder):
+        """Calculates download path from quality, format and folder attributes.
+
+        Returns:
+            Tuple dldirectory, error_message both of which might be None (but not at the same time)
+        """
+        # Keep consistent with frontend
+        base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR
+        if folder:
+            if not self.config.CUSTOM_DIRS:
+                return None, {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
+            dldirectory = os.path.realpath(os.path.join(base_directory, folder))
+            real_base_directory = os.path.realpath(base_directory)
+            if not dldirectory.startswith(real_base_directory):
+                return None, {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
+            if not os.path.isdir(dldirectory):
+                if not self.config.CREATE_CUSTOM_DIRS:
+                    return None, {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{real_base_directory}", and CREATE_CUSTOM_DIRS is not true in the configuration.'}
+                os.makedirs(dldirectory, exist_ok=True)
+        else:
+            dldirectory = base_directory
+        return dldirectory, None
+
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, already):
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
@@ -239,21 +262,9 @@ class DownloadQueue:
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder, custom_name_prefix)
-                # Keep consistent with frontend
-                base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR
-                if folder:
-                    if not self.config.CUSTOM_DIRS:
-                        return {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
-                    dldirectory = os.path.realpath(os.path.join(base_directory, folder))
-                    real_base_directory = os.path.realpath(base_directory)
-                    if not dldirectory.startswith(real_base_directory):
-                        return {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
-                    if not os.path.isdir(dldirectory):
-                        if not self.config.CREATE_CUSTOM_DIRS:
-                            return {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{real_base_directory}", and CREATE_CUSTOM_DIRS is not true in the configuration.'}
-                        os.makedirs(dldirectory, exist_ok=True)
-                else:
-                    dldirectory = base_directory
+                dldirectory, error_message = self.__calc_download_path(quality, format, folder)
+                if error_message is not None:
+                    return error_message
                 output = self.config.OUTPUT_TEMPLATE if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
                 output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
                 for property, value in entry.items():
@@ -301,9 +312,10 @@ class DownloadQueue:
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
                 try:
-                    os.remove(os.path.join(dl.download_dir, dl.info.filename))
+                    dldirectory, _ = self.__calc_download_path(dl.info.quality, dl.info.format, dl.info.folder)
+                    os.remove(os.path.join(dldirectory, dl.info.filename))
                 except Exception as e:
-                    log.warn(f'deleting file for download {id} failed with error message {e}')
+                    log.warn(f'deleting file for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
