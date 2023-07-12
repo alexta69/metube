@@ -51,10 +51,21 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __OUTPUT_TEMPLATE_CHAPTER__: the template for the filenames of the downloaded videos, when split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
 * __YTDL_OPTIONS__: Additional options to pass to youtube-dl, in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L183). They roughly correspond to command-line options, though some do not have exact equivalents here, for example `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores.
 
-The following example value for `YTDL_OPTIONS` embeds English subtitles and chapter markers (for videos that have them), and also changes the permissions on the downloaded video:
+The following example value for `YTDL_OPTIONS` embeds English subtitles and chapter markers (for videos that have them), and also changes the permissions on the downloaded video and sets the file modification timestamp to the date of when it was downloaded:
 
 ```json
-{"writesubtitles": true, "subtitleslangs": ["en", "-live_chat"], "postprocessors": [{"key": "Exec", "exec_cmd": "chmod 0664", "when": "after_move"}, {"key": "FFmpegEmbedSubtitle", "already_have_subtitle": false}, {"key": "FFmpegMetadata", "add_chapters": true}]}
+{"writesubtitles":true,"subtitleslangs":["en","-live_chat"],"postprocessors":[{"key":"Exec","exec_cmd":"chmod 0664","when":"after_move"},{"key":"Exec","exec_cmd":"touch","when":"after_move"}{"key":"FFmpegEmbedSubtitle","already_have_subtitle":false},{"key":"FFmpegMetadata","add_chapters":true}]}
+```
+
+The following example value for `OUTPUT_TEMPLATE` sets:
+- playlist name and author, if present
+- playlist number and count, if present (zero-padded, if needed)
+- video author, title and release date in YYYY-MM-DD format, falling back to *UNKNOWN_...* if missing
+- sanitises everything for valid UNIX filename
+
+```yaml
+    environment:
+      - "OUTPUT_TEMPLATE=%(playlist_title&Playlist |)S%(playlist_title|)S%(playlist_uploader& by |)S%(playlist_uploader|)S%(playlist_autonumber& - |)S%(playlist_autonumber|)S%(playlist_count& of |)S%(playlist_count|)S%(playlist_autonumber& - |)S%(uploader,creator|UNKNOWN_AUTHOR)S - %(title|UNKNOWN_TITLE)S - %(release_date>%Y-%m-%d,upload_date>%Y-%m-%d|UNKNOWN_DATE)S.%(ext)s"
 ```
 
 ## Using browser cookies
