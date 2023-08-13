@@ -37,8 +37,8 @@ export class AppComponent implements AfterViewInit {
   faTimesCircle = faTimesCircle;
   faRedoAlt = faRedoAlt;
   faSun = faSun;
-  faMoon = faMoon;  
-  faDownload = faDownload;  
+  faMoon = faMoon;
+  faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService) {
@@ -174,8 +174,8 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
-  retryDownload(key: string, url: string, quality: string, format: string, folder: string, customNamePrefix: string) {
-    this.addDownload(url, quality, format, folder, customNamePrefix);
+  retryDownload(key: string, download: Download) {
+    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix);
     this.downloads.delById('done', [key]).subscribe();
   }
 
