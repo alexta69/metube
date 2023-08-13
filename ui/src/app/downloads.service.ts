@@ -12,15 +12,17 @@ export interface Status {
 export interface Download {
   id: string;
   title: string;
-  url: string,
+  url: string;
+  quality: string;
+  format: string;
+  folder: string;
+  custom_name_prefix: string;
   status: string;
   msg: string;
-  filename: string;
-  folder: string;
-  quality: string;
   percent: number;
   speed: number;
   eta: number;
+  filename: string;
   checked?: boolean;
   deleting?: boolean;
 }
