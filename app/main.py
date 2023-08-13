@@ -3,6 +3,7 @@
 
 import os
 import sys
+import traceback
 from aiohttp import web
 import socketio
 import logging
@@ -12,7 +13,9 @@ import pathlib
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
 log = logging.getLogger('main')
-
+if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
+    
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
@@ -38,6 +41,7 @@ class Config:
     def __init__(self):
         for k, v in self._DEFAULTS.items():
             setattr(self, k, os.environ[k] if k in os.environ else v)
+
         for k, v in self.__dict__.items():
             if v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
@@ -46,13 +50,24 @@ class Config:
                     log.error(f'Environment variable "{k}" is set to a non-boolean value "{v}"')
                     sys.exit(1)
                 setattr(self, k, v in ('true', 'True', 'on', '1'))
+
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
+
         try:
-            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
+            if isinstance(self.YTDL_OPTIONS, str) and os.path.exists(self.YTDL_OPTIONS):
+                log.info(f"Loading yt-dlp custom options from {self.YTDL_OPTIONS}")
+                with open(self.YTDL_OPTIONS) as json_data:
+                    self.YTDL_OPTIONS = json.load(json_data)
+            else:
+                log.info(f"Loading yt-dlp custom options from Environment variable.")
+                self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
+
             assert isinstance(self.YTDL_OPTIONS, dict)
-        except (json.decoder.JSONDecodeError, AssertionError):
-            log.error('YTDL_OPTIONS is invalid')
+            if len(self.YTDL_OPTIONS) != 0:
+                log.info(f"Using custom yt-dlp options:\n{json.dumps(self.YTDL_OPTIONS, indent=2, ensure_ascii=False)}")
+        except (json.decoder.JSONDecodeError, AssertionError) as e:
+            log.error(f"Unable to parse YTDL_OPTIONS value. {str(e)}")
             sys.exit(1)
 
 config = Config()
@@ -140,13 +155,13 @@ def get_custom_dirs():
         dirs = list(filter(None, map(convert, path.glob('**'))))
 
         return dirs
-    
+
     download_dir = recursive_dirs(config.DOWNLOAD_DIR)
 
     audio_download_dir = download_dir
     if config.DOWNLOAD_DIR != config.AUDIO_DOWNLOAD_DIR:
         audio_download_dir = recursive_dirs(config.AUDIO_DOWNLOAD_DIR)
-    
+
     return {
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
@@ -195,6 +210,5 @@ app.on_response_prepare.append(on_prepare)
 
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
     web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
