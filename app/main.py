@@ -39,6 +39,8 @@ class Config:
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
+            if k in os.environ:
+                log.debug(f"ENV override for {k} = {os.environ[k]}")
             setattr(self, k, os.environ[k] if k in os.environ else v)
 
         for k, v in self.__dict__.items():
@@ -64,7 +66,7 @@ class Config:
 
             assert isinstance(self.YTDL_OPTIONS, dict)
             if len(self.YTDL_OPTIONS) != 0:
-                log.info(f"Using custom yt-dlp options:\n{json.dumps(self.YTDL_OPTIONS, indent=2, ensure_ascii=False)}")
+                log.debug(f"Using custom yt-dlp options:\n{json.dumps(self.YTDL_OPTIONS, indent=2, ensure_ascii=False)}")
         except (json.decoder.JSONDecodeError, AssertionError) as e:
             log.error(f"Unable to parse YTDL_OPTIONS value. {str(e)}")
             sys.exit(1)
