@@ -3,7 +3,6 @@
 
 import os
 import sys
-import traceback
 from aiohttp import web
 import socketio
 import logging
@@ -15,7 +14,7 @@ from ytdl import DownloadQueueNotifier, DownloadQueue
 log = logging.getLogger('main')
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
-    
+
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
