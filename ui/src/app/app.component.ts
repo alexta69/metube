@@ -7,6 +7,7 @@ import { map, Observable, of } from 'rxjs';
 import { Download, DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
+import {KeyValue} from "@angular/common";
 
 @Component({
   selector: 'app-root',
@@ -206,5 +207,9 @@ export class AppComponent implements AfterViewInit {
     }
 
     return baseDir + encodeURIComponent(download.filename);
+  }
+
+  identifyDownloadRow(index: number, row: KeyValue<string, Download>) {
+    return row.key;
   }
 }
