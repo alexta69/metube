@@ -27,6 +27,7 @@ class Config:
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
+        'YTDL_OPTIONS_FILE': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
         'BASE_DIR': '',
@@ -38,6 +39,7 @@ class Config:
     def __init__(self):
         for k, v in self._DEFAULTS.items():
             setattr(self, k, os.environ[k] if k in os.environ else v)
+
         for k, v in self.__dict__.items():
             if v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
@@ -46,14 +48,30 @@ class Config:
                     log.error(f'Environment variable "{k}" is set to a non-boolean value "{v}"')
                     sys.exit(1)
                 setattr(self, k, v in ('true', 'True', 'on', '1'))
+
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
+
         try:
             self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
             assert isinstance(self.YTDL_OPTIONS, dict)
         except (json.decoder.JSONDecodeError, AssertionError):
             log.error('YTDL_OPTIONS is invalid')
             sys.exit(1)
+
+        if self.YTDL_OPTIONS_FILE:
+            log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
+            if not os.path.exists(self.YTDL_OPTIONS_FILE):
+                log.error(f'File "{self.YTDL_OPTIONS_FILE}" not found')
+                sys.exit(1)
+            try:
+                with open(self.YTDL_OPTIONS_FILE) as json_data:
+                    opts = json.load(json_data)
+                assert isinstance(opts, dict)
+            except (json.decoder.JSONDecodeError, AssertionError):
+                log.error('YTDL_OPTIONS_FILE contents is invalid')
+                sys.exit(1)
+            self.YTDL_OPTIONS.update(opts)
 
 config = Config()
 
@@ -140,13 +158,13 @@ def get_custom_dirs():
         dirs = list(filter(None, map(convert, path.glob('**'))))
 
         return dirs
-    
+
     download_dir = recursive_dirs(config.DOWNLOAD_DIR)
 
     audio_download_dir = download_dir
     if config.DOWNLOAD_DIR != config.AUDIO_DOWNLOAD_DIR:
         audio_download_dir = recursive_dirs(config.AUDIO_DOWNLOAD_DIR)
-    
+
     return {
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
