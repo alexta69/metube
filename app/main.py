@@ -12,8 +12,6 @@ import pathlib
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
 log = logging.getLogger('main')
-if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
 
 class Config:
     _DEFAULTS = {
@@ -29,6 +27,7 @@ class Config:
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
+        'YTDL_OPTIONS_FILE': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
         'BASE_DIR': '',
@@ -39,8 +38,6 @@ class Config:
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
-            if k in os.environ:
-                log.debug(f"ENV override for {k} = {os.environ[k]}")
             setattr(self, k, os.environ[k] if k in os.environ else v)
 
         for k, v in self.__dict__.items():
@@ -56,20 +53,25 @@ class Config:
             self.URL_PREFIX += '/'
 
         try:
-            if isinstance(self.YTDL_OPTIONS, str) and os.path.exists(self.YTDL_OPTIONS):
-                log.info(f"Loading yt-dlp custom options from {self.YTDL_OPTIONS}")
-                with open(self.YTDL_OPTIONS) as json_data:
-                    self.YTDL_OPTIONS = json.load(json_data)
-            else:
-                log.info(f"Loading yt-dlp custom options from Environment variable.")
-                self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
-
+            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
             assert isinstance(self.YTDL_OPTIONS, dict)
-            if len(self.YTDL_OPTIONS) != 0:
-                log.debug(f"Using custom yt-dlp options:\n{json.dumps(self.YTDL_OPTIONS, indent=2, ensure_ascii=False)}")
-        except (json.decoder.JSONDecodeError, AssertionError) as e:
-            log.error(f"Unable to parse YTDL_OPTIONS value. {str(e)}")
+        except (json.decoder.JSONDecodeError, AssertionError):
+            log.error('YTDL_OPTIONS is invalid')
             sys.exit(1)
+
+        if self.YTDL_OPTIONS_FILE:
+            log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
+            if not os.path.exists(self.YTDL_OPTIONS_FILE):
+                log.error(f'File "{self.YTDL_OPTIONS_FILE}" not found')
+                sys.exit(1)
+            try:
+                with open(self.YTDL_OPTIONS_FILE) as json_data:
+                    opts = json.load(json_data)
+                assert isinstance(opts, dict)
+            except (json.decoder.JSONDecodeError, AssertionError):
+                log.error('YTDL_OPTIONS_FILE contents is invalid')
+                sys.exit(1)
+            self.YTDL_OPTIONS.update(opts)
 
 config = Config()
 
@@ -211,5 +213,6 @@ app.on_response_prepare.append(on_prepare)
 
 
 if __name__ == '__main__':
+    logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
     web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
