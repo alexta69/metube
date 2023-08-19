@@ -94,7 +94,7 @@
       </tr>
     </thead>
     <tbody>
-      <tr *ngFor="let download of downloads.queue | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
+      <tr *ngFor="let download of downloads.queue | keyvalue: asIsOrder; trackBy: identifyDownloadRow" [class.disabled]='download.value.deleting'>
         <td>
           <app-slave-checkbox [id]="download.key" [master]="queueMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
         </td>
@@ -127,7 +127,7 @@
       </tr>
     </thead>
     <tbody>
-      <tr *ngFor="let download of downloads.done | keyvalue: asIsOrder" [class.disabled]='download.value.deleting'>
+      <tr *ngFor="let download of downloads.done | keyvalue: asIsOrder; trackBy: identifyDownloadRow" [class.disabled]='download.value.deleting'>
         <td>
           <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
         </td>
