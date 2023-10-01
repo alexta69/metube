@@ -128,9 +128,8 @@ export class AppComponent implements AfterViewInit {
   }
 
   setTheme() {
-    const doc = document.querySelector('html')
-    const filter = this.darkMode ? "invert(1) hue-rotate(180deg)" : ""
-    doc.style.filter = filter
+    const theme = this.darkMode ? 'dark' : 'light';
+    document.documentElement.setAttribute('data-bs-theme', theme);
   }
 
   formatChanged() {
