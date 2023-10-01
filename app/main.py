@@ -31,10 +31,10 @@ class Config:
         'HOST': '0.0.0.0',
         'PORT': '8081',
         'BASE_DIR': '',
-        'DARK_MODE': 'false'
+        'DEFAULT_THEME': 'auto'
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DARK_MODE')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -173,7 +173,8 @@ def get_custom_dirs():
 @routes.get(config.URL_PREFIX)
 def index(request):
     response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
-    response.set_cookie('metube_dark', 'true' if config.DARK_MODE else 'false')
+    if 'metube_theme' not in request.cookies:
+        response.set_cookie('metube_theme', config.DEFAULT_THEME)
     return response
 
 if config.URL_PREFIX != '/':

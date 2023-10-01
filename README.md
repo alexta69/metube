@@ -35,7 +35,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __UID__: user under which MeTube will run. Defaults to `1000`.
 * __GID__: group under which MeTube will run. Defaults to `1000`.
 * __UMASK__: umask value used by MeTube. Defaults to `022`.
-* __DARK_MODE__: if set to `true`, the UI will be in dark mode. Defaults to `false`.
+* __DEFAULT_THEME__: default theme to use for the ui, can be set to `light`, `dark` or `auto`. Defaults to `auto`.
 * __DOWNLOAD_DIR__: path to where the downloads will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
 * __AUDIO_DOWNLOAD_DIR__: path to where audio-only downloads will be saved, if you wish to separate them from the video downloads. Defaults to the value of `DOWNLOAD_DIR`.
 * __DOWNLOAD_DIRS_INDEXABLE__: if `true`, the download dirs (__DOWNLOAD_DIR__ and __AUDIO_DOWNLOAD_DIR__) are indexable on the webserver. Defaults to `false`.

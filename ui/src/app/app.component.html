@@ -1,4 +1,4 @@
-<nav class="navbar navbar-expand-md navbar-dark bg-dark">
+<nav class="navbar navbar-expand-md navbar-dark">
   <div class="container-fluid">
     <a class="navbar-brand" href="#">MeTube</a>
     <!--
@@ -13,10 +13,30 @@
       </ul>
     </div>
     -->
-    <div class="ms-auto">
-      <button class="btn btn-outline-light button-toggle-theme" aria-label="Toggle theme" (click)="themeChanged()">
-        <fa-icon [icon]="darkMode ? faSun : faMoon"></fa-icon>
-      </button>
+    <div class="navbar-nav ms-auto">
+      <div class="nav-item dropdown">
+        <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
+                id="theme-select"
+                type="button"
+                aria-expanded="false"
+                data-bs-toggle="dropdown"
+                data-bs-display="static">
+          <fa-icon [icon]="activeTheme.icon"></fa-icon>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end" aria-labelledby="theme-select">
+          <li *ngFor="let theme of themes">
+            <button type="button" class="dropdown-item d-flex align-items-center" [ngClass]="{'active' : activeTheme == theme}" (click)="themeChanged(theme)">
+              <span class="me-2 opacity-50">
+                <fa-icon [icon]="theme.icon"></fa-icon>
+              </span>
+              {{ theme.displayName }}
+              <span class="ms-auto" [ngClass]="{'d-none' : activeTheme != theme}">
+                <fa-icon [icon]="faCheck"></fa-icon>
+              </span>
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </nav>
@@ -133,8 +153,8 @@
         </td>
         <td>
           <div style="display: inline-block; width: 1.5rem;">
-            <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" style="color: green;"></fa-icon>
-            <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" style="color: red;"></fa-icon>
+            <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" class="text-success"></fa-icon>
+            <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" class="text-danger"></fa-icon>
           </div>
           <span ngbTooltip="{{download.value.msg}}"><a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a></span>
           <ng-template #noDownloadLink>{{ download.value.title }}</ng-template>
