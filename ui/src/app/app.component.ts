@@ -1,12 +1,13 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
-import { faTrashAlt, faCheckCircle, faTimesCircle } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
+import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of } from 'rxjs';
 
 import { Download, DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
+import { Theme, Themes } from './theme';
 import {KeyValue} from "@angular/common";
 
 @Component({
@@ -23,7 +24,8 @@ export class AppComponent implements AfterViewInit {
   folder: string;
   customNamePrefix: string;
   addInProgress = false;
-  darkMode: boolean;
+  themes: Theme[] = Themes;
+  activeTheme: Theme;
   customDirs$: Observable<string[]>;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
@@ -39,6 +41,8 @@ export class AppComponent implements AfterViewInit {
   faRedoAlt = faRedoAlt;
   faSun = faSun;
   faMoon = faMoon;
+  faCheck = faCheck;
+  faCircleHalfStroke = faCircleHalfStroke;
   faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
 
@@ -47,11 +51,18 @@ export class AppComponent implements AfterViewInit {
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
     this.quality = cookieService.get('metube_quality') || 'best';
-    this.setupTheme(cookieService)
+    this.activeTheme = this.getPreferredTheme(cookieService);
   }
 
   ngOnInit() {
     this.customDirs$ = this.getMatchingCustomDir();
+    this.setTheme(this.activeTheme);
+
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+      if (this.activeTheme.id === 'auto') {
+         this.setTheme(this.activeTheme);
+      }
+    });
   }
 
   ngAfterViewInit() {
@@ -96,7 +107,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   isAudioType() {
-    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav'
+    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav';
   }
 
   getMatchingCustomDir() : Observable<string[]> {
@@ -112,25 +123,27 @@ export class AppComponent implements AfterViewInit {
     }));
   }
 
-  setupTheme(cookieService) {
-    if (cookieService.check('metube_dark')) {
-      this.darkMode = cookieService.get('metube_dark') === "true"
-    } else {
-      this.darkMode = window.matchMedia("prefers-color-scheme: dark").matches
+  getPreferredTheme(cookieService: CookieService) {
+    let theme = 'auto';
+    if (cookieService.check('metube_theme')) {
+      theme = cookieService.get('metube_theme');
     }
-    this.setTheme()
+
+    return this.themes.find(x => x.id === theme) ?? this.themes.find(x => x.id === 'auto');
   }
 
-  themeChanged() {
-    this.darkMode = !this.darkMode
-    this.cookieService.set('metube_dark', this.darkMode.toString(), { expires: 3650 });
-    this.setTheme()
+  themeChanged(theme: Theme) {
+    this.cookieService.set('metube_theme', theme.id, { expires: 3650 });
+    this.setTheme(theme);
   }
 
-  setTheme() {
-    const doc = document.querySelector('html')
-    const filter = this.darkMode ? "invert(1) hue-rotate(180deg)" : ""
-    doc.style.filter = filter
+  setTheme(theme: Theme) {
+    this.activeTheme = theme;
+    if (theme.id === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+      document.documentElement.setAttribute('data-bs-theme', 'dark');
+    } else {
+      document.documentElement.setAttribute('data-bs-theme', theme.id);
+    }
   }
 
   formatChanged() {
