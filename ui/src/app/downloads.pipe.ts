@@ -16,7 +16,7 @@ export class EtaPipe implements PipeTransform {
     }
     const hours = Math.floor(value/3600)
     const minutes = value % 3600
-    return `${hours}h ${Math.floor(minutes/60)}m ${minutes%60}s`;
+    return `${hours}h ${Math.floor(minutes/60)}m ${Math.floor(minutes%60)}s`;
   }
 }
 
