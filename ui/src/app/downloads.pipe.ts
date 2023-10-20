@@ -9,14 +9,14 @@ export class EtaPipe implements PipeTransform {
       return null;
     }
     if (value < 60) {
-      return `${value}s`;
+      return `${Math.round(value)}s`;
     }
     if (value < 3600) {
-      return `${Math.floor(value/60)}m ${value%60}s`;
+      return `${Math.floor(value/60)}m ${Math.round(value%60)}s`;
     }
     const hours = Math.floor(value/3600)
     const minutes = value % 3600
-    return `${hours}h ${Math.floor(minutes/60)}m ${Math.floor(minutes%60)}s`;
+    return `${hours}h ${Math.floor(minutes/60)}m ${Math.round(minutes%60)}s`;
   }
 }
 
