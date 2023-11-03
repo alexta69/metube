@@ -137,11 +137,11 @@ async def history(request):
     history = { 'done': [], 'queue': []}
 
     for _ ,v in dqueue.queue.saved_items():
-        history['queue'].append(vars(v))
+        history['queue'].append(v)
     for _ ,v in dqueue.done.saved_items():
-        history['done'].append(vars(v))
+        history['done'].append(v)
 
-    return web.Response(text=json.dumps(history))
+    return web.Response(text=serializer.encode(history))
 
 @sio.event
 async def connect(sid, environ):
