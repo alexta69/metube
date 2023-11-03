@@ -157,17 +157,17 @@ class PersistentQueue:
             pass
         self.path = path
         self.dict = OrderedDict()
-    
+
     def load(self):
         for k, v in self.saved_items():
             self.dict[k] = Download(None, None, None, None, None, None, {}, v)
 
     def exists(self, key):
         return key in self.dict
-    
+
     def get(self, key):
         return self.dict[key]
-    
+
     def items(self):
         return self.dict.items()
 
@@ -180,7 +180,7 @@ class PersistentQueue:
         self.dict[key] = value
         with shelve.open(self.path, 'w') as shelf:
             shelf[key] = value.info
-    
+
     def delete(self, key):
         del self.dict[key]
         with shelve.open(self.path, 'w') as shelf:
@@ -189,7 +189,7 @@ class PersistentQueue:
     def next(self):
         k, v = next(iter(self.dict.items()))
         return k, v
-    
+
     def empty(self):
         return not bool(self.dict)
 
@@ -201,7 +201,7 @@ class DownloadQueue:
         self.queue = PersistentQueue(self.config.STATE_DIR + '/queue')
         self.done = PersistentQueue(self.config.STATE_DIR + '/completed')
         self.done.load()
-    
+
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
             await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix)
@@ -243,6 +243,9 @@ class DownloadQueue:
         return dldirectory, None
 
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, already):
+        if not entry:
+            return {'status': 'error', 'msg': "Invalid/empty data was given."}
+
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']

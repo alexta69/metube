@@ -132,6 +132,20 @@ async def delete(request):
     status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
     return web.Response(text=serializer.encode(status))
 
+@routes.get(config.URL_PREFIX + 'history')
+async def list_queue(_):
+    history = [];
+    for _ ,v in dqueue.queue.saved_items():
+        obj = vars(v)
+        obj['list_type'] = 'queue'
+        history.append(obj)
+    for _ ,v in dqueue.done.saved_items():
+        obj = vars(v)
+        obj['list_type'] = 'done'
+        history.append(obj)
+
+    return web.Response(text=json.dumps(history))
+
 @sio.event
 async def connect(sid, environ):
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
