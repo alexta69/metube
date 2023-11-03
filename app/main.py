@@ -133,16 +133,13 @@ async def delete(request):
     return web.Response(text=serializer.encode(status))
 
 @routes.get(config.URL_PREFIX + 'history')
-async def list_queue(_):
-    history = [];
+async def history(request):
+    history = { 'done': [], 'queue': []}
+
     for _ ,v in dqueue.queue.saved_items():
-        obj = vars(v)
-        obj['list_type'] = 'queue'
-        history.append(obj)
+        history['queue'].append(vars(v))
     for _ ,v in dqueue.done.saved_items():
-        obj = vars(v)
-        obj['list_type'] = 'done'
-        history.append(obj)
+        history['done'].append(vars(v))
 
     return web.Response(text=json.dumps(history))
 
