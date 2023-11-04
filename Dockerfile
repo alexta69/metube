@@ -1,4 +1,4 @@
-FROM node:lts-alpine as builder
+FROM node:18-alpine as builder
 
 WORKDIR /metube
 COPY ui ./
