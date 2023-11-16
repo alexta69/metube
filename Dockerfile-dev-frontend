@@ -1,0 +1,10 @@
+FROM node:16-alpine
+
+COPY ./ui /app
+
+WORKDIR /app
+
+RUN npm ci && \
+    node_modules/.bin/ng build
+
+CMD ["node_modules/.bin/ng", "build", "--watch"]
