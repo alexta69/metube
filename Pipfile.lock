@@ -331,7 +331,7 @@
                 "sha256:fd1abc0d89e30cc4e02e4064dc67fcc51bd941eb395c502aac3ec19fab46b519",
                 "sha256:ff8fa367d09b717b2a17a052544193ad76cd49979c805768879cb63d9ca50561"
             ],
-            "markers": "python_version >= '3.7'",
+            "markers": "python_full_version >= '3.7.0'",
             "version": "==3.3.2"
         },
         "frozenlist": {
@@ -751,11 +751,12 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:2871b53d6183856cddaf654926e7555669f3af5a5b88776f01036b80bcbc296e",
-                "sha256:b3c25353ba106922d870a5a59e4d6a2eb85783ebd17e29ec435bc3e1764de8be"
+                "sha256:0322ba85aa4afdb75f8641ed550e5958964daff034aeb477abb15031fd9a51ed",
+                "sha256:f0ccdaf12e08b15902601a4671c7ab12906d7b11de3ae75fa6506811c24ec5da"
             ],
             "index": "pypi",
-            "version": "==2023.11.14"
+            "markers": "python_version >= '3.7'",
+            "version": "==2023.11.16"
         }
     },
     "develop": {
