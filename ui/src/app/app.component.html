@@ -167,8 +167,7 @@
           <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
         </td>
         <td>
-          <a *ngIf="download.value.filename; else no_download" href="{{buildDownloadLink(download.value)}}" download><fa-icon [icon]="faDownload"></fa-icon></a>
-          <ng-template #no_download><a href="#"><fa-icon [icon]="faDownload"></fa-icon></a></ng-template>
+          <a *ngIf="download.value.filename" href="{{buildDownloadLink(download.value)}}" download><fa-icon [icon]="faDownload"></fa-icon></a>
         </td>
         <td>
           <a href="{{download.value.url}}" target="_blank"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>
