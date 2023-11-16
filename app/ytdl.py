@@ -8,6 +8,7 @@ import multiprocessing
 import logging
 import re
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
+from datetime import datetime
 
 log = logging.getLogger('ytdl')
 
@@ -251,7 +252,8 @@ class DownloadQueue:
 
         error = None
         if "live_status" in entry and "release_timestamp" in entry and entry.get("live_status") == "is_upcoming":
-            error = f"Live stream is scheduled to start at {time.strftime('%Y-%m-%d %H:%M:%S %Z', time.localtime(entry.get('release_timestamp')))}"
+            dt_ts = datetime.fromtimestamp(entry.get("release_timestamp")).strftime('%Y-%m-%d %H:%M:%S %z')
+            error = f"Live stream is scheduled to start at {dt_ts}"
         else:
             if "msg" in entry:
                 error = entry["msg"]
