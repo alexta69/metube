@@ -8,6 +8,7 @@ import multiprocessing
 import logging
 import re
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
+from datetime import datetime
 
 log = logging.getLogger('ytdl')
 
@@ -28,7 +29,7 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix):
+    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
@@ -39,6 +40,7 @@ class DownloadInfo:
         self.msg = self.percent = self.speed = self.eta = None
         self.status = "pending"
         self.timestamp = time.time_ns()
+        self.error = error
 
 class Download:
     manager = None
@@ -88,6 +90,7 @@ class Download:
                 'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
                 'socket_timeout': 30,
+                'ignore_no_formats_error': True,
                 'progress_hooks': [put_status],
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
@@ -218,6 +221,7 @@ class DownloadQueue:
             'quiet': True,
             'no_color': True,
             'extract_flat': True,
+            'ignore_no_formats_error': True,
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
@@ -248,6 +252,14 @@ class DownloadQueue:
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
+        error = None
+        if "live_status" in entry and "release_timestamp" in entry and entry.get("live_status") == "is_upcoming":
+            dt_ts = datetime.fromtimestamp(entry.get("release_timestamp")).strftime('%Y-%m-%d %H:%M:%S %z')
+            error = f"Live stream is scheduled to start at {dt_ts}"
+        else:
+            if "msg" in entry:
+                error = entry["msg"]
+
         etype = entry.get('_type') or 'video'
         if etype == 'playlist':
             entries = entry['entries']
@@ -266,7 +278,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
             if not self.queue.exists(entry['id']):
-                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder, custom_name_prefix)
+                dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder, custom_name_prefix, error)
                 dldirectory, error_message = self.__calc_download_path(quality, format, folder)
                 if error_message is not None:
                     return error_message
