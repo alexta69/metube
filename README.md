@@ -211,7 +211,7 @@ Once there, you can use the yt-dlp command freely.
 
 ## Building and running locally
 
-Make sure you have node.js and Python 3.8 installed.
+Make sure you have node.js and Python 3.11 installed.
 
 ```bash
 cd metube/ui
