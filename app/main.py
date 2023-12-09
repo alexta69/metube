@@ -117,9 +117,10 @@ async def add(request):
     format = post.get('format')
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
+    auto_start = post.get('auto_start')
     if custom_name_prefix is None:
         custom_name_prefix = ''
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix)
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, auto_start)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')
@@ -130,6 +131,13 @@ async def delete(request):
     if not ids or where not in ['queue', 'done']:
         raise web.HTTPBadRequest()
     status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
+    return web.Response(text=serializer.encode(status))
+
+@routes.post(config.URL_PREFIX + 'start')
+async def start(request):
+    post = await request.json()
+    ids = post.get('ids')
+    status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
 
 @routes.get(config.URL_PREFIX + 'history')
@@ -227,4 +235,4 @@ app.on_response_prepare.append(on_prepare)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=True)
+    web.run_app(app, host=config.HOST, port=8081, reuse_port=False)

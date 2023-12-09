@@ -36,7 +36,8 @@ class DownloadInfo:
         self.format = format
         self.folder = folder
         self.custom_name_prefix = custom_name_prefix
-        self.status = self.msg = self.percent = self.speed = self.eta = None
+        self.msg = self.percent = self.speed = self.eta = None
+        self.status = "pending"
         self.timestamp = time.time_ns()
 
 class Download:
@@ -56,6 +57,7 @@ class Download:
         self.proc = None
         self.loop = None
         self.notifier = None
+
 
     def _download(self):
         try:
@@ -193,13 +195,13 @@ class PersistentQueue:
     def empty(self):
         return not bool(self.dict)
 
-
 class DownloadQueue:
     def __init__(self, config, notifier):
         self.config = config
         self.notifier = notifier
         self.queue = PersistentQueue(self.config.STATE_DIR + '/queue')
         self.done = PersistentQueue(self.config.STATE_DIR + '/completed')
+        self.pending = PersistentQueue(self.config.STATE_DIR + '/pending')
         self.done.load()
 
     async def __import_queue(self):
@@ -242,7 +244,7 @@ class DownloadQueue:
             dldirectory = base_directory
         return dldirectory, None
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, already):
+    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, auto_start, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -258,7 +260,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, already))
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, auto_start, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -273,15 +275,18 @@ class DownloadQueue:
                 for property, value in entry.items():
                     if property.startswith("playlist"):
                         output = output.replace(f"%({property})s", str(value))
-                self.queue.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
-                self.event.set()
+                if auto_start is True:
+                    self.queue.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
+                    self.event.set()
+                else:
+                    self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, already)
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, auto_start, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, already=None):
+    async def add(self, url, quality, format, folder, custom_name_prefix, auto_start=True, already=None):
         log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=}')
         already = set() if already is None else already
         if url in already:
@@ -293,7 +298,18 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, already)
+        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, auto_start, already)
+
+    async def start_pending(self, ids):
+        for id in ids:
+            if not self.pending.exists(id):
+                log.warn(f'requested start for non-existent download {id}')
+                continue
+            dl = self.pending.get(id)
+            self.queue.put(dl)
+            self.pending.delete(id)
+            self.event.set()
+        return {'status': 'ok'}
 
     async def cancel(self, ids):
         for id in ids:
@@ -324,7 +340,7 @@ class DownloadQueue:
         return {'status': 'ok'}
 
     def get(self):
-        return(list((k, v.info) for k, v in self.queue.items()),
+        return(list((k, v.info) for k, v in self.queue.items()) + list((k, v.info) for k, v in self.pending.items()),
                list((k, v.info) for k, v in self.done.items()))
 
     async def __download(self):

@@ -23,6 +23,7 @@ export class AppComponent implements AfterViewInit {
   format: string;
   folder: string;
   customNamePrefix: string;
+  autoStart: boolean;
   addInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme;
@@ -51,6 +52,8 @@ export class AppComponent implements AfterViewInit {
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
     this.quality = cookieService.get('metube_quality') || 'best';
+    this.autoStart = cookieService.get('metube_auto_start') === 'true';
+
     this.activeTheme = this.getPreferredTheme(cookieService);
   }
 
@@ -154,6 +157,10 @@ export class AppComponent implements AfterViewInit {
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
+  autoStartChanged() {
+    this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected.nativeElement.disabled = checked == 0;
   }
@@ -169,16 +176,17 @@ export class AppComponent implements AfterViewInit {
     this.quality = exists ? this.quality : 'best'
   }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, autoStart?: boolean) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
     folder = folder ?? this.folder
     customNamePrefix = customNamePrefix ?? this.customNamePrefix
+    autoStart = autoStart ?? this.autoStart
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix);
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' autoStart='+autoStart);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, autoStart).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -188,8 +196,12 @@ export class AppComponent implements AfterViewInit {
     });
   }
 
+  downloadItemByKey(id: string) {
+    this.downloads.startById([id]).subscribe();
+  }
+
   retryDownload(key: string, download: Download) {
-    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix);
+    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, true);
     this.downloads.delById('done', [key]).subscribe();
   }
 
