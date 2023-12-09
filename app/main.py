@@ -235,4 +235,4 @@ app.on_response_prepare.append(on_prepare)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=8081, reuse_port=False)
+    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
