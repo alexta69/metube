@@ -1,4 +1,4 @@
-FROM node:18-alpine as builder
+FROM node:20-alpine as builder
 
 WORKDIR /metube
 COPY ui ./
@@ -6,7 +6,7 @@ RUN npm ci && \
     node_modules/.bin/ng build --configuration production
 
 
-FROM python:3.8-alpine
+FROM python:3.11-alpine
 
 WORKDIR /app
 

@@ -99,10 +99,14 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix}).pipe(
+  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, autoStart: boolean) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, auto_start: autoStart}).pipe(
       catchError(this.handleHTTPError)
     );
+  }
+
+  public startById(ids: string[]) {
+    return this.http.post('start', {ids: ids});
   }
 
   public delById(where: string, ids: string[]) {
