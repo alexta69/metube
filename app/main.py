@@ -120,6 +120,8 @@ async def add(request):
     auto_start = post.get('auto_start')
     if custom_name_prefix is None:
         custom_name_prefix = ''
+    if auto_start is None:
+        auto_start = True
     status = await dqueue.add(url, quality, format, folder, custom_name_prefix, auto_start)
     return web.Response(text=serializer.encode(status))
 
