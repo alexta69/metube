@@ -1,5 +1,5 @@
 import { BrowserModule } from '@angular/platform-browser';
-import { NgModule } from '@angular/core';
+import { NgModule, isDevMode } from '@angular/core';
 import { FormsModule } from '@angular/forms';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { HttpClientModule } from '@angular/common/http';
@@ -11,6 +11,7 @@ import { EtaPipe, SpeedPipe, EncodeURIComponent } from './downloads.pipe';
 import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkbox.component';
 import { MeTubeSocket } from './metube-socket';
 import { NgSelectModule } from '@ng-select/ng-select';
+import { ServiceWorkerModule } from '@angular/service-worker';
 
 @NgModule({
   declarations: [
@@ -27,7 +28,13 @@ import { NgSelectModule } from '@ng-select/ng-select';
     NgbModule,
     HttpClientModule,
     FontAwesomeModule,
-    NgSelectModule
+    NgSelectModule,
+    ServiceWorkerModule.register('custom-service-worker.js', {
+      enabled: !isDevMode(),
+      // Register the ServiceWorker as soon as the application is stable
+      // or after 30 seconds (whichever comes first).
+      registrationStrategy: 'registerWhenStable:30000'
+    })
   ],
   providers: [CookieService, MeTubeSocket],
   bootstrap: [AppComponent]

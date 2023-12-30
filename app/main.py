@@ -207,7 +207,6 @@ if config.URL_PREFIX != '/':
     def index_redirect_dir(request):
         return web.HTTPFound(config.URL_PREFIX)
 
-routes.static(config.URL_PREFIX + 'favicon/', os.path.join(config.BASE_DIR, 'favicon'))
 routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
 routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
 routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))

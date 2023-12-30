@@ -3,7 +3,9 @@ import { Socket } from 'ngx-socket-io';
 
 @Injectable()
 export class MeTubeSocket extends Socket {
-     constructor() {
-        super({ url: '', options: {path: document.location.pathname + 'socket.io'} });
-    }
+  constructor() {
+    const path =
+      document.location.pathname.replace(/share-target/, '') + 'socket.io';
+    super({ url: '', options: { path } });
+  }
 }
