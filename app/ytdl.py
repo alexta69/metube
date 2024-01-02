@@ -222,6 +222,7 @@ class DownloadQueue:
             'no_color': True,
             'extract_flat': True,
             'ignore_no_formats_error': True,
+            'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
 
