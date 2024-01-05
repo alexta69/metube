@@ -1,5 +1,5 @@
-const URL_PATTERN =
-  /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
+/* RegExp pattern to match URLs in the shared target text (apps often share additional text, not only URLs) */
+const URL_PATTERN = /https?:\/\/(www\.)?[-a-zA-Z0-9@:%._\+~#=]{1,256}\.[a-zA-Z0-9()]{1,6}\b([-a-zA-Z0-9()@:%_\+.~#?&//=]*)/gi;
 
 self.addEventListener("fetch", (event) => {
   if (event.request.method === "GET") {
@@ -9,12 +9,13 @@ self.addEventListener("fetch", (event) => {
       const urlRegExp = new RegExp(URL_PATTERN);
       const sharedText = url.searchParams.get("text");
       const matches = [...sharedText.matchAll(urlRegExp)].map((m) => m[0]);
+      const basePath = url.pathname.split("/").slice(0, -1).join("/");
 
       event.respondWith(
         (async () => {
           await Promise.all(
             matches.map((url) => {
-              return fetch("/add", {
+              return fetch(`${basePath}/add`, {
                 method: "POST",
                 headers: {
                   "Content-Type": "application/json",
@@ -28,7 +29,7 @@ self.addEventListener("fetch", (event) => {
               });
             })
           );
-          return Response.redirect("/", 303);
+          return Response.redirect(basePath, 303);
         })()
       );
     }

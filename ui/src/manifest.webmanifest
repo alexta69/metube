@@ -5,7 +5,7 @@
   "background_color": "#fafafa",
   "display": "standalone",
   "scope": "./",
-  "start_url": "/?utm_source=homescreen",
+  "start_url": "./?utm_source=homescreen",
   "icons": [
     {
       "src": "assets/icons/android-chrome-192x192.png",
@@ -19,7 +19,7 @@
     }
   ],
   "share_target": {
-    "action": "/share-target",
+    "action": "./share-target",
     "method": "GET",
     "params": {
       "text": "text"
