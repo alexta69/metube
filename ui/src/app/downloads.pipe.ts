@@ -50,7 +50,7 @@ export class EncodeURIComponent implements PipeTransform {
 })
 export class FileSizePipe implements PipeTransform {
   transform(value: number): string {
-      if (value === 0) return '0 Bytes';
+      if (isNaN(value) || value === 0) return '0 Bytes';
 
       const units = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
       const unitIndex = Math.floor(Math.log(value) / Math.log(1000)); // Use 1000 for common units
