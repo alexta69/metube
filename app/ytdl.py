@@ -139,7 +139,7 @@ class Download:
                 return
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
-                fileName = status['filename']
+                fileName = status.get('filename')
                 self.info.filename = os.path.relpath(fileName, self.download_dir)
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
 
