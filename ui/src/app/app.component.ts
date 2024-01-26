@@ -35,6 +35,8 @@ export class AppComponent implements AfterViewInit {
   @ViewChild('doneDelSelected') doneDelSelected: ElementRef;
   @ViewChild('doneClearCompleted') doneClearCompleted: ElementRef;
   @ViewChild('doneClearFailed') doneClearFailed: ElementRef;
+  @ViewChild('doneRetryFailed') doneRetryFailed: ElementRef;
+
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
@@ -83,6 +85,7 @@ export class AppComponent implements AfterViewInit {
       });
       this.doneClearCompleted.nativeElement.disabled = completed === 0;
       this.doneClearFailed.nativeElement.disabled = failed === 0;
+      this.doneRetryFailed.nativeElement.disabled = failed === 0;
     });
   }
 
@@ -219,6 +222,14 @@ export class AppComponent implements AfterViewInit {
 
   clearFailedDownloads() {
     this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe();
+  }
+
+  retryFailedDownloads() {
+    this.downloads.done.forEach((dl, key) => {
+      if (dl.status === 'error') {
+        this.retryDownload(key, dl);
+      }
+    });
   }
 
   buildDownloadLink(download: Download) {
