@@ -329,6 +329,10 @@ class DownloadQueue:
 
     async def cancel(self, ids):
         for id in ids:
+            if self.pending.exists(id):
+                self.pending.delete(id)
+                await self.notifier.canceled(id)
+                continue
             if not self.queue.exists(id):
                 log.warn(f'requested cancel for non-existent download {id}')
                 continue
