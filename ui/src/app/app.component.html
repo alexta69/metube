@@ -180,6 +180,7 @@
         </td>
         <td>
           <span *ngIf="download.value.size">{{ download.value.size | fileSize }}</span>
+        </td>
         <td>
           <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
         </td>
