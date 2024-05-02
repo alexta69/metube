@@ -35,6 +35,7 @@ ENV UMASK=022
 ENV DOWNLOAD_DIR /downloads
 ENV STATE_DIR /downloads/.metube
 ENV TEMP_DIR /downloads
+ENV PUBLIC_HOST_URL download/
 VOLUME /downloads
 EXPOSE 8081
 CMD [ "./docker-entrypoint.sh" ]
