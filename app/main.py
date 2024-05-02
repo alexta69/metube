@@ -24,6 +24,8 @@ class Config:
         'DELETE_FILE_ON_TRASHCAN': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
+        'PUBLIC_HOST_URL': 'download/',
+        'PUBLIC_HOST_AUDIO_URL': 'audio_download/',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
         'YTDL_OPTIONS': '{}',
