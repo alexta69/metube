@@ -233,7 +233,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   buildDownloadLink(download: Download) {
-    let baseDir = 'download/';
+    let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"] ?? 'download/';
     if (download.quality == 'audio' || download.filename.endsWith('.mp3')) {
       baseDir = 'audio_download/';
     }
