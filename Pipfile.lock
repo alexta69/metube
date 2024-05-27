@@ -515,7 +515,7 @@
                 "sha256:719fadef0a978c31b4cf3c956261b3c58b6948b32023078a2117b1de09f0fc99",
                 "sha256:edd96f50c5907a9539d8e5bba7245f62c9f520aef333d13392a79a4f70aca719"
             ],
-            "markers": "python_full_version >= '3.7.0'",
+            "markers": "python_version >= '3.7'",
             "version": "==1.47.0"
         },
         "pycryptodomex": {
@@ -574,11 +574,11 @@
         },
         "requests": {
             "hashes": [
-                "sha256:58cd2187c01e70e6e26505bca751777aa9f2ee0b7f4300988b709f44e013003f",
-                "sha256:942c5a758f98d790eaed1a29cb6eefc7ffb0d1cf7af05c3d2791656dbd6ad1e1"
+                "sha256:dd951ff5ecf3e3b3aa26b40703ba77495dab41da839ae72ef3c8e5d8e2433289",
+                "sha256:fc06670dd0ed212426dfeb94fc1b983d917c4f9847c863f313c9dfaaffb7c23c"
             ],
-            "markers": "python_full_version >= '3.7.0'",
-            "version": "==2.31.0"
+            "markers": "python_version >= '3.8'",
+            "version": "==2.32.2"
         },
         "simple-websocket": {
             "hashes": [
@@ -780,11 +780,12 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:7ee90572b4d313b582b99c89e4eccf779b57ff54edc331873c6b3fba77faa8b0",
-                "sha256:d6ff6798bd114cc48763564fcb2f296464ec1604f731e69b07a8814c89b170a2"
+                "sha256:884deab9e38b2c67a39b0e39b820d860c5d46d9d5d6f7c883b73ff70bd891d7c",
+                "sha256:ae9bef603f9da76115f863750598d3afbd60bcd808234efc28be393d7e83369b"
             ],
             "index": "pypi",
-            "version": "==2024.4.9"
+            "markers": "python_version >= '3.8'",
+            "version": "==2024.5.26"
         }
     },
     "develop": {
