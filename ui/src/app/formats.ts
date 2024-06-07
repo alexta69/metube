@@ -67,6 +67,13 @@ export const Formats: Format[] = [
     ],
   },
   {
+    id: 'flac',
+    text: 'FLAC',
+    qualities: [
+      { id: 'best', text: 'Best' },
+    ],
+  },
+  {
     id: 'thumbnail',
     text: 'Thumbnail',
     qualities: [
