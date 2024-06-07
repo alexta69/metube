@@ -1,6 +1,6 @@
 import copy
 
-AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav")
+AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav", "flac")
 
 
 def get_format(format: str, quality: str) -> str:
