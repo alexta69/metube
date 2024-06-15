@@ -27,6 +27,7 @@ export const Formats: Format[] = [
     text: 'MP4',
     qualities: [
       { id: 'best', text: 'Best' },
+      { id: 'best_ios', text: 'Best (iOS)' },
       { id: '1440', text: '1440p' },
       { id: '1080', text: '1080p' },
       { id: '720', text: '720p' },
@@ -55,29 +56,21 @@ export const Formats: Format[] = [
   {
     id: 'opus',
     text: 'OPUS',
-    qualities: [
-      { id: 'best', text: 'Best' },
-    ],
+    qualities: [{ id: 'best', text: 'Best' }],
   },
   {
     id: 'wav',
     text: 'WAV',
-    qualities: [
-      { id: 'best', text: 'Best' },
-    ],
+    qualities: [{ id: 'best', text: 'Best' }],
   },
   {
     id: 'flac',
     text: 'FLAC',
-    qualities: [
-      { id: 'best', text: 'Best' },
-    ],
+    qualities: [{ id: 'best', text: 'Best' }],
   },
   {
     id: 'thumbnail',
     text: 'Thumbnail',
-    qualities: [
-      { id: 'best', text: 'Best' }
-    ],
+    qualities: [{ id: 'best', text: 'Best' }],
   },
 ];
