@@ -3,3 +3,6 @@
 ui/.angular
 ui/node_modules
 /.idea/*
+*.bak
+*.dat
+*.dir
