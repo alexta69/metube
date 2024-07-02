@@ -1,13 +1,12 @@
-#!/usr/bin/env python3
-# pylint: disable=no-member,method-hidden
-
-import os
-import sys
-from aiohttp import web
-import socketio
-import logging
 import json
+import logging
+import os
 import pathlib
+import sys
+import platform
+
+import socketio
+from aiohttp import web
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
@@ -238,4 +237,7 @@ app.on_response_prepare.append(on_prepare)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
+    if platform.system() == 'Windows':
+        web.run_app(app, host=config.HOST, port=int(config.PORT))
+    else:
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
