@@ -27,6 +27,7 @@ RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
 
 COPY app ./app
 COPY --from=builder /metube/dist/metube ./ui/dist/metube
+RUN sed -i 's/webmanifest"/webmanifest" crossorigin="use-credentials"/' ./ui/dist/metube/index.html
 
 ENV UID=1000
 ENV GID=1000
