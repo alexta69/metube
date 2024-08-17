@@ -8,7 +8,7 @@ import socketio
 import logging
 import json
 import pathlib
-
+import sys
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
 log = logging.getLogger('main')
@@ -238,4 +238,7 @@ app.on_response_prepare.append(on_prepare)
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
+    if sys.platform.startswith('win'):
+        web.run_app(app, host=config.HOST, port=int(config.PORT))
+    else:
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
