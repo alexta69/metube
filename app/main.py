@@ -3,19 +3,20 @@
 
 import os
 import sys
+import asyncio
 from aiohttp import web
 import socketio
 import logging
 import json
 import pathlib
-import sys
+
 from ytdl import DownloadQueueNotifier, DownloadQueue
 
 log = logging.getLogger('main')
 
 class Config:
     _DEFAULTS = {
-        'DOWNLOAD_DIR': '.',
+        'DOWNLOAD_DIR': 'C:/Users/Roger/Desktop/MeTube',
         'AUDIO_DOWNLOAD_DIR': '%%DOWNLOAD_DIR',
         'TEMP_DIR': '%%DOWNLOAD_DIR',
         'DOWNLOAD_DIRS_INDEXABLE': 'false',
@@ -40,10 +41,10 @@ class Config:
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
-            setattr(self, k, os.environ[k] if k in os.environ else v)
+            setattr(self, k, os.environ.get(k, v))
 
         for k, v in self.__dict__.items():
-            if v.startswith('%%'):
+            if isinstance(v, str) and v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
             if k in self._BOOLEAN:
                 if v not in ('true', 'false', 'True', 'False', 'on', 'off', '1', '0'):
@@ -85,10 +86,6 @@ class ObjectSerializer(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 serializer = ObjectSerializer()
-app = web.Application()
-sio = socketio.AsyncServer(cors_allowed_origins='*')
-sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
-routes = web.RouteTableDef()
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):
@@ -106,80 +103,124 @@ class Notifier(DownloadQueueNotifier):
     async def cleared(self, id):
         await sio.emit('cleared', serializer.encode(id))
 
-dqueue = DownloadQueue(config, Notifier())
-app.on_startup.append(lambda app: dqueue.initialize())
+async def init_app():
+    app = web.Application()
+    global sio
+    sio = socketio.AsyncServer(cors_allowed_origins='*')
+    sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
+    routes = web.RouteTableDef()
 
-@routes.post(config.URL_PREFIX + 'add')
-async def add(request):
-    post = await request.json()
-    url = post.get('url')
-    quality = post.get('quality')
-    if not url or not quality:
-        raise web.HTTPBadRequest()
-    format = post.get('format')
-    folder = post.get('folder')
-    custom_name_prefix = post.get('custom_name_prefix')
-    auto_start = post.get('auto_start')
-    if custom_name_prefix is None:
-        custom_name_prefix = ''
-    if auto_start is None:
-        auto_start = True
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, auto_start)
-    return web.Response(text=serializer.encode(status))
+    @routes.post(config.URL_PREFIX + 'add')
+    async def add(request):
+        post = await request.json()
+        url = post.get('url')
+        quality = post.get('quality')
+        if not url or not quality:
+            raise web.HTTPBadRequest()
+        format = post.get('format')
+        folder = post.get('folder')
+        custom_name_prefix = post.get('custom_name_prefix')
+        auto_start = post.get('auto_start')
+        if custom_name_prefix is None:
+            custom_name_prefix = ''
+        if auto_start is None:
+            auto_start = True
+        status = await request.app['dqueue'].add(url, quality, format, folder, custom_name_prefix, auto_start)
+        return web.Response(text=serializer.encode(status))
 
-@routes.post(config.URL_PREFIX + 'delete')
-async def delete(request):
-    post = await request.json()
-    ids = post.get('ids')
-    where = post.get('where')
-    if not ids or where not in ['queue', 'done']:
-        raise web.HTTPBadRequest()
-    status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
-    return web.Response(text=serializer.encode(status))
+    @routes.post(config.URL_PREFIX + 'delete')
+    async def delete(request):
+        post = await request.json()
+        ids = post.get('ids')
+        where = post.get('where')
+        if not ids or where not in ['queue', 'done']:
+            raise web.HTTPBadRequest()
+        status = await (request.app['dqueue'].cancel(ids) if where == 'queue' else request.app['dqueue'].clear(ids))
+        return web.Response(text=serializer.encode(status))
 
-@routes.post(config.URL_PREFIX + 'start')
-async def start(request):
-    post = await request.json()
-    ids = post.get('ids')
-    status = await dqueue.start_pending(ids)
-    return web.Response(text=serializer.encode(status))
+    @routes.post(config.URL_PREFIX + 'start')
+    async def start(request):
+        post = await request.json()
+        ids = post.get('ids')
+        status = await request.app['dqueue'].start_pending(ids)
+        return web.Response(text=serializer.encode(status))
 
-@routes.get(config.URL_PREFIX + 'history')
-async def history(request):
-    history = { 'done': [], 'queue': []}
+    @routes.get(config.URL_PREFIX + 'history')
+    async def history(request):
+        history = { 'done': [], 'queue': []}
 
-    for _ ,v in dqueue.queue.saved_items():
-        history['queue'].append(v)
-    for _ ,v in dqueue.done.saved_items():
-        history['done'].append(v)
+        for _ ,v in request.app['dqueue'].queue.saved_items():
+            history['queue'].append(v)
+        for _ ,v in request.app['dqueue'].done.saved_items():
+            history['done'].append(v)
 
-    return web.Response(text=serializer.encode(history))
+        return web.Response(text=serializer.encode(history))
 
-@sio.event
-async def connect(sid, environ):
-    await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
-    await sio.emit('configuration', serializer.encode(config), to=sid)
-    if config.CUSTOM_DIRS:
-        await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
+    @sio.event
+    async def connect(sid, environ):
+        await sio.emit('all', serializer.encode(request.app['dqueue'].get()), to=sid)
+        await sio.emit('configuration', serializer.encode(config), to=sid)
+        if config.CUSTOM_DIRS:
+            await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
+
+    @routes.get(config.URL_PREFIX)
+    def index(request):
+        response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
+        if 'metube_theme' not in request.cookies:
+            response.set_cookie('metube_theme', config.DEFAULT_THEME)
+        return response
+
+    if config.URL_PREFIX != '/':
+        @routes.get('/')
+        def index_redirect_root(request):
+            return web.HTTPFound(config.URL_PREFIX)
+
+        @routes.get(config.URL_PREFIX[:-1])
+        def index_redirect_dir(request):
+            return web.HTTPFound(config.URL_PREFIX)
+
+    routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+    routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+    routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))
+
+    try:
+        app.add_routes(routes)
+    except ValueError as e:
+        if 'ui/dist/metube' in str(e):
+            raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build` inside the ui folder') from e
+        raise e
+
+    async def add_cors(request):
+        return web.Response(text=serializer.encode({"status": "ok"}))
+
+    app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
+
+    async def on_prepare(request, response):
+        if 'Origin' in request.headers:
+            response.headers['Access-Control-Allow-Origin'] = request.headers['Origin']
+            response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+
+    app.on_response_prepare.append(on_prepare)
+
+    dqueue = DownloadQueue(config, Notifier())
+    await dqueue.initialize()
+    app['dqueue'] = dqueue
+
+    return app
 
 def get_custom_dirs():
     def recursive_dirs(base):
         path = pathlib.Path(base)
 
-        # Converts PosixPath object to string, and remove base/ prefix
         def convert(p):
             s = str(p)
             if s.startswith(base):
                 s = s[len(base):]
-
             if s.startswith('/'):
                 s = s[1:]
-
             return s
 
-        # Recursively lists all subdirectories of DOWNLOAD_DIR
         dirs = list(filter(None, map(convert, path.glob('**'))))
-
         return dirs
 
     download_dir = recursive_dirs(config.DOWNLOAD_DIR)
@@ -193,52 +234,33 @@ def get_custom_dirs():
         "audio_download_dir": audio_download_dir
     }
 
-@routes.get(config.URL_PREFIX)
-def index(request):
-    response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
-    if 'metube_theme' not in request.cookies:
-        response.set_cookie('metube_theme', config.DEFAULT_THEME)
-    return response
+async def start_background_tasks(app):
+    app['dqueue_task'] = asyncio.create_task(app['dqueue'].run())
 
-if config.URL_PREFIX != '/':
-    @routes.get('/')
-    def index_redirect_root(request):
-        return web.HTTPFound(config.URL_PREFIX)
+async def cleanup_background_tasks(app):
+    app['dqueue_task'].cancel()
+    await app['dqueue_task']
 
-    @routes.get(config.URL_PREFIX[:-1])
-    def index_redirect_dir(request):
-        return web.HTTPFound(config.URL_PREFIX)
+def main():
+    logging.basicConfig(level=logging.DEBUG)
+    log.info(f"Initializing application on {config.HOST}:{config.PORT}")
 
-routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
-routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
-routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube'))
-try:
-    app.add_routes(routes)
-except ValueError as e:
-    if 'ui/dist/metube' in str(e):
-        raise RuntimeError('Could not find the frontend UI static assets. Please run `node_modules/.bin/ng build` inside the ui folder') from e
-    raise e
+    loop = asyncio.get_event_loop()
+    app = loop.run_until_complete(init_app())
 
-# https://github.com/aio-libs/aiohttp/pull/4615 waiting for release
-# @routes.options(config.URL_PREFIX + 'add')
-async def add_cors(request):
-    return web.Response(text=serializer.encode({"status": "ok"}))
+    app.on_startup.append(start_background_tasks)
+    app.on_cleanup.append(cleanup_background_tasks)
 
-app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
-
-
-async def on_prepare(request, response):
-    if 'Origin' in request.headers:
-        response.headers['Access-Control-Allow-Origin'] = request.headers['Origin']
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
-
-app.on_response_prepare.append(on_prepare)
-
+    try:
+        if sys.platform.startswith('win'):
+            web.run_app(app, host=config.HOST, port=int(config.PORT))
+        else:
+            web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
+    except Exception as e:
+        log.error(f"Failed to start the server: {str(e)}")
+        sys.exit(1)
 
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
-    log.info(f"Listening on {config.HOST}:{config.PORT}")
     if sys.platform.startswith('win'):
-        web.run_app(app, host=config.HOST, port=int(config.PORT))
-    else:
-        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
+        asyncio.set_event_loop_policy(asyncio.WindowsSelectorEventLoopPolicy())
+    main()

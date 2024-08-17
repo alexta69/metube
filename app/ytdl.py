@@ -4,7 +4,6 @@ from collections import OrderedDict
 import shelve
 import time
 import asyncio
-import multiprocessing
 import logging
 import re
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
@@ -44,8 +43,6 @@ class DownloadInfo:
         self.error = error
 
 class Download:
-    manager = None
-
     def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.temp_dir = temp_dir
@@ -56,105 +53,47 @@ class Download:
         self.info = info
         self.canceled = False
         self.tmpfilename = None
-        self.status_queue = None
-        self.proc = None
-        self.loop = None
-        self.notifier = None
-
-
-    def _download(self):
-        try:
-            def put_status(st):
-                self.status_queue.put({k: v for k, v in st.items() if k in (
-                    'tmpfilename',
-                    'filename',
-                    'status',
-                    'msg',
-                    'total_bytes',
-                    'total_bytes_estimate',
-                    'downloaded_bytes',
-                    'speed',
-                    'eta',
-                )})
-            def put_status_postprocessor(d):
-                if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
-                    if '__finaldir' in d['info_dict']:
-                        filename = os.path.join(d['info_dict']['__finaldir'], os.path.basename(d['info_dict']['filepath']))
-                    else:
-                        filename = d['info_dict']['filepath']
-                    self.status_queue.put({'status': 'finished', 'filename': filename})
-            ret = yt_dlp.YoutubeDL(params={
-                'quiet': True,
-                'no_color': True,
-                #'skip_download': True,
-                'paths': {"home": self.download_dir, "temp": self.temp_dir},
-                'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
-                'format': self.format,
-                'socket_timeout': 30,
-                'ignore_no_formats_error': True,
-                'progress_hooks': [put_status],
-                'postprocessor_hooks': [put_status_postprocessor],
-                **self.ytdl_opts,
-            }).download([self.info.url])
-            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
-        except yt_dlp.utils.YoutubeDLError as exc:
-            self.status_queue.put({'status': 'error', 'msg': str(exc)})
 
     async def start(self, notifier):
-        if Download.manager is None:
-            Download.manager = multiprocessing.Manager()
-        self.status_queue = Download.manager.Queue()
-        self.proc = multiprocessing.Process(target=self._download)
-        self.proc.start()
-        self.loop = asyncio.get_running_loop()
-        self.notifier = notifier
         self.info.status = 'preparing'
-        await self.notifier.updated(self.info)
-        asyncio.create_task(self.update_status())
-        return await self.loop.run_in_executor(None, self.proc.join)
+        await notifier.updated(self.info)
+        
+        try:
+            result = await asyncio.get_event_loop().run_in_executor(None, self._download)
+            if result['status'] == 'finished':
+                self.info.status = 'finished'
+                self.info.filename = result.get('filename')
+                self.info.size = os.path.getsize(result['filename']) if os.path.exists(result['filename']) else None
+            else:
+                self.info.status = 'error'
+                self.info.msg = result.get('msg', 'Unknown error occurred')
+        except Exception as e:
+            self.info.status = 'error'
+            self.info.msg = str(e)
+        
+        await notifier.updated(self.info)
+
+    def _download(self):
+        ydl_opts = {
+            'quiet': True,
+            'no_color': True,
+            'paths': {"home": self.download_dir, "temp": self.temp_dir},
+            'outtmpl': {"default": self.output_template, "chapter": self.output_template_chapter},
+            'format': self.format,
+            'socket_timeout': 30,
+            'ignore_no_formats_error': True,
+            **self.ytdl_opts,
+        }
+
+        with yt_dlp.YoutubeDL(ydl_opts) as ydl:
+            try:
+                info = ydl.extract_info(self.info.url, download=True)
+                return {'status': 'finished', 'filename': ydl.prepare_filename(info)}
+            except yt_dlp.utils.DownloadError as e:
+                return {'status': 'error', 'msg': str(e)}
 
     def cancel(self):
-        if self.running():
-            self.proc.kill()
         self.canceled = True
-
-    def close(self):
-        if self.started():
-            self.proc.close()
-            self.status_queue.put(None)
-
-    def running(self):
-        try:
-            return self.proc is not None and self.proc.is_alive()
-        except ValueError:
-            return False
-
-    def started(self):
-        return self.proc is not None
-
-    async def update_status(self):
-        while True:
-            status = await self.loop.run_in_executor(None, self.status_queue.get)
-            if status is None:
-                return
-            self.tmpfilename = status.get('tmpfilename')
-            if 'filename' in status:
-                fileName = status.get('filename')
-                self.info.filename = os.path.relpath(fileName, self.download_dir)
-                self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
-
-                # Set correct file extension for thumbnails
-                if(self.info.format == 'thumbnail'):
-                    self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
-            self.info.status = status['status']
-            self.info.msg = status.get('msg')
-            if 'downloaded_bytes' in status:
-                total = status.get('total_bytes') or status.get('total_bytes_estimate')
-                if total:
-                    self.info.percent = status['downloaded_bytes'] / total * 100
-            self.info.speed = status.get('speed')
-            self.info.eta = status.get('eta')
-            await self.notifier.updated(self.info)
 
 class PersistentQueue:
     def __init__(self, path):
@@ -209,18 +148,24 @@ class DownloadQueue:
         self.done = PersistentQueue(self.config.STATE_DIR + '/completed')
         self.pending = PersistentQueue(self.config.STATE_DIR + '/pending')
         self.done.load()
-        self.max_concurrent_downloads = self.config.MAX_CONCURRENT_DOWNLOADS  # New configuration option
         self.active_downloads = set()
-        self.download_semaphore = asyncio.Semaphore(self.max_concurrent_downloads)
+        self.max_concurrent_downloads = 3  # Adjust this value as needed
+        self.event = asyncio.Event()
+
+    async def initialize(self):
+        await self.__import_queue()
+
+    async def run(self):
+        while True:
+            try:
+                await self.__manage_downloads()
+            except Exception as e:
+                log.error(f"Error in download queue: {str(e)}")
+                await asyncio.sleep(5)  # Wait a bit before retrying
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
             await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix)
-
-    async def initialize(self):
-        self.event = asyncio.Event()
-        asyncio.create_task(self.__manage_downloads())
-        await self.__import_queue()
 
     def __extract_info(self, url):
         return yt_dlp.YoutubeDL(params={
@@ -233,12 +178,6 @@ class DownloadQueue:
         }).extract_info(url, download=False)
 
     def __calc_download_path(self, quality, format, folder):
-        """Calculates download path from quality, format and folder attributes.
-
-        Returns:
-            Tuple dldirectory, error_message both of which might be None (but not at the same time)
-        """
-        # Keep consistent with frontend
         base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR
         if folder:
             if not self.config.CUSTOM_DIRS:
@@ -254,17 +193,7 @@ class DownloadQueue:
         else:
             dldirectory = base_directory
         return dldirectory, None
-    async def __manage_downloads(self):
-        while True:
-            while self.queue.empty():
-                log.info('waiting for item to download')
-                await self.event.wait()
-                self.event.clear()
-            
-            async with self.download_semaphore:
-                id, entry = self.queue.next()
-                self.active_downloads.add(id)
-                asyncio.create_task(self.__process_download(id, entry))
+
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, auto_start, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -324,10 +253,15 @@ class DownloadQueue:
         else:
             already.add(url)
         try:
-            entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
+            entry = await asyncio.get_event_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, auto_start, already)
+        result = await self.__add_entry(entry, quality, format, folder, custom_name_prefix, auto_start, already)
+        
+        if result['status'] == 'ok' and auto_start:
+            self.event.set()  # Signal that new items are available for download
+        
+        return result
 
     async def start_pending(self, ids):
         for id in ids:
@@ -349,11 +283,11 @@ class DownloadQueue:
             if not self.queue.exists(id):
                 log.warn(f'requested cancel for non-existent download {id}')
                 continue
-            if self.queue.get(id).started():
-                self.queue.get(id).cancel()
-            else:
-                self.queue.delete(id)
-                await self.notifier.canceled(id)
+            dl = self.queue.get(id)
+            if isinstance(dl, Download):
+                dl.cancel()
+            self.queue.delete(id)
+            await self.notifier.canceled(id)
         return {'status': 'ok'}
 
     async def clear(self, ids):
@@ -375,35 +309,18 @@ class DownloadQueue:
     def get(self):
         return(list((k, v.info) for k, v in self.queue.items()) + list((k, v.info) for k, v in self.pending.items()),
                list((k, v.info) for k, v in self.done.items()))
-    async def __process_download(self, id, entry):
-            try:
-                log.info(f'downloading {entry.info.title}')
-                await entry.start(self.notifier)
-                if entry.info.status != 'finished':
-                    if entry.tmpfilename and os.path.isfile(entry.tmpfilename):
-                        try:
-                            os.remove(entry.tmpfilename)
-                        except:
-                            pass
-                    entry.info.status = 'error'
-                entry.close()
-            finally:
-                if self.queue.exists(id):
-                    self.queue.delete(id)
-                    if entry.canceled:
-                        await self.notifier.canceled(id)
-                    else:
-                        self.done.put(entry)
-                        await self.notifier.completed(entry.info)
-                self.active_downloads.remove(id)
-                self.download_semaphore.release()
-    async def __download(self):
+
+    async def __manage_downloads(self):
         while True:
-            while self.queue.empty():
-                log.info('waiting for item to download')
-                await self.event.wait()
-                self.event.clear()
-            id, entry = self.queue.next()
+            while not self.queue.empty() and len(self.active_downloads) < self.max_concurrent_downloads:
+                id, entry = self.queue.next()
+                if id not in self.active_downloads:
+                    self.active_downloads.add(id)
+                    asyncio.create_task(self.__download(id, entry))
+            await asyncio.sleep(1)  # Add a small delay to prevent busy waiting
+
+    async def __download(self, id, entry):
+        try:
             log.info(f'downloading {entry.info.title}')
             await entry.start(self.notifier)
             if entry.info.status != 'finished':
@@ -412,8 +329,6 @@ class DownloadQueue:
                         os.remove(entry.tmpfilename)
                     except:
                         pass
-                entry.info.status = 'error'
-            entry.close()
             if self.queue.exists(id):
                 self.queue.delete(id)
                 if entry.canceled:
@@ -421,3 +336,5 @@ class DownloadQueue:
                 else:
                     self.done.put(entry)
                     await self.notifier.completed(entry.info)
+        finally:
+            self.active_downloads.remove(id)
