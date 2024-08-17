@@ -33,17 +33,19 @@ class Config:
         'HOST': '0.0.0.0',
         'PORT': '8081',
         'BASE_DIR': '',
-        'DEFAULT_THEME': 'auto'
+        'DEFAULT_THEME': 'auto',
+        'DOWNLOAD_MODE': 'sequential',  # Can be 'sequential', 'concurrent', or 'limited'
+        'MAX_CONCURRENT_DOWNLOADS': 3,  # Used if DOWNLOAD_MODE is 'limited'
     }
 
     _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
-            setattr(self, k, os.environ[k] if k in os.environ else v)
+            setattr(self, k, os.environ.get(k, v))
 
         for k, v in self.__dict__.items():
-            if v.startswith('%%'):
+            if isinstance(v, str) and v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
             if k in self._BOOLEAN:
                 if v not in ('true', 'false', 'True', 'False', 'on', 'off', '1', '0'):
@@ -160,9 +162,9 @@ async def start(request):
 async def history(request):
     history = { 'done': [], 'queue': []}
 
-    for _ ,v in dqueue.queue.saved_items():
+    for _, v in dqueue.queue.saved_items():
         history['queue'].append(v)
-    for _ ,v in dqueue.done.saved_items():
+    for _, v in dqueue.done.saved_items():
         history['done'].append(v)
 
     log.info("Sending download history")

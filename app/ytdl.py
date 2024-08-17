@@ -216,6 +216,11 @@ class DownloadQueue:
         self.done = PersistentQueue(self.config.STATE_DIR + '/completed')
         self.pending = PersistentQueue(self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
+        self.semaphore = None
+
+        if self.config.DOWNLOAD_MODE == 'limited':
+            self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_DOWNLOADS)
+        
         self.done.load()
 
     async def __import_queue(self):
@@ -225,6 +230,49 @@ class DownloadQueue:
     async def initialize(self):
         log.info("Initializing DownloadQueue")
         asyncio.create_task(self.__import_queue())
+
+    async def __start_download(self, download):
+        if self.config.DOWNLOAD_MODE == 'sequential':
+            await self.__sequential_download(download)
+        elif self.config.DOWNLOAD_MODE == 'limited' and self.semaphore is not None:
+            await self.__limited_concurrent_download(download)
+        else:  # concurrent without limit
+            await self.__concurrent_download(download)
+
+    async def __sequential_download(self, download):
+        log.info("Starting sequential download.")
+        await download.start(self.notifier)
+        self._post_download_cleanup(download)
+
+    async def __concurrent_download(self, download):
+        log.info("Starting concurrent download without limits.")
+        asyncio.create_task(self._run_download(download))
+
+    async def __limited_concurrent_download(self, download):
+        log.info("Starting limited concurrent download.")
+        async with self.semaphore:
+            await self._run_download(download)
+
+    async def _run_download(self, download):
+        await download.start(self.notifier)
+        self._post_download_cleanup(download)
+
+    def _post_download_cleanup(self, download):
+        if download.info.status != 'finished':
+            if download.tmpfilename and os.path.isfile(download.tmpfilename):
+                try:
+                    os.remove(download.tmpfilename)
+                except:
+                    pass
+            download.info.status = 'error'
+        download.close()
+        if self.queue.exists(download.info.url):
+            self.queue.delete(download.info.url)
+            if download.canceled:
+                asyncio.create_task(self.notifier.canceled(download.info.url))
+            else:
+                self.done.put(download)
+                asyncio.create_task(self.notifier.completed(download.info))
 
     def __extract_info(self, url):
         return yt_dlp.YoutubeDL(params={
@@ -303,24 +351,6 @@ class DownloadQueue:
         elif etype.startswith('url'):
             return await self.add(entry['url'], quality, format, folder, custom_name_prefix, auto_start, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
-
-    async def __start_download(self, download):
-        await download.start(self.notifier)
-        if download.info.status != 'finished':
-            if download.tmpfilename and os.path.isfile(download.tmpfilename):
-                try:
-                    os.remove(download.tmpfilename)
-                except:
-                    pass
-            download.info.status = 'error'
-        download.close()
-        if self.queue.exists(download.info.url):
-            self.queue.delete(download.info.url)
-            if download.canceled:
-                await self.notifier.canceled(download.info.url)
-            else:
-                self.done.put(download)
-                await self.notifier.completed(download.info)
 
     async def add(self, url, quality, format, folder, custom_name_prefix, auto_start=True, already=None):
         log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=}')
