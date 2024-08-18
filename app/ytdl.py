@@ -267,7 +267,9 @@ class DownloadQueue:
 
         etype = entry.get('_type') or 'video'
 
-        if etype == 'playlist':
+        if etype.startswith('url'):
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+        elif etype == 'playlist' or etype.startswith('url'):
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
@@ -310,8 +312,7 @@ class DownloadQueue:
                     self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                 await self.notifier.added(dl)
             return {'status': 'ok'}
-        elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
     async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
