@@ -212,19 +212,20 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix)
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, v.playlist_strict_mode, v.playlist_item_limit)
 
     async def initialize(self):
         self.event = asyncio.Event()
         asyncio.create_task(self.__download())
         asyncio.create_task(self.__import_queue())
 
-    def __extract_info(self, url):
+    def __extract_info(self, url, playlist_strict_mode):
         return yt_dlp.YoutubeDL(params={
             'quiet': True,
             'no_color': True,
             'extract_flat': True,
             'ignore_no_formats_error': True,
+            'noplaylist': playlist_strict_mode,
             'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
             **self.config.YTDL_OPTIONS,
         }).extract_info(url, download=False)
@@ -252,7 +253,7 @@ class DownloadQueue:
             dldirectory = base_directory
         return dldirectory, None
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, auto_start, already):
+    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -265,18 +266,22 @@ class DownloadQueue:
                 error = entry["msg"]
 
         etype = entry.get('_type') or 'video'
+
         if etype == 'playlist':
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
             results = []
+            if playlist_item_limit > 0:
+                log.info(f'Playlist item limit is set. Processing only first {playlist_item_limit} entries')
+                entries = entries[:playlist_item_limit]
             for index, etr in enumerate(entries, start=1):
                 etr["playlist"] = entry["id"]
                 etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, auto_start, already))
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -291,19 +296,26 @@ class DownloadQueue:
                 for property, value in entry.items():
                     if property.startswith("playlist"):
                         output = output.replace(f"%({property})s", str(value))
+
+                ytdl_options = dict(self.config.YTDL_OPTIONS)
+
+                if playlist_item_limit > 0:
+                    log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
+                    ytdl_options['playlistend'] = playlist_item_limit
+
                 if auto_start is True:
-                    self.queue.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
+                    self.queue.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                     self.event.set()
                 else:
-                    self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, self.config.YTDL_OPTIONS, dl))
+                    self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                 await self.notifier.added(dl)
             return {'status': 'ok'}
         elif etype.startswith('url'):
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, auto_start, already)
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, auto_start=True, already=None):
-        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=}')
+    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
+        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=}')
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -311,10 +323,10 @@ class DownloadQueue:
         else:
             already.add(url)
         try:
-            entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
+            entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url, playlist_strict_mode)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, auto_start, already)
+        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
 
     async def start_pending(self, ids):
         for id in ids:

@@ -17,6 +17,8 @@ export interface Download {
   format: string;
   folder: string;
   custom_name_prefix: string;
+  playlist_strict_mode: boolean;
+  playlist_item_limit: number;
   status: string;
   msg: string;
   percent: number;
@@ -37,6 +39,7 @@ export class DownloadsService {
   queueChanged = new Subject();
   doneChanged = new Subject();
   customDirsChanged = new Subject();
+  configurationChanged = new Subject();
 
   configuration = {};
   customDirs = {};
@@ -85,6 +88,7 @@ export class DownloadsService {
       let data = JSON.parse(strdata);
       console.debug("got configuration:", data);
       this.configuration = data;
+      this.configurationChanged.next(data);
     });
     socket.fromEvent('custom_dirs').subscribe((strdata: string) => {
       let data = JSON.parse(strdata);
@@ -99,8 +103,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, autoStart: boolean) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, auto_start: autoStart}).pipe(
+  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, playlistStrictMode: boolean, playlistItemLimit: number, autoStart: boolean) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, playlist_strict_mode: playlistStrictMode, playlist_item_limit: playlistItemLimit, auto_start: autoStart}).pipe(
       catchError(this.handleHTTPError)
     );
   }
