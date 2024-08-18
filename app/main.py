@@ -34,7 +34,7 @@ class Config:
         'PORT': '8081',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
-        'DOWNLOAD_MODE': 'sequential',  # Can be 'sequential', 'concurrent', or 'limited'
+        'DOWNLOAD_MODE': 'concurrent',  # Can be 'sequential', 'concurrent', or 'limited'
         'MAX_CONCURRENT_DOWNLOADS': 3,  # Used if DOWNLOAD_MODE is 'limited'
     }
 
