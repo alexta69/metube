@@ -268,8 +268,10 @@ class DownloadQueue:
         etype = entry.get('_type') or 'video'
 
         if etype.startswith('url'):
+            log.debug('Processing as an url')
             return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
-        elif etype == 'playlist' or etype.startswith('url'):
+        elif etype == 'playlist':
+            log.debug('Processing as a playlist')
             entries = entry['entries']
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
@@ -278,6 +280,7 @@ class DownloadQueue:
                 log.info(f'Playlist item limit is set. Processing only first {playlist_item_limit} entries')
                 entries = entries[:playlist_item_limit]
             for index, etr in enumerate(entries, start=1):
+                etr["_type"] = "video" # Prevents video to be treated as url and lose below properties during processing
                 etr["playlist"] = entry["id"]
                 etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
                 for property in ("id", "title", "uploader", "uploader_id"):
@@ -288,6 +291,7 @@ class DownloadQueue:
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
         elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
+            log.debug('Processing as a video')
             if not self.queue.exists(entry['id']):
                 dl = DownloadInfo(entry['id'], entry['title'], entry.get('webpage_url') or entry['url'], quality, format, folder, custom_name_prefix, error)
                 dldirectory, error_message = self.__calc_download_path(quality, format, folder)
@@ -295,9 +299,13 @@ class DownloadQueue:
                     return error_message
                 output = self.config.OUTPUT_TEMPLATE if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
                 output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
-                for property, value in entry.items():
-                    if property.startswith("playlist"):
-                        output = output.replace(f"%({property})s", str(value))
+                if 'playlist' in entry:
+                    if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
+                        output = self.config.OUTPUT_TEMPLATE_PLAYLIST
+
+                    for property, value in entry.items():
+                        if property.startswith("playlist"):
+                            output = output.replace(f"%({property})s", str(value))
 
                 ytdl_options = dict(self.config.YTDL_OPTIONS)
 
@@ -312,7 +320,6 @@ class DownloadQueue:
                     self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                 await self.notifier.added(dl)
             return {'status': 'ok'}
-
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
     async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
