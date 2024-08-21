@@ -299,7 +299,7 @@ class DownloadQueue:
                     return error_message
                 output = self.config.OUTPUT_TEMPLATE if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
                 output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
-                if 'playlist' in entry:
+                if 'playlist' in entry and entry['playlist'] is not None:
                     if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
                         output = self.config.OUTPUT_TEMPLATE_PLAYLIST
 
