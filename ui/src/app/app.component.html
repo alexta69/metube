@@ -94,24 +94,6 @@
                   <span class="input-group-text">Custom Name Prefix</span>
                   <input type="text" autocomplete="off" spellcheck="false" class="form-control" placeholder="Default" name="customNamePrefix" [(ngModel)]="customNamePrefix" [disabled]="addInProgress || downloads.loading">
                 </div>
-                <div class="add-url-component">
-                  <div class="row align-items-center">
-                    <div class="col-6">
-                      <div class="input-group ms-1">
-                      <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" name="playlistStrictMode" [(ngModel)]="playlistStrictMode" [disabled]="addInProgress || downloads.loading">
-                        <label class="form-check-label">Strict Playlist mode</label>
-                      </div>
-                    </div>
-                    </div>
-                    <div class="col-6">
-                      <div class="input-group">
-                        <span class="input-group-text">Items limit</span>
-                        <input type="number" min="0" autocomplete="off" class="form-control" placeholder="Default" name="playlistItemLimit" (keydown)="isNumber($event)" [(ngModel)]="playlistItemLimit" [disabled]="addInProgress || downloads.loading">
-                      </div>
-                    </div>
-                  </div>
-                </div>
               </div>
             </div>
           </div>
