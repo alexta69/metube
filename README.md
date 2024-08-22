@@ -18,7 +18,6 @@ docker run -d -p 8081:8081 -v /path/to/downloads:/downloads ghcr.io/alexta69/met
 ## Run using docker-compose
 
 ```yaml
-version: "3"
 services:
   metube:
     image: ghcr.io/alexta69/metube
