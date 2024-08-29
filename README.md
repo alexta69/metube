@@ -17,6 +17,8 @@ docker run -d -p 8081:8081 -v /path/to/downloads:/downloads ghcr.io/alexta69/met
 
 ## Run using docker-compose
 
+serve a http host:
+
 ```yaml
 services:
   metube:
@@ -27,6 +29,26 @@ services:
       - "8081:8081"
     volumes:
       - /path/to/downloads:/downloads
+```
+
+serve a https host:
+
+```yaml
+services:
+  metube:
+    image: ghcr.io/alexta69/metube
+    container_name: metube
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - /path/to/downloads:/downloads
+      - /path/to/ssl/crt:/ssl/crt.pem
+      - /path/to/ssl/key:/ssl/key.pem
+    environment:
+      - HTTPS=true
+      - CERTFILE=/ssl/crt.pem
+      - KEYFILE=/ssl/key.pem
 ```
 
 ## Configuration via environment variables
@@ -49,6 +71,9 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 * __PUBLIC_HOST_URL__: base URL for the download links shown in the UI for completed files. By default MeTube serves them under its own URL. If your download directory is accessible on another URL and you want the download links to be based there, use this variable to set it.
+* __HTTPS__: use `https` instead of `http`(__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
+* __CERTFILE__: HTTPS certificate file path. Defaults to ` `.
+* __KEYFILE__: HTTPS key file path. Defaults to ` `.
 * __PUBLIC_HOST_AUDIO_URL__: same as PUBLIC_HOST_URL but for audio downloads.
 * __OUTPUT_TEMPLATE__: the template for the filenames of the downloaded videos, formatted according to [this spec](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
 * __OUTPUT_TEMPLATE_CHAPTER__: the template for the filenames of the downloaded videos, when split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.

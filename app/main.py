@@ -4,6 +4,7 @@
 import os
 import sys
 from aiohttp import web
+import ssl
 import socket
 import socketio
 import logging
@@ -36,6 +37,9 @@ class Config:
         'YTDL_OPTIONS_FILE': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
+        'HTTPS': 'false',
+        'CERTFILE': '',
+        'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto'
     }
@@ -260,4 +264,10 @@ def supports_reuse_port():
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port())
+
+    if config.HTTPS:
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(certfile=config.CERTFILE, keyfile=config.KEYFILE)
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context)
+    else:
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port())
