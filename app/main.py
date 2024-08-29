@@ -4,6 +4,7 @@
 import os
 import sys
 from aiohttp import web
+import socket
 import socketio
 import logging
 import json
@@ -247,8 +248,16 @@ async def on_prepare(request, response):
 
 app.on_response_prepare.append(on_prepare)
 
+def supports_reuse_port():
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        sock.close()
+        return True
+    except (AttributeError, OSError):
+        return False
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
+    web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port())
