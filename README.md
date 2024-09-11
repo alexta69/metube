@@ -242,6 +242,10 @@ cd /downloads
 
 Once there, you can use the yt-dlp command freely.
 
+## Submitting feature requests
+
+MeTube development relies on code contributions by the community. The program as it currently stands fits my own use cases, and is therefore feature-complete as far as I'm concerned. If your use cases are different and require additional features, please feel free to submit PRs that implement those features. It's advisable to create an issue first to discuss the planned implementation, because in an effort to reduce bloat, some PRs may not be accepted. However, note that opening a feature request when you don't intend to implement the feature will rarely result in the request being fulfilled.
+
 ## Building and running locally
 
 Make sure you have node.js and Python 3.11 installed.
