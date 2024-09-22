@@ -35,6 +35,7 @@ class Config:
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
+        'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
         'HTTPS': 'false',
@@ -216,6 +217,16 @@ def index(request):
     response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/index.html'))
     if 'metube_theme' not in request.cookies:
         response.set_cookie('metube_theme', config.DEFAULT_THEME)
+    return response
+
+@routes.get(config.URL_PREFIX + 'robots.txt')
+def robots(request):
+    if config.ROBOTS_TXT:
+        response = web.FileResponse(os.path.join(config.BASE_DIR, config.ROBOTS_TXT))
+    else:
+        response = web.Response(
+            text="User-agent: *\nDisallow: /download/\nDisallow: /audio_download/\n"
+        )
     return response
 
 if config.URL_PREFIX != '/':
