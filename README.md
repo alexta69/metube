@@ -18,7 +18,6 @@ docker run -d -p 8081:8081 -v /path/to/downloads:/downloads ghcr.io/alexta69/met
 ## Run using docker-compose
 
 ```yaml
-version: "3"
 services:
   metube:
     image: ghcr.io/alexta69/metube
@@ -50,11 +49,18 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
 * __URL_PREFIX__: base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 * __PUBLIC_HOST_URL__: base URL for the download links shown in the UI for completed files. By default MeTube serves them under its own URL. If your download directory is accessible on another URL and you want the download links to be based there, use this variable to set it.
+* __HTTPS__: use `https` instead of `http`(__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
+* __CERTFILE__: HTTPS certificate file path.
+* __KEYFILE__: HTTPS key file path.
 * __PUBLIC_HOST_AUDIO_URL__: same as PUBLIC_HOST_URL but for audio downloads.
 * __OUTPUT_TEMPLATE__: the template for the filenames of the downloaded videos, formatted according to [this spec](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
 * __OUTPUT_TEMPLATE_CHAPTER__: the template for the filenames of the downloaded videos, when split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
+* __OUTPUT_TEMPLATE_PLAYLIST__: the template for the filenames of the downloaded videos, when downloaded as a playlist. Defaults to `%(playlist_title)s/%(title)s.%(ext)s`. When empty then `OUTPUT_TEMPLATE` is used.
+* __DEFAULT_OPTION_PLAYLIST_STRICT_MODE__: if `true`, the "Strict Playlist mode" switch will be enabled by default. In this mode the playlists will be downloaded only if the url strictly points to a playlist. Urls to videos inside a playlist will be treated same as direct video url. Defaults to `false` .
+* __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum numer of playlist items that can be downloaded. Defaults to `0` (no limit).
 * __YTDL_OPTIONS__: Additional options to pass to youtube-dl, in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L183). They roughly correspond to command-line options, though some do not have exact equivalents here, for example `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence.
+* __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container
 
 The following example value for `YTDL_OPTIONS` embeds English subtitles and chapter markers (for videos that have them), and also changes the permissions on the downloaded video and sets the file modification timestamp to the date of when it was downloaded:
 
@@ -112,7 +118,7 @@ iOS has strict requirements for video files, requiring h264 or h265 video codec 
 
 ## Bookmarklet
 
-[kushfest](https://github.com/kushfest) has created a Chrome bookmarklet for sending the currently open webpage to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for the bookmarklet to work.
+[kushfest](https://github.com/kushfest) has created a Chrome bookmarklet for sending the currently open webpage to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be configured with `HTTPS` as `true` in the environment, or be behind an HTTPS reverse proxy (see below) for the bookmarklet to work.
 
 GitHub doesn't allow embedding JavaScript as a link, so the bookmarklet has to be created manually by copying the following code to a new bookmark you create on your bookmarks bar. Change the hostname in the URL below to point to your MeTube instance.
 
@@ -140,9 +146,33 @@ Firefox:
 javascript:(function(){function notify(msg) {var sc = document.scrollingElement.scrollTop; var text = document.createElement('span');text.innerHTML=msg;var ts = text.style;ts.all = 'revert';ts.color = '#000';ts.fontFamily = 'Verdana, sans-serif';ts.fontSize = '15px';ts.backgroundColor = 'white';ts.padding = '15px';ts.border = '1px solid gainsboro';ts.boxShadow = '3px 3px 10px';ts.zIndex = '100';document.body.appendChild(text);ts.position = 'absolute'; ts.top = 50 + sc + 'px'; ts.left = (window.innerWidth / 2)-(text.offsetWidth / 2) + 'px'; setTimeout(function () { text.style.visibility = "hidden"; }, 1500);}xhr=new XMLHttpRequest();xhr.open("POST","https://metube.domain.com/add");xhr.send(JSON.stringify({"url":document.location.href,"quality":"best"}));xhr.onload=function() { if(xhr.status==200){notify("Sent to metube!")}else {notify("Send to metube failed. Check the javascript console for clues.")}}})();
 ```
 
-## Running behind a reverse proxy
+## Raycast extension
 
-It's advisable to run MeTube behind a reverse proxy, if authentication and/or HTTPS support are required.
+[dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) that allows adding videos to MeTube directly from Raycast.
+
+## HTTPS support, and running behind a reverse proxy
+
+It's possible to configure MeTube to listen in HTTPS mode. `docker-compose` example:
+
+```yaml
+services:
+  metube:
+    image: ghcr.io/alexta69/metube
+    container_name: metube
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      - /path/to/downloads:/downloads
+      - /path/to/ssl/crt:/ssl/crt.pem
+      - /path/to/ssl/key:/ssl/key.pem
+    environment:
+      - HTTPS=true
+      - CERTFILE=/ssl/crt.pem
+      - KEYFILE=/ssl/key.pem
+```
+
+It's also possible to run MeTube behind a reverse proxy, in order to support authentication. HTTPS support can also be added in this way.
 
 When running behind a reverse proxy which remaps the URL (i.e. serves MeTube under a subdirectory and not under root), don't forget to set the URL_PREFIX environment variable to the correct value.
 
@@ -216,6 +246,10 @@ cd /downloads
 ```
 
 Once there, you can use the yt-dlp command freely.
+
+## Submitting feature requests
+
+MeTube development relies on code contributions by the community. The program as it currently stands fits my own use cases, and is therefore feature-complete as far as I'm concerned. If your use cases are different and require additional features, please feel free to submit PRs that implement those features. It's advisable to create an issue first to discuss the planned implementation, because in an effort to reduce bloat, some PRs may not be accepted. However, note that opening a feature request when you don't intend to implement the feature will rarely result in the request being fulfilled.
 
 ## Building and running locally
 
