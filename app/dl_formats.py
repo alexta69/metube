@@ -73,7 +73,7 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
         postprocessors.append(
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": format,
+                "preferredcodec": "flac" if format == "m4a" else format,
                 "preferredquality": 0 if quality == "best" else quality,
             }
         )

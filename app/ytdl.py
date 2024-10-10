@@ -1,14 +1,17 @@
-import os
-import yt_dlp
-from collections import OrderedDict
-import shelve
-import time
 import asyncio
-import multiprocessing
 import logging
+import multiprocessing
+import os
 import re
-from dl_formats import get_format, get_opts, AUDIO_FORMATS
+import shelve
+import subprocess
+import time
+from collections import OrderedDict
 from datetime import datetime
+
+import yt_dlp
+
+from dl_formats import get_format, get_opts, AUDIO_FORMATS
 
 log = logging.getLogger('ytdl')
 
@@ -76,6 +79,7 @@ class Download:
                     'speed',
                     'eta',
                 )})
+
             def put_status_postprocessor(d):
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
                     if '__finaldir' in d['info_dict']:
@@ -83,10 +87,10 @@ class Download:
                     else:
                         filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
+
             ret = yt_dlp.YoutubeDL(params={
                 'quiet': True,
                 'no_color': True,
-                #'skip_download': True,
                 'paths': {"home": self.download_dir, "temp": self.temp_dir},
                 'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
@@ -96,9 +100,30 @@ class Download:
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }).download([self.info.url])
+
+            # 如果是m4a格式的 需要使用ffmpeg将flac转为aac格式
+            if self.info.format == "m4a":
+                # 获取下载的文件路径
+                downloaded_file = os.path.join(self.download_dir, self.info.title + '.flac')
+                output_file = os.path.join(self.download_dir, self.info.title + '.m4a')
+
+                # 使用ffmpeg进行转换
+                ffmpeg_cmd = ['ffmpeg', '-i', downloaded_file, '-acodec', 'alac', '-vcodec', 'copy', output_file]
+                subprocess.run(ffmpeg_cmd, check=True)
+
+                # 删除原始的 FLAC 文件
+                if os.path.exists(downloaded_file):
+                    os.remove(downloaded_file)
+
+                # 更新队列中的状态，表明已完成转换
+                self.status_queue.put({'status': 'finished', 'filename': output_file})
+
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+
         except yt_dlp.utils.YoutubeDLError as exc:
             self.status_queue.put({'status': 'error', 'msg': str(exc)})
+        except subprocess.CalledProcessError as exc:
+            self.status_queue.put({'status': 'error', 'msg': f"ffmpeg error: {str(exc)}"})
 
     async def start(self, notifier):
         if Download.manager is None:
@@ -212,7 +237,7 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, v.playlist_strict_mode, v.playlist_item_limit)
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, True, 0)
 
     async def initialize(self):
         self.event = asyncio.Event()
