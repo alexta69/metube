@@ -57,7 +57,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __OUTPUT_TEMPLATE_CHAPTER__: the template for the filenames of the downloaded videos, when split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
 * __OUTPUT_TEMPLATE_PLAYLIST__: the template for the filenames of the downloaded videos, when downloaded as a playlist. Defaults to `%(playlist_title)s/%(title)s.%(ext)s`. When empty then `OUTPUT_TEMPLATE` is used.
 * __DEFAULT_OPTION_PLAYLIST_STRICT_MODE__: if `true`, the "Strict Playlist mode" switch will be enabled by default. In this mode the playlists will be downloaded only if the url strictly points to a playlist. Urls to videos inside a playlist will be treated same as direct video url. Defaults to `false` .
-* __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum numer of playlist items that can be downloaded. Defaults to `0` (no limit).
+* __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
 * __YTDL_OPTIONS__: Additional options to pass to youtube-dl, in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L183). They roughly correspond to command-line options, though some do not have exact equivalents here, for example `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence.
 * __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container
