@@ -261,8 +261,10 @@ MeTube development relies on code contributions by the community. The program as
 ## Building and running locally
 
 Make sure you have node.js and Python 3.11 installed.
+- On systems with system-python packages (like Ubuntu), it is recommended that you use pyenv to manage python: https://github.com/pyenv/pyenv
 
 ```bash
+git clone https://github.com/alexta69/metube
 cd metube/ui
 # install Angular and build the UI
 npm install
@@ -272,7 +274,7 @@ cd ..
 pip3 install pipenv
 pipenv install
 # run
-pipenv run python3 app/main.py
+HOST=0.0.0.0 PORT=8081 pipenv run python3 app/main.py
 ```
 
 A Docker image can be built locally (it will build the UI too):
