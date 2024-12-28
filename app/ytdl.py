@@ -8,7 +8,6 @@ import multiprocessing
 import logging
 import re
 
-import yt_dlp.networking
 import yt_dlp.networking.impersonate
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
