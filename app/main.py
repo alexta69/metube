@@ -165,12 +165,14 @@ async def start(request):
 
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):
-    history = { 'done': [], 'queue': []}
+    history = { 'done': [], 'queue': [], 'pending': []}
 
     for _ ,v in dqueue.queue.saved_items():
         history['queue'].append(v)
     for _ ,v in dqueue.done.saved_items():
         history['done'].append(v)
+    for _ ,v in dqueue.pending.saved_items():
+        history['pending'].append(v)
 
     return web.Response(text=serializer.encode(history))
 
