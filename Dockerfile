@@ -16,7 +16,7 @@ COPY Pipfile* docker-entrypoint.sh ./
 # Install dependencies
 RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
     chmod +x docker-entrypoint.sh && \
-    apk add --update ffmpeg aria2 coreutils shadow su-exec curl && \
+    apk add --update ffmpeg aria2 coreutils shadow su-exec curl tini && \
     apk add --update --virtual .build-deps gcc g++ musl-dev && \
     pip install --no-cache-dir pipenv && \
     pipenv install --system --deploy --clear && \
@@ -37,4 +37,4 @@ ENV STATE_DIR /downloads/.metube
 ENV TEMP_DIR /downloads
 VOLUME /downloads
 EXPOSE 8081
-CMD [ "./docker-entrypoint.sh" ]
+ENTRYPOINT ["/sbin/tini", "-g", "--", "./docker-entrypoint.sh"]
