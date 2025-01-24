@@ -12,6 +12,7 @@ import json
 import pathlib
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
+from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
 
@@ -230,6 +231,10 @@ def robots(request):
             text="User-agent: *\nDisallow: /download/\nDisallow: /audio_download/\n"
         )
     return response
+
+@routes.get(config.URL_PREFIX + 'version')
+def version(request):
+    return web.json_response({"version": yt_dlp_version})
 
 if config.URL_PREFIX != '/':
     @routes.get('/')

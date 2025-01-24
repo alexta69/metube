@@ -1,4 +1,5 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
@@ -30,6 +31,7 @@ export class AppComponent implements AfterViewInit {
   themes: Theme[] = Themes;
   activeTheme: Theme;
   customDirs$: Observable<string[]>;
+  versionInfo: string | null = null;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -51,7 +53,7 @@ export class AppComponent implements AfterViewInit {
   faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
 
-  constructor(public downloads: DownloadsService, private cookieService: CookieService) {
+  constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
@@ -90,6 +92,7 @@ export class AppComponent implements AfterViewInit {
       this.doneClearFailed.nativeElement.disabled = failed === 0;
       this.doneRetryFailed.nativeElement.disabled = failed === 0;
     });
+    this.fetchVersionInfo();
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
@@ -276,5 +279,19 @@ export class AppComponent implements AfterViewInit {
     if (charCode > 31 && (charCode < 48 || charCode > 57)) {
       event.preventDefault();
     }
+  }
+
+  fetchVersionInfo(): void {
+    const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
+    const versionUrl = `${baseUrl}version`;
+    this.http.get<{ version: string}>(versionUrl)
+      .subscribe({
+        next: (data) => {
+          this.versionInfo = `yt-dlp version: ${data.version}`;
+        },
+        error: () => {
+          this.versionInfo = '';
+        }
+      });
   }
 }
