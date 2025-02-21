@@ -35,7 +35,7 @@ def get_format(format: str, quality: str) -> str:
             return "bestaudio/best"
         # video {res} {vfmt} + audio {afmt} {res} {vfmt}
         vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format == "mp4" else ("", "")
-        vres = f"[height<={quality}]" if quality not in ("best", "best_ios") else ""
+        vres = f"[height<={quality}]" if quality not in ("best", "best_ios", "worst") else ""
         vcombo = vres + vfmt
 
         if quality == "best_ios":

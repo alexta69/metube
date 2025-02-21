@@ -118,6 +118,12 @@ export class DownloadsService {
     return this.http.post('delete', {where: where, ids: ids});
   }
 
+  public startByFilter(where: string, filter: (dl: Download) => boolean) {
+    let ids: string[] = [];
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
+    return this.startById(ids);
+  }
+
   public delByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
     this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });

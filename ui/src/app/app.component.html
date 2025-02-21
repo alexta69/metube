@@ -126,6 +126,7 @@
   <div class="metube-section-header">Downloading</div>
   <div class="px-2 py-3 border-bottom">
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Cancel selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload"></fa-icon>&nbsp; Download selected</button>
   </div>
   <div class="overflow-auto">
     <table class="table">
@@ -171,6 +172,7 @@
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle"></fa-icon>&nbsp; Clear completed</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearFailed (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle"></fa-icon>&nbsp; Clear failed</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneRetryFailed (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt"></fa-icon>&nbsp; Retry failed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDownloadSelected (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload"></fa-icon>&nbsp; Download Selected</button>
   </div>
   <div class="overflow-auto">
     <table class="table">
