@@ -4,6 +4,8 @@
 import os
 import sys
 from aiohttp import web
+import ssl
+import socket
 import socketio
 import logging
 import json
@@ -28,17 +30,24 @@ class Config:
         'PUBLIC_HOST_AUDIO_URL': 'audio_download/',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
+        'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
+        'DEFAULT_OPTION_PLAYLIST_STRICT_MODE' : 'false',
+        'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
+        'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
+        'HTTPS': 'false',
+        'CERTFILE': '',
+        'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
         'DOWNLOAD_MODE': 'concurrent',  # Can be 'sequential', 'concurrent', or 'limited'
         'MAX_CONCURRENT_DOWNLOADS': 3,  # Used if DOWNLOAD_MODE is 'limited'
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -129,13 +138,22 @@ async def add(request):
     format = post.get('format')
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
+    playlist_strict_mode = post.get('playlist_strict_mode')
+    playlist_item_limit = post.get('playlist_item_limit')
     auto_start = post.get('auto_start')
+
     if custom_name_prefix is None:
         custom_name_prefix = ''
     if auto_start is None:
         auto_start = True
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, auto_start)
-    log.info(f"Download added to queue: {url}")
+    if playlist_strict_mode is None:
+        playlist_strict_mode = config.DEFAULT_OPTION_PLAYLIST_STRICT_MODE
+    if playlist_item_limit is None:
+        playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
+
+    playlist_item_limit = int(playlist_item_limit)
+
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')
@@ -160,12 +178,14 @@ async def start(request):
 
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):
-    history = { 'done': [], 'queue': []}
+    history = { 'done': [], 'queue': [], 'pending': []}
 
     for _, v in dqueue.queue.saved_items():
         history['queue'].append(v)
     for _, v in dqueue.done.saved_items():
         history['done'].append(v)
+    for _ ,v in dqueue.pending.saved_items():
+        history['pending'].append(v)
 
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
@@ -216,6 +236,16 @@ def index(request):
         response.set_cookie('metube_theme', config.DEFAULT_THEME)
     return response
 
+@routes.get(config.URL_PREFIX + 'robots.txt')
+def robots(request):
+    if config.ROBOTS_TXT:
+        response = web.FileResponse(os.path.join(config.BASE_DIR, config.ROBOTS_TXT))
+    else:
+        response = web.Response(
+            text="User-agent: *\nDisallow: /download/\nDisallow: /audio_download/\n"
+        )
+    return response
+
 if config.URL_PREFIX != '/':
     @routes.get('/')
     def index_redirect_root(request):
@@ -248,15 +278,23 @@ async def on_prepare(request, response):
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
 
 app.on_response_prepare.append(on_prepare)
+ 
+def supports_reuse_port():
+    try:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        sock.close()
+        return True
+    except (AttributeError, OSError):
+        return False
 
 if __name__ == '__main__':
     logging.basicConfig(level=logging.DEBUG)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
-    try:
-        if sys.platform.startswith('win'):
-            web.run_app(app, host=config.HOST, port=int(config.PORT))
-        else:
-            web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=True)
-    except Exception as e:
-        log.error(f"Failed to start the server: {str(e)}")
-        sys.exit(1)
+
+    if config.HTTPS:
+        ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
+        ssl_context.load_cert_chain(certfile=config.CERTFILE, keyfile=config.KEYFILE)
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context)
+    else:
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port())

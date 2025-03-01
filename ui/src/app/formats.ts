@@ -15,10 +15,12 @@ export const Formats: Format[] = [
     text: 'Any',
     qualities: [
       { id: 'best', text: 'Best' },
+      { id: '2160', text: '2160p' },
       { id: '1440', text: '1440p' },
       { id: '1080', text: '1080p' },
       { id: '720', text: '720p' },
       { id: '480', text: '480p' },
+      { id: 'worst', text: 'Worst' },
       { id: 'audio', text: 'Audio Only' },
     ],
   },
@@ -28,10 +30,12 @@ export const Formats: Format[] = [
     qualities: [
       { id: 'best', text: 'Best' },
       { id: 'best_ios', text: 'Best (iOS)' },
+      { id: '2160', text: '2160p' },
       { id: '1440', text: '1440p' },
       { id: '1080', text: '1080p' },
       { id: '720', text: '720p' },
       { id: '480', text: '480p' },
+      { id: 'worst', text: 'Worst' },
     ],
   },
   {
