@@ -122,14 +122,20 @@ class Download:
     def cancel(self):
         log.info(f"Cancelling download: {self.info.title}")
         if self.running():
-            self.proc.kill()
+            try:
+                self.proc.kill()
+            except Exception as e:
+                log.error(f"Error killing process for {self.info.title}: {e}")
         self.canceled = True
+        if self.status_queue is not None:
+            self.status_queue.put(None)
 
     def close(self):
         log.info(f"Closing download process for: {self.info.title}")
         if self.started():
             self.proc.close()
-            self.status_queue.put(None)
+            if self.status_queue is not None:
+                self.status_queue.put(None)
 
     def running(self):
         try:
@@ -146,12 +152,14 @@ class Download:
             if status is None:
                 log.info(f"Status update finished for: {self.info.title}")
                 return
+            if self.canceled:
+                log.info(f"Download {self.info.title} is canceled; stopping status updates.")
+                return
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
                 fileName = status.get('filename')
                 self.info.filename = os.path.relpath(fileName, self.download_dir)
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
-
                 if self.info.format == 'thumbnail':
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
             self.info.status = status['status']
@@ -199,9 +207,10 @@ class PersistentQueue:
             shelf[key] = value.info
 
     def delete(self, key):
-        del self.dict[key]
-        with shelve.open(self.path, 'w') as shelf:
-            shelf.pop(key)
+        if key in self.dict:
+            del self.dict[key]
+            with shelve.open(self.path, 'w') as shelf:
+                shelf.pop(key, None)
 
     def next(self):
         k, v = next(iter(self.dict.items()))
@@ -219,8 +228,10 @@ class DownloadQueue:
         self.pending = PersistentQueue(self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
         self.semaphore = None
-
-        if self.config.DOWNLOAD_MODE == 'limited':
+        # For sequential mode, use an asyncio lock to ensure one-at-a-time execution.
+        if self.config.DOWNLOAD_MODE == 'sequential':
+            self.seq_lock = asyncio.Lock()
+        elif self.config.DOWNLOAD_MODE == 'limited':
             self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_DOWNLOADS)
         
         self.done.load()
@@ -234,17 +245,18 @@ class DownloadQueue:
         asyncio.create_task(self.__import_queue())
 
     async def __start_download(self, download):
+        if download.canceled:
+            log.info(f"Download {download.info.title} was canceled, skipping start.")
+            return
         if self.config.DOWNLOAD_MODE == 'sequential':
-            await self.__sequential_download(download)
+            async with self.seq_lock:
+                log.info("Starting sequential download.")
+                await download.start(self.notifier)
+                self._post_download_cleanup(download)
         elif self.config.DOWNLOAD_MODE == 'limited' and self.semaphore is not None:
             await self.__limited_concurrent_download(download)
-        else:  # concurrent without limit
+        else:
             await self.__concurrent_download(download)
-
-    async def __sequential_download(self, download):
-        log.info("Starting sequential download.")
-        await download.start(self.notifier)
-        self._post_download_cleanup(download)
 
     async def __concurrent_download(self, download):
         log.info("Starting concurrent download without limits.")
@@ -256,6 +268,9 @@ class DownloadQueue:
             await self._run_download(download)
 
     async def _run_download(self, download):
+        if download.canceled:
+            log.info(f"Download {download.info.title} is canceled; skipping start.")
+            return
         await download.start(self.notifier)
         self._post_download_cleanup(download)
 
@@ -332,7 +347,7 @@ class DownloadQueue:
                 log.info(f'Playlist item limit is set. Processing only first {playlist_item_limit} entries')
                 entries = entries[:playlist_item_limit]
             for index, etr in enumerate(entries, start=1):
-                etr["_type"] = "video" # Prevents video to be treated as url and lose below properties during processing
+                etr["_type"] = "video"
                 etr["playlist"] = entry["id"]
                 etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
                 for property in ("id", "title", "uploader", "uploader_id"):
@@ -342,10 +357,11 @@ class DownloadQueue:
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
-        elif etype == 'video' or etype.startswith('url') and 'id' in entry and 'title' in entry:
+        elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
             log.debug('Processing as a video')
-            if not self.queue.exists(entry['id']):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], entry.get('webpage_url') or entry['url'], quality, format, folder, custom_name_prefix, error)
+            key = entry.get('webpage_url') or entry['url']
+            if not self.queue.exists(key):
+                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error)
                 dldirectory, error_message = self.__calc_download_path(quality, format, folder)
                 if error_message is not None:
                     return error_message
@@ -354,21 +370,20 @@ class DownloadQueue:
                 if 'playlist' in entry and entry['playlist'] is not None:
                     if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
                         output = self.config.OUTPUT_TEMPLATE_PLAYLIST
-
                     for property, value in entry.items():
                         if property.startswith("playlist"):
                             output = output.replace(f"%({property})s", str(value))
-
                 ytdl_options = dict(self.config.YTDL_OPTIONS)
-
                 if playlist_item_limit > 0:
                     log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
                     ytdl_options['playlistend'] = playlist_item_limit
-
                 if auto_start is True:
                     download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl)
                     self.queue.put(download)
-                    asyncio.create_task(self.__start_download(download))
+                    if self.config.DOWNLOAD_MODE == 'sequential':
+                        asyncio.create_task(self.__start_download(download))
+                    else:
+                        asyncio.create_task(self.__start_download(download))
                 else:
                     self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                 await self.notifier.added(dl)

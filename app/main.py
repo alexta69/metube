@@ -43,7 +43,7 @@ class Config:
         'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
-        'DOWNLOAD_MODE': 'concurrent',  # Can be 'sequential', 'concurrent', or 'limited'
+        'DOWNLOAD_MODE': 'limited',  # Can be 'sequential', 'concurrent', or 'limited'
         'MAX_CONCURRENT_DOWNLOADS': 3,  # Used if DOWNLOAD_MODE is 'limited'
     }
 

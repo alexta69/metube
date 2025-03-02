@@ -1,10 +1,10 @@
 version: "3"
 services:
   metube:
-    image: ghcr.io/alexta69/metube
-    container_name: metube
+    image: notataco/metube:latest
+    container_name: metube-notataco
     restart: unless-stopped
     ports:
       - "8081:8081"
     volumes:
-      - c:/Users/Roger/Downloads:/downloads
+      - C:/Users/ilike/Downloads:/downloads
