@@ -61,8 +61,12 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __YTDL_OPTIONS__: Additional options to pass to youtube-dl, in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L183). They roughly correspond to command-line options, though some do not have exact equivalents here, for example `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence.
 * __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container
-
-The following example value for `YTDL_OPTIONS` embeds English subtitles and chapter markers (for videos that have them), and also changes the permissions on the downloaded video and sets the file modification timestamp to the date of when it was downloaded:
+* __DOWNLOAD_MODE__ :This flag controls how downloads are scheduled and executed. There are three possible values:
+    *   **sequential**: Downloads are processed one at a time. A new download won’t start until the previous one has finished. This mode is useful for conserving system resources or ensuring downloads occur in a strict order.
+    *   **concurrent**: Downloads are started immediately as they are added, with no built-in limit on how many run simultaneously. This mode may overwhelm your system if too many downloads start at once.
+    *   **limited**: Downloads are started concurrently but are capped by a concurrency limit. In this mode, a semaphore is used so that at most a fixed number of downloads run at any given time.
+*   **MAX\_CONCURRENT\_DOWNLOADS**  
+    This flag is used only when **DOWNLOAD\_MODE** is set to **limited**. It specifies the maximum number of simultaneous downloads allowed. For example, if set to `3`, then at most three downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes.
 
 ```yaml
     environment:

@@ -119,6 +119,49 @@
       </div>
     </div>
   </form>
+  <div class="d-flex justify-content-end align-items-center my-3">
+    <!-- Batch Import Button (opens modal) -->
+    <button class="btn btn-secondary me-2" (click)="openBatchImportModal()">
+      Batch Import
+    </button>
+    <!-- Batch Export All -->
+    <button class="btn btn-secondary me-2" (click)="exportBatchUrls('all')">
+      Batch Export All
+    </button>
+    <!-- Batch Copy All -->
+    <button class="btn btn-secondary me-2" (click)="copyBatchUrls('all')">
+      Batch Copy All
+    </button>
+  </div>
+  
+  <!-- Batch Import Modal -->
+  <div class="modal fade" tabindex="-1" role="dialog" [ngClass]="{'show': batchImportModalOpen}" [ngStyle]="{'display': batchImportModalOpen ? 'block' : 'none'}">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Batch Import URLs</h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeBatchImportModal()"></button>
+        </div>
+        <div class="modal-body">
+          <textarea [(ngModel)]="batchImportText" class="form-control" rows="6"
+            placeholder="Paste one video URL per line"></textarea>
+          <div class="mt-2">
+            <small *ngIf="batchImportStatus">{{ batchImportStatus }}</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-danger me-auto" *ngIf="importInProgress" (click)="cancelBatchImport()">
+            Cancel Import
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
+          <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
+            Import URLs
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
 
   <div *ngIf="downloads.loading" class="alert alert-info" role="alert">
     Connecting to server...

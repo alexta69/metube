@@ -30,6 +30,12 @@ export class AppComponent implements AfterViewInit {
   themes: Theme[] = Themes;
   activeTheme: Theme;
   customDirs$: Observable<string[]>;
+  showBatchPanel: boolean = false; 
+  batchImportModalOpen = false;
+  batchImportText = '';
+  batchImportStatus = '';
+  importInProgress = false;
+  cancelImportFlag = false;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -293,4 +299,133 @@ export class AppComponent implements AfterViewInit {
       event.preventDefault();
     }
   }
+
+  // Toggle inline batch panel (if you want to use an inline panel for export; not used for import modal)
+  toggleBatchPanel(): void {
+    this.showBatchPanel = !this.showBatchPanel;
+  }
+
+  // Open the Batch Import modal
+  openBatchImportModal(): void {
+    this.batchImportModalOpen = true;
+    this.batchImportText = '';
+    this.batchImportStatus = '';
+    this.importInProgress = false;
+    this.cancelImportFlag = false;
+  }
+
+  // Close the Batch Import modal
+  closeBatchImportModal(): void {
+    this.batchImportModalOpen = false;
+  }
+
+  // Start importing URLs from the batch modal textarea
+  startBatchImport(): void {
+    const urls = this.batchImportText
+      .split(/\r?\n/)
+      .map(url => url.trim())
+      .filter(url => url.length > 0);
+    if (urls.length === 0) {
+      alert('No valid URLs found.');
+      return;
+    }
+    this.importInProgress = true;
+    this.cancelImportFlag = false;
+    this.batchImportStatus = `Starting to import ${urls.length} URLs...`;
+    let index = 0;
+    const delayBetween = 1000;
+    const processNext = () => {
+      if (this.cancelImportFlag) {
+        this.batchImportStatus = `Import cancelled after ${index} of ${urls.length} URLs.`;
+        this.importInProgress = false;
+        return;
+      }
+      if (index >= urls.length) {
+        this.batchImportStatus = `Finished importing ${urls.length} URLs.`;
+        this.importInProgress = false;
+        return;
+      }
+      const url = urls[index];
+      this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
+      this.downloads.addDownloadByUrl(url)
+        .then(() => {
+          index++;
+          setTimeout(processNext, delayBetween);
+        })
+        .catch(err => {
+          console.error(`Error importing URL ${url}:`, err);
+          index++;
+          setTimeout(processNext, delayBetween);
+        });
+    };
+    processNext();
+  }
+
+  // Cancel the batch import process
+  cancelBatchImport(): void {
+    if (this.importInProgress) {
+      this.cancelImportFlag = true;
+      this.batchImportStatus += ' Cancelling...';
+    }
+  }
+
+// Export URLs based on filter: 'pending', 'completed', 'failed', or 'all'
+exportBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
+  let urls: string[];
+  if (filter === 'pending') {
+    urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
+  } else if (filter === 'completed') {
+    // Only finished downloads in the "done" Map
+    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
+  } else if (filter === 'failed') {
+    // Only error downloads from the "done" Map
+    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
+  } else {
+    // All: pending + both finished and error in done
+    urls = [
+      ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
+      ...Array.from(this.downloads.done.values()).map(dl => dl.url)
+    ];
+  }
+  if (!urls.length) {
+    alert('No URLs found for the selected filter.');
+    return;
+  }
+  const content = urls.join('\n');
+  const blob = new Blob([content], { type: 'text/plain' });
+  const downloadUrl = window.URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = downloadUrl;
+  a.download = 'metube_urls.txt';
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  window.URL.revokeObjectURL(downloadUrl);
+}
+
+// Copy URLs to clipboard based on filter: 'pending', 'completed', 'failed', or 'all'
+copyBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
+  let urls: string[];
+  if (filter === 'pending') {
+    urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
+  } else if (filter === 'completed') {
+    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
+  } else if (filter === 'failed') {
+    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
+  } else {
+    urls = [
+      ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
+      ...Array.from(this.downloads.done.values()).map(dl => dl.url)
+    ];
+  }
+  if (!urls.length) {
+    alert('No URLs found for the selected filter.');
+    return;
+  }
+  const content = urls.join('\n');
+  navigator.clipboard.writeText(content)
+    .then(() => alert('URLs copied to clipboard.'))
+    .catch(() => alert('Failed to copy URLs.'));
+}
+
 }
