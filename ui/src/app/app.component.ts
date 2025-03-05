@@ -1,4 +1,5 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
@@ -36,6 +37,7 @@ export class AppComponent implements AfterViewInit {
   batchImportStatus = '';
   importInProgress = false;
   cancelImportFlag = false;
+  versionInfo: string | null = null;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -58,7 +60,7 @@ export class AppComponent implements AfterViewInit {
   faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
 
-  constructor(public downloads: DownloadsService, private cookieService: CookieService) {
+  constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
@@ -97,6 +99,7 @@ export class AppComponent implements AfterViewInit {
       this.doneClearFailed.nativeElement.disabled = failed === 0;
       this.doneRetryFailed.nativeElement.disabled = failed === 0;
     });
+    this.fetchVersionInfo();
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
@@ -369,63 +372,76 @@ export class AppComponent implements AfterViewInit {
     }
   }
 
-// Export URLs based on filter: 'pending', 'completed', 'failed', or 'all'
-exportBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
-  let urls: string[];
-  if (filter === 'pending') {
-    urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
-  } else if (filter === 'completed') {
-    // Only finished downloads in the "done" Map
-    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
-  } else if (filter === 'failed') {
-    // Only error downloads from the "done" Map
-    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
-  } else {
-    // All: pending + both finished and error in done
-    urls = [
-      ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
-      ...Array.from(this.downloads.done.values()).map(dl => dl.url)
-    ];
+  // Export URLs based on filter: 'pending', 'completed', 'failed', or 'all'
+  exportBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
+    let urls: string[];
+    if (filter === 'pending') {
+      urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
+    } else if (filter === 'completed') {
+      // Only finished downloads in the "done" Map
+      urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
+    } else if (filter === 'failed') {
+      // Only error downloads from the "done" Map
+      urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
+    } else {
+      // All: pending + both finished and error in done
+      urls = [
+        ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
+        ...Array.from(this.downloads.done.values()).map(dl => dl.url)
+      ];
+    }
+    if (!urls.length) {
+      alert('No URLs found for the selected filter.');
+      return;
+    }
+    const content = urls.join('\n');
+    const blob = new Blob([content], { type: 'text/plain' });
+    const downloadUrl = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = downloadUrl;
+    a.download = 'metube_urls.txt';
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(downloadUrl);
   }
-  if (!urls.length) {
-    alert('No URLs found for the selected filter.');
-    return;
-  }
-  const content = urls.join('\n');
-  const blob = new Blob([content], { type: 'text/plain' });
-  const downloadUrl = window.URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = downloadUrl;
-  a.download = 'metube_urls.txt';
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  window.URL.revokeObjectURL(downloadUrl);
-}
 
-// Copy URLs to clipboard based on filter: 'pending', 'completed', 'failed', or 'all'
-copyBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
-  let urls: string[];
-  if (filter === 'pending') {
-    urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
-  } else if (filter === 'completed') {
-    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
-  } else if (filter === 'failed') {
-    urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
-  } else {
-    urls = [
-      ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
-      ...Array.from(this.downloads.done.values()).map(dl => dl.url)
-    ];
+  // Copy URLs to clipboard based on filter: 'pending', 'completed', 'failed', or 'all'
+  copyBatchUrls(filter: 'pending' | 'completed' | 'failed' | 'all'): void {
+    let urls: string[];
+    if (filter === 'pending') {
+      urls = Array.from(this.downloads.queue.values()).map(dl => dl.url);
+    } else if (filter === 'completed') {
+      urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'finished').map(dl => dl.url);
+    } else if (filter === 'failed') {
+      urls = Array.from(this.downloads.done.values()).filter(dl => dl.status === 'error').map(dl => dl.url);
+    } else {
+      urls = [
+        ...Array.from(this.downloads.queue.values()).map(dl => dl.url),
+        ...Array.from(this.downloads.done.values()).map(dl => dl.url)
+      ];
+    }
+    if (!urls.length) {
+      alert('No URLs found for the selected filter.');
+      return;
+    }
+    const content = urls.join('\n');
+    navigator.clipboard.writeText(content)
+      .then(() => alert('URLs copied to clipboard.'))
+      .catch(() => alert('Failed to copy URLs.'));
   }
-  if (!urls.length) {
-    alert('No URLs found for the selected filter.');
-    return;
-  }
-  const content = urls.join('\n');
-  navigator.clipboard.writeText(content)
-    .then(() => alert('URLs copied to clipboard.'))
-    .catch(() => alert('Failed to copy URLs.'));
-}
 
+  fetchVersionInfo(): void {
+    const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
+    const versionUrl = `${baseUrl}version`;
+    this.http.get<{ version: string}>(versionUrl)
+      .subscribe({
+        next: (data) => {
+          this.versionInfo = `yt-dlp version: ${data.version}`;
+        },
+        error: () => {
+          this.versionInfo = '';
+        }
+      });
+  }
 }
