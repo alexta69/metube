@@ -129,4 +129,26 @@ export class DownloadsService {
     this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
   }
+  public addDownloadByUrl(url: string): Promise<any> {
+    const defaultQuality = 'best';
+    const defaultFormat = 'mp4';
+    const defaultFolder = ''; 
+    const defaultCustomNamePrefix = '';
+    const defaultPlaylistStrictMode = false;
+    const defaultPlaylistItemLimit = 0;
+    const defaultAutoStart = true;
+    
+    return new Promise((resolve, reject) => {
+      this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart)
+        .subscribe(
+          response => resolve(response),
+          error => reject(error)
+        );
+    });
+  }
+  public exportQueueUrls(): string[] {
+    return Array.from(this.queue.values()).map(download => download.url);
+  }
+  
+  
 }

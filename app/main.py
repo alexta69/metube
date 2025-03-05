@@ -43,17 +43,19 @@ class Config:
         'CERTFILE': '',
         'KEYFILE': '',
         'BASE_DIR': '',
-        'DEFAULT_THEME': 'auto'
+        'DEFAULT_THEME': 'auto',
+        'DOWNLOAD_MODE': 'limited',
+        'MAX_CONCURRENT_DOWNLOADS': 3,
     }
 
     _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
-            setattr(self, k, os.environ[k] if k in os.environ else v)
+            setattr(self, k, os.environ.get(k, v))
 
         for k, v in self.__dict__.items():
-            if v.startswith('%%'):
+            if isinstance(v, str) and v.startswith('%%'):
                 setattr(self, k, getattr(self, v[2:]))
             if k in self._BOOLEAN:
                 if v not in ('true', 'false', 'True', 'False', 'on', 'off', '1', '0'):
@@ -102,18 +104,23 @@ routes = web.RouteTableDef()
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):
+        log.info(f"Notifier: Download added - {dl.title}")
         await sio.emit('added', serializer.encode(dl))
 
     async def updated(self, dl):
+        log.info(f"Notifier: Download updated - {dl.title}")
         await sio.emit('updated', serializer.encode(dl))
 
     async def completed(self, dl):
+        log.info(f"Notifier: Download completed - {dl.title}")
         await sio.emit('completed', serializer.encode(dl))
 
     async def canceled(self, id):
+        log.info(f"Notifier: Download canceled - {id}")
         await sio.emit('canceled', serializer.encode(id))
 
     async def cleared(self, id):
+        log.info(f"Notifier: Download cleared - {id}")
         await sio.emit('cleared', serializer.encode(id))
 
 dqueue = DownloadQueue(config, Notifier())
@@ -121,10 +128,13 @@ app.on_startup.append(lambda app: dqueue.initialize())
 
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
+    log.info("Received request to add download")
     post = await request.json()
+    log.info(f"Request data: {post}")
     url = post.get('url')
     quality = post.get('quality')
     if not url or not quality:
+        log.error("Bad request: missing 'url' or 'quality'")
         raise web.HTTPBadRequest()
     format = post.get('format')
     folder = post.get('folder')
@@ -153,14 +163,17 @@ async def delete(request):
     ids = post.get('ids')
     where = post.get('where')
     if not ids or where not in ['queue', 'done']:
+        log.error("Bad request: missing 'ids' or incorrect 'where' value")
         raise web.HTTPBadRequest()
     status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
+    log.info(f"Download delete request processed for ids: {ids}, where: {where}")
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'start')
 async def start(request):
     post = await request.json()
     ids = post.get('ids')
+    log.info(f"Received request to start pending downloads for ids: {ids}")
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
 
@@ -168,17 +181,19 @@ async def start(request):
 async def history(request):
     history = { 'done': [], 'queue': [], 'pending': []}
 
-    for _ ,v in dqueue.queue.saved_items():
+    for _, v in dqueue.queue.saved_items():
         history['queue'].append(v)
-    for _ ,v in dqueue.done.saved_items():
+    for _, v in dqueue.done.saved_items():
         history['done'].append(v)
-    for _ ,v in dqueue.pending.saved_items():
+    for _, v in dqueue.pending.saved_items():
         history['pending'].append(v)
 
+    log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
 @sio.event
 async def connect(sid, environ):
+    log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('configuration', serializer.encode(config), to=sid)
     if config.CUSTOM_DIRS:
@@ -262,14 +277,13 @@ async def add_cors(request):
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
 
-
 async def on_prepare(request, response):
     if 'Origin' in request.headers:
         response.headers['Access-Control-Allow-Origin'] = request.headers['Origin']
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
 
 app.on_response_prepare.append(on_prepare)
-
+ 
 def supports_reuse_port():
     try:
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)

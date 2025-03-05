@@ -75,7 +75,7 @@
             </select>
           </div>
         </div>
-        <div class="col-md-6 col-lg-3 add-url-component">
+        <div class="col-md-6 col-lg-3 add-url-component d-flex align-items-center">
           <div [attr.class]="showAdvanced() ? 'btn-group add-url-group' : 'add-url-group'" ngbDropdown #advancedDropdown="ngbDropdown" display="dynamic" placement="bottom-end">
             <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
               <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
@@ -115,10 +115,59 @@
               </div>
             </div>
           </div>
+          <div class="btn-group ms-2" ngbDropdown>
+            <button type="button" class="btn btn-secondary" (click)="openBatchImportModal()">
+              Import
+            </button>
+            <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" ngbDropdownToggle>
+              <span class="visually-hidden">Toggle Dropdown</span>
+            </button>
+            <ul ngbDropdownMenu class="dropdown-menu dropdown-menu-end">
+              <li>
+                <button class="dropdown-item" (click)="exportBatchUrls('all')">
+                  Export All URLs
+                </button>
+              </li>
+              <li>
+                <button class="dropdown-item" (click)="copyBatchUrls('all')">
+                  Copy All URLs
+                </button>
+              </li>
+            </ul>
+          </div>
         </div>
       </div>
     </div>
   </form>
+  
+  <!-- Batch Import Modal -->
+  <div class="modal fade" tabindex="-1" role="dialog" [ngClass]="{'show': batchImportModalOpen}" [ngStyle]="{'display': batchImportModalOpen ? 'block' : 'none'}">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 class="modal-title">Batch Import URLs</h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeBatchImportModal()"></button>
+        </div>
+        <div class="modal-body">
+          <textarea [(ngModel)]="batchImportText" class="form-control" rows="6"
+            placeholder="Paste one video URL per line"></textarea>
+          <div class="mt-2">
+            <small *ngIf="batchImportStatus">{{ batchImportStatus }}</small>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-danger me-auto" *ngIf="importInProgress" (click)="cancelBatchImport()">
+            Cancel Import
+          </button>
+          <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
+          <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
+            Import URLs
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+  
 
   <div *ngIf="downloads.loading" class="alert alert-info" role="alert">
     Connecting to server...
