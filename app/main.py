@@ -43,8 +43,8 @@ class Config:
         'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
-        'DOWNLOAD_MODE': 'limited',  # Can be 'sequential', 'concurrent', or 'limited'
-        'MAX_CONCURRENT_DOWNLOADS': 3,  # Used if DOWNLOAD_MODE is 'limited'
+        'DOWNLOAD_MODE': 'limited',
+        'MAX_CONCURRENT_DOWNLOADS': 3,
     }
 
     _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS')
@@ -184,7 +184,7 @@ async def history(request):
         history['queue'].append(v)
     for _, v in dqueue.done.saved_items():
         history['done'].append(v)
-    for _ ,v in dqueue.pending.saved_items():
+    for _, v in dqueue.pending.saved_items():
         history['pending'].append(v)
 
     log.info("Sending download history")

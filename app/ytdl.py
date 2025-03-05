@@ -380,10 +380,7 @@ class DownloadQueue:
                 if auto_start is True:
                     download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl)
                     self.queue.put(download)
-                    if self.config.DOWNLOAD_MODE == 'sequential':
-                        asyncio.create_task(self.__start_download(download))
-                    else:
-                        asyncio.create_task(self.__start_download(download))
+                    asyncio.create_task(self.__start_download(download))
                 else:
                     self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
                 await self.notifier.added(dl)
