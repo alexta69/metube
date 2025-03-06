@@ -238,7 +238,7 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, v.playlist_strict_mode, v.playlist_item_limit)
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0))
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
