@@ -232,7 +232,7 @@ class DownloadQueue:
         if self.config.DOWNLOAD_MODE == 'sequential':
             self.seq_lock = asyncio.Lock()
         elif self.config.DOWNLOAD_MODE == 'limited':
-            self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_DOWNLOADS)
+            self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
         
         self.done.load()
 
