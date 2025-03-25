@@ -350,15 +350,22 @@ export class AppComponent implements AfterViewInit {
       }
       const url = urls[index];
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
-      this.downloads.addDownloadByUrl(url)
-        .then(() => {
-          index++;
-          setTimeout(processNext, delayBetween);
-        })
-        .catch(err => {
-          console.error(`Error importing URL ${url}:`, err);
-          index++;
-          setTimeout(processNext, delayBetween);
+      // Now pass the selected quality, format, folder, etc. to the add() method
+      this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
+        this.playlistStrictMode, this.playlistItemLimit, this.autoStart)
+        .subscribe({
+          next: (status: Status) => {
+            if (status.status === 'error') {
+              alert(`Error adding URL ${url}: ${status.msg}`);
+            }
+            index++;
+            setTimeout(processNext, delayBetween);
+          },
+          error: (err) => {
+            console.error(`Error importing URL ${url}:`, err);
+            index++;
+            setTimeout(processNext, delayBetween);
+          }
         });
     };
     processNext();
