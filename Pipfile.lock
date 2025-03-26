@@ -878,12 +878,12 @@
         },
         "yt-dlp": {
             "hashes": [
-                "sha256:5bcf47b2897254ea3816935a8dde47d243bff556782cced6b16a2b85e6b682ba",
-                "sha256:80d5ce15f9223e0c27020b861a4c5b72c6ba5d6c957c1b8fd2a022a69783f482"
+                "sha256:939cd8cc0a4bb5d090cd4dbda6e4361b634a4afe6e50c7f11e9f5431b4fcbe8e",
+                "sha256:c7f42516f9df31daef53cca2590239401cf31db7c4eaca67667cfd82f2e0ae27"
             ],
             "index": "pypi",
             "markers": "python_version >= '3.9'",
-            "version": "==2025.3.21"
+            "version": "==2025.3.25"
         }
     },
     "develop": {
