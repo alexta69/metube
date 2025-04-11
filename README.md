@@ -68,24 +68,9 @@ Certain values can be set via environment variables, using the `-e` parameter on
 *   **MAX\_CONCURRENT\_DOWNLOADS**  This flag is used only when **DOWNLOAD\_MODE** is set to **limited**.  
     It specifies the maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`. 
 
-
-The following example value for `YTDL_OPTIONS` embeds English subtitles and chapter markers (for videos that have them), and also changes the permissions on the downloaded video and sets the file modification timestamp to the date of when it was downloaded:
-
-```yaml
-    environment:
-      - 'YTDL_OPTIONS={"writesubtitles":true,"subtitleslangs":["en","-live_chat"],"updatetime":false,"postprocessors":[{"key":"Exec","exec_cmd":"chmod 0664","when":"after_move"},{"key":"FFmpegEmbedSubtitle","already_have_subtitle":false},{"key":"FFmpegMetadata","add_chapters":true}]}'
-```
-
-The following example value for `OUTPUT_TEMPLATE` sets:
-- playlist name and author, if present
-- playlist number and count, if present (zero-padded, if needed)
-- video author, title and release date in YYYY-MM-DD format, falling back to *UNKNOWN_...* if missing
-- sanitises everything for valid UNIX filename
-
-```yaml
-    environment:
-      - 'OUTPUT_TEMPLATE=%(playlist_title&Playlist |)S%(playlist_title|)S%(playlist_uploader& by |)S%(playlist_uploader|)S%(playlist_autonumber& - |)S%(playlist_autonumber|)S%(playlist_count& of |)S%(playlist_count|)S%(playlist_autonumber& - |)S%(uploader,creator|UNKNOWN_AUTHOR)S - %(title|UNKNOWN_TITLE)S - %(release_date>%Y-%m-%d,upload_date>%Y-%m-%d|UNKNOWN_DATE)S.%(ext)s'
-```
+The project's Wiki contains examples of useful configurations contributed by users of MeTube:
+* [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)
+* [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)
 
 ## Using browser cookies
 
