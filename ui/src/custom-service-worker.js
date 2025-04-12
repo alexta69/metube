@@ -29,7 +29,7 @@ self.addEventListener("fetch", (event) => {
               });
             })
           );
-          return Response.redirect(basePath, 303);
+          return Response.redirect(basePath || "/", 303);
         })()
       );
     }
