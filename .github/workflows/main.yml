@@ -47,16 +47,16 @@ jobs:
       #   with:
       #     images: jingle3276/metube
 
-      - name: Build and push Docker image
-        id: push
-        uses: docker/build-push-action@v5
-        with:
-          context: .
-          file: ./Dockerfile
-          push: true
-          tags: |
-            ${{ secrets.DOCKERHUB_REPOSITORY }}:latest
-            ${{ secrets.DOCKERHUB_REPOSITORY }}:${{ steps.date.outputs.date }}
+      # - name: Build and push Docker image
+      #   id: push
+      #   uses: docker/build-push-action@v5
+      #   with:
+      #     context: .
+      #     file: ./Dockerfile
+      #     push: true
+      #     tags: |
+      #       ${{ secrets.DOCKERHUB_REPOSITORY }}:latest
+      #       ${{ secrets.DOCKERHUB_REPOSITORY }}:${{ steps.date.outputs.date }}
 
       -
         name: Build and push
@@ -68,6 +68,7 @@ jobs:
           tags: |
             jingle3276/metube:latest
             jingle3276/metube:${{ steps.date.outputs.date }}
+
 
   # dockerhub-sync-readme:
   #   needs: dockerhub-build-push
