@@ -55,6 +55,7 @@ export const Formats: Format[] = [
       { id: '320', text: '320 kbps' },
       { id: '192', text: '192 kbps' },
       { id: '128', text: '128 kbps' },
+      { id: 'voice_mono', text: 'Voice Mono' },
     ],
   },
   {
