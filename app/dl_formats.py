@@ -77,6 +77,12 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
                 "preferredquality": 0 if quality == "best" else quality,
             }
         )
+        
+        # Add voice mono settings for MP3
+        if format == "mp3" and quality == "voice_mono":
+            opts["postprocessor_args"] = {
+                "ffmpeg": ["-ac", "1", "-ar", "22050", "-q:a", "8"]
+            }
 
         # Audio formats without thumbnail
         if format not in ("wav") and "writethumbnail" not in opts:
