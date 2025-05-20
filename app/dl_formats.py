@@ -79,7 +79,7 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
         )
         
         # Add voice mono settings for MP3
-        if format == "mp3" and quality == "voice_mono":
+        if format == "mp3" and quality == "32_mono":
             opts["postprocessor_args"] = {
                 "ffmpeg": ["-ac", "1", "-ar", "22050", "-q:a", "8"]
             }
