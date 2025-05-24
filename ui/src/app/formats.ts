@@ -61,7 +61,10 @@ export const Formats: Format[] = [
   {
     id: 'opus',
     text: 'OPUS',
-    qualities: [{ id: 'best', text: 'Best' }],
+    qualities: [
+      { id: 'best', text: 'Best' },
+      { id: '19_mono', text: '19 kbps(Mono)' }
+    ],
   },
   {
     id: 'wav',

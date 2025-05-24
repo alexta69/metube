@@ -83,6 +83,19 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
             opts["postprocessor_args"] = {
                 "ffmpeg": ["-ac", "1", "-ar", "22050", "-q:a", "8"]
             }
+            
+        # Add voice mono settings for OPUS
+        if format == "opus" and quality == "19_mono":
+            opts["postprocessor_args"] = {
+                "ffmpeg": [
+                    "-ac", "1",                    # Force mono
+                    "-c:a", "libopus",            # Use OPUS codec
+                    "-b:a", "19k",                # Set bitrate to 19kbps
+                    "-application", "voip",        # Optimize for speech
+                    "-frame_duration", "20",       # Standard frame size
+                    "-compression_level", "10"     # Highest quality compression
+                ]
+            }
 
         # Audio formats without thumbnail
         if format not in ("wav") and "writethumbnail" not in opts:
