@@ -55,6 +55,8 @@ class Download:
         self.output_template_chapter = output_template_chapter
         self.format = get_format(format, quality)
         self.ytdl_opts = get_opts(format, quality, ytdl_opts)
+        if "impersonate" in self.ytdl_opts:
+            self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
         self.info = info
         self.canceled = False
         self.tmpfilename = None
@@ -299,8 +301,8 @@ class DownloadQueue:
             'ignore_no_formats_error': True,
             'noplaylist': playlist_strict_mode,
             'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
-            **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
             **self.config.YTDL_OPTIONS,
+            **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
         }).extract_info(url, download=False)
 
     def __calc_download_path(self, quality, format, folder):
