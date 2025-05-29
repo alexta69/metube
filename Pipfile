@@ -10,6 +10,7 @@ pylint = "*"
 aiohttp = "*"
 python-socketio = "~=5.0"
 yt-dlp = "*"
+mutagen = "*"
 
 [requires]
 python_version = "3.11"
