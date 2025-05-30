@@ -10,6 +10,7 @@ import socketio
 import logging
 import json
 import pathlib
+import re
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -24,6 +25,7 @@ class Config:
         'DOWNLOAD_DIRS_INDEXABLE': 'false',
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
+        'CUSTOM_DIRS_EXCLUDE_REGEX': r'(^|/)[.@].*$',
         'DELETE_FILE_ON_TRASHCAN': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
@@ -214,8 +216,15 @@ def get_custom_dirs():
 
             return s
 
+        # Include only directories which do not match the exclude filter
+        def include_dir(d):
+            if len(config.CUSTOM_DIRS_EXCLUDE_REGEX) == 0:
+                return True
+            else:
+                return re.search(config.CUSTOM_DIRS_EXCLUDE_REGEX, d) is None
+
         # Recursively lists all subdirectories of DOWNLOAD_DIR
-        dirs = list(filter(None, map(convert, path.glob('**'))))
+        dirs = list(filter(include_dir, map(convert, path.glob('**'))))
 
         return dirs
 

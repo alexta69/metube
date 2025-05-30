@@ -42,6 +42,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DOWNLOAD_DIRS_INDEXABLE__: if `true`, the download dirs (__DOWNLOAD_DIR__ and __AUDIO_DOWNLOAD_DIR__) are indexable on the webserver. Defaults to `false`.
 * __CUSTOM_DIRS__: whether to enable downloading videos into custom directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__). When enabled, a drop-down appears next to the Add button to specify the download directory. Defaults to `true`.
 * __CREATE_CUSTOM_DIRS__: whether to support automatically creating directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__) if they do not exist. When enabled, the download directory selector becomes supports free-text input, and the specified directory will be created recursively. Defaults to `true`.
+* __CUSTOM_DIRS_EXCLUDE_REGEX__: regular expression to exclude some custom directories from the drop-down. Empty regex disables exclusion. Defaults to `(^|/)[.@].*$`, which means directories starting with `.` or `@`.
 * __STATE_DIR__: path to where the queue persistence files will be saved. Defaults to `/downloads/.metube` in the docker image, and `.` otherwise.
 * __TEMP_DIR__: path where intermediary download files will be saved. Defaults to `/downloads` in the docker image, and `.` otherwise.
   * Set this to an SSD or RAM filesystem (e.g., `tmpfs`) for better performance
