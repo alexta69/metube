@@ -10,6 +10,8 @@ pylint = "*"
 aiohttp = "*"
 python-socketio = "~=5.0"
 yt-dlp = "*"
+mutagen = "*"
+curl-cffi = "*"
 
 [requires]
 python_version = "3.11"
