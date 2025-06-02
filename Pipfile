@@ -14,4 +14,4 @@ mutagen = "*"
 curl-cffi = "*"
 
 [requires]
-python_version = "3.11"
+python_version = "3.13"

@@ -253,7 +253,7 @@ MeTube development relies on code contributions by the community. The program as
 
 ## Building and running locally
 
-Make sure you have node.js and Python 3.11 installed.
+Make sure you have node.js and Python 3.13 installed.
 
 ```bash
 cd metube/ui
