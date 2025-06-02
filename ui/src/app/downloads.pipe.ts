@@ -1,7 +1,8 @@
 import { Pipe, PipeTransform } from '@angular/core';
 
 @Pipe({
-  name: 'eta'
+    name: 'eta',
+    standalone: false
 })
 export class EtaPipe implements PipeTransform {
   transform(value: number, ...args: any[]): any {
@@ -21,7 +22,8 @@ export class EtaPipe implements PipeTransform {
 }
 
 @Pipe({
-  name: 'speed'
+    name: 'speed',
+    standalone: false
 })
 export class SpeedPipe implements PipeTransform {
   transform(value: number, ...args: any[]): any {
@@ -37,7 +39,8 @@ export class SpeedPipe implements PipeTransform {
 }
 
 @Pipe({
-  name: 'encodeURIComponent'
+    name: 'encodeURIComponent',
+    standalone: false
 })
 export class EncodeURIComponent implements PipeTransform {
   transform(value: string, ...args: any[]): any {
@@ -45,8 +48,9 @@ export class EncodeURIComponent implements PipeTransform {
   }
 }
 
-@Pipe({ 
-  name: 'fileSize' 
+@Pipe({
+    name: 'fileSize',
+    standalone: false
 })
 export class FileSizePipe implements PipeTransform {
   transform(value: number): string {

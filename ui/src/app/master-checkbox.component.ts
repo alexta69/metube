@@ -5,13 +5,14 @@ interface Checkable {
 }
 
 @Component({
-  selector: 'app-master-checkbox',
-  template: `
+    selector: 'app-master-checkbox',
+    template: `
   <div class="form-check">
     <input type="checkbox" class="form-check-input" id="{{id}}-select-all" #masterCheckbox [(ngModel)]="selected" (change)="clicked()">
     <label class="form-check-label" for="{{id}}-select-all"></label>
   </div>
-`
+`,
+    standalone: false
 })
 export class MasterCheckboxComponent {
   @Input() id: string;
@@ -38,13 +39,14 @@ export class MasterCheckboxComponent {
 }
 
 @Component({
-  selector: 'app-slave-checkbox',
-  template: `
+    selector: 'app-slave-checkbox',
+    template: `
   <div class="form-check">
     <input type="checkbox" class="form-check-input" id="{{master.id}}-{{id}}-select" [(ngModel)]="checkable.checked" (change)="master.selectionChanged()">
     <label class="form-check-label" for="{{master.id}}-{{id}}-select"></label>
   </div>
-`
+`,
+    standalone: false
 })
 export class SlaveCheckboxComponent {
   @Input() id: string;
