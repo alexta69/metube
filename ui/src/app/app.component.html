@@ -1,6 +1,9 @@
 <nav class="navbar navbar-expand-md navbar-dark">
   <div class="container-fluid">
-    <a class="navbar-brand" href="#">MeTube</a>
+    <a class="navbar-brand d-flex align-items-center" href="#">
+      <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
+      MeTube
+    </a>
     <!--
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>
@@ -44,96 +47,172 @@
 <main role="main" class="container container-xl">
   <form #f="ngForm">
     <div class="container add-url-box">
-      <div class="row">
-        <div class="col add-url-component input-group">
-          <input type="text" autocomplete="off" spellcheck="false" class="form-control" placeholder="Video or playlist URL" name="addUrl" [(ngModel)]="addUrl" [disabled]="addInProgress || downloads.loading">
+      <!-- Main URL Input with Download Button -->
+      <div class="row mb-4">
+        <div class="col">
+          <div class="input-group input-group-lg shadow-sm">
+            <input type="text" 
+                   autocomplete="off" 
+                   spellcheck="false" 
+                   class="form-control form-control-lg" 
+                   placeholder="Enter video or playlist URL" 
+                   name="addUrl" 
+                   [(ngModel)]="addUrl" 
+                   [disabled]="addInProgress || downloads.loading">
+            <button class="btn btn-primary btn-lg px-4" 
+                    type="submit" 
+                    (click)="addDownload()" 
+                    [disabled]="addInProgress || downloads.loading">
+              <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
+              {{ addInProgress ? "Adding..." : "Download" }}
+            </button>
+          </div>
         </div>
       </div>
-      <div class="row">
-        <div class="col-md-6 col-lg-3 add-url-component">
+
+      <!-- Options Row -->
+      <div class="row mb-3 g-3">
+        <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Quality</span>
-            <select class="form-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()" [disabled]="addInProgress || downloads.loading">
+            <select class="form-select" 
+                    name="quality" 
+                    [(ngModel)]="quality" 
+                    (change)="qualityChanged()" 
+                    [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
             </select>
           </div>
         </div>
-        <div class="col-md-6 col-lg-3 add-url-component">
+        <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Format</span>
-            <select class="form-select" name="format" [(ngModel)]="format" (change)="formatChanged()" [disabled]="addInProgress || downloads.loading">
+            <select class="form-select" 
+                    name="format" 
+                    [(ngModel)]="format" 
+                    (change)="formatChanged()" 
+                    [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
             </select>
           </div>
         </div>
-        <div class="col-md-6 col-lg-3 add-url-component">
-          <div class="input-group">
-            <span class="input-group-text">Auto Start</span>
-            <select class="form-select" name="autoStart" [(ngModel)]="autoStart" (change)="autoStartChanged()" [disabled]="addInProgress || downloads.loading">
-              <option [ngValue]="true">Yes</option>
-              <option [ngValue]="false">No</option>
-            </select>
-          </div>
+        <div class="col-md-4">
+          <button type="button" 
+                  class="btn btn-outline-secondary w-100 h-100" 
+                  (click)="toggleAdvanced()">
+            Advanced Options
+          </button>
         </div>
-        <div class="col-md-6 col-lg-3 add-url-component d-flex align-items-center">
-          <div [attr.class]="showAdvanced() ? 'btn-group add-url-group' : 'add-url-group'" ngbDropdown #advancedDropdown="ngbDropdown" display="dynamic" placement="bottom-end">
-            <button class="btn btn-primary add-url" type="submit" (click)="addDownload()" [disabled]="addInProgress || downloads.loading">
-              <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
-              {{ addInProgress ? "Adding..." : "Add" }}
-            </button>
-            <button class="btn btn-primary dropdown-toggle dropdown-toggle-split" id="advancedButton" type="button" title="Advanced options" [disabled]="addInProgress || downloads.loading" ngbDropdownAnchor (click)="advancedDropdown.open()" *ngIf="showAdvanced()">
-              <span class="sr-only">Advanced options</span>
-            </button>
-            <div ngbDropdownMenu aria-labelledby="advancedButton" class="dropdown-menu dropdown-menu-end folder-dropdown-menu">
-              <div class="container">
-                <div class="input-group add-url-component">
-                  <span class="input-group-text">Download Folder</span>
-                  <ng-select [items]="customDirs$ | async" placeholder="Default" [addTag]="allowCustomDir.bind(this)" addTagText="Create directory" [ngStyle]="{'flex-grow':'1'}" bindLabel="folder" [(ngModel)]="folder" [disabled]="addInProgress || downloads.loading"></ng-select>
+      </div>
+
+      <!-- Advanced Options Panel -->
+      <div class="row">
+        <div class="col-12">
+          <div class="collapse show" id="advancedOptions" [ngbCollapse]="!isAdvancedOpen">
+            <div class="card card-body">
+              <!-- Advanced Settings -->
+              <div class="row g-3 mb-2">
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Auto Start</span>
+                    <select class="form-select" 
+                            name="autoStart" 
+                            [(ngModel)]="autoStart" 
+                            (change)="autoStartChanged()" 
+                            [disabled]="addInProgress || downloads.loading"
+                            ngbTooltip="Automatically start downloads when added">
+                      <option [ngValue]="true">Yes</option>
+                      <option [ngValue]="false">No</option>
+                    </select>
+                  </div>
                 </div>
-                <div class="input-group add-url-component">
-                  <span class="input-group-text">Custom Name Prefix</span>
-                  <input type="text" autocomplete="off" spellcheck="false" class="form-control" placeholder="Default" name="customNamePrefix" [(ngModel)]="customNamePrefix" [disabled]="addInProgress || downloads.loading">
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Download Folder</span>
+                    <ng-select [items]="customDirs$ | async" 
+                              placeholder="Default" 
+                              [addTag]="allowCustomDir.bind(this)" 
+                              addTagText="Create directory" 
+                              bindLabel="folder" 
+                              [(ngModel)]="folder" 
+                              [disabled]="addInProgress || downloads.loading"
+                              ngbTooltip="Choose where to save downloads. Type to create a new folder.">
+                    </ng-select>
+                  </div>
                 </div>
-                <div class="add-url-component">
-                  <div class="row align-items-center gy-2">
-                    <div class="col-12 col-md-6 order-md-2">
-                      <div class="input-group">
-                        <span class="input-group-text">Items limit</span>
-                        <input type="number" min="0" autocomplete="off" class="form-control" placeholder="Default" name="playlistItemLimit" (keydown)="isNumber($event)" [(ngModel)]="playlistItemLimit" [disabled]="addInProgress || downloads.loading">
-                      </div>
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Custom Name Prefix</span>
+                    <input type="text" 
+                           class="form-control" 
+                           placeholder="Default" 
+                           name="customNamePrefix" 
+                           [(ngModel)]="customNamePrefix" 
+                           [disabled]="addInProgress || downloads.loading"
+                           ngbTooltip="Add a prefix to downloaded filenames">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Items Limit</span>
+                    <input type="number" 
+                           min="0" 
+                           class="form-control" 
+                           placeholder="Default" 
+                           name="playlistItemLimit" 
+                           (keydown)="isNumber($event)" 
+                           [(ngModel)]="playlistItemLimit" 
+                           [disabled]="addInProgress || downloads.loading"
+                           ngbTooltip="Maximum number of items to download from a playlist (0 = no limit)">
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" 
+                           type="checkbox" 
+                           role="switch" 
+                           name="playlistStrictMode" 
+                           [(ngModel)]="playlistStrictMode" 
+                           [disabled]="addInProgress || downloads.loading"
+                           ngbTooltip="Only download playlists when URL explicitly points to a playlist">
+                    <label class="form-check-label">Strict Playlist Mode</label>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Advanced Actions -->
+              <div class="row">
+                <div class="col-12">
+                  <hr class="my-3">
+                  <div class="row g-2">
+                    <div class="col-md-4">
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
+                              (click)="openBatchImportModal()">
+                        <fa-icon [icon]="faFileImport" class="me-2"></fa-icon>
+                        Import URLs
+                      </button>
                     </div>
-                    <div class="col-12 col-md-6 order-md-1">
-                      <div class="input-group ms-1">
-                        <div class="form-check form-switch">
-                          <input class="form-check-input" type="checkbox" role="switch" name="playlistStrictMode" [(ngModel)]="playlistStrictMode" [disabled]="addInProgress || downloads.loading">
-                          <label class="form-check-label">Strict Playlist mode</label>
-                        </div>
-                      </div>
+                    <div class="col-md-4">
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
+                              (click)="exportBatchUrls('all')">
+                        <fa-icon [icon]="faFileExport" class="me-2"></fa-icon>
+                        Export URLs
+                      </button>
+                    </div>
+                    <div class="col-md-4">
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
+                              (click)="copyBatchUrls('all')">
+                        <fa-icon [icon]="faCopy" class="me-2"></fa-icon>
+                        Copy URLs
+                      </button>
                     </div>
                   </div>
                 </div>
               </div>
             </div>
-          </div>
-          <div class="btn-group ms-2" ngbDropdown>
-            <button type="button" class="btn btn-secondary" (click)="openBatchImportModal()">
-              Import
-            </button>
-            <button type="button" class="btn btn-secondary dropdown-toggle dropdown-toggle-split" ngbDropdownToggle>
-              <span class="visually-hidden">Toggle Dropdown</span>
-            </button>
-            <ul ngbDropdownMenu class="dropdown-menu dropdown-menu-end">
-              <li>
-                <button class="dropdown-item" (click)="exportBatchUrls('all')">
-                  Export All URLs
-                </button>
-              </li>
-              <li>
-                <button class="dropdown-item" (click)="copyBatchUrls('all')">
-                  Copy All URLs
-                </button>
-              </li>
-            </ul>
           </div>
         </div>
       </div>
@@ -267,7 +346,10 @@
       </tbody>
     </table>
   </div>
-  <div class="footer text-center px-2">
-    <small *ngIf="versionInfo">{{ versionInfo }}</small>
-  </div>
 </main><!-- /.container -->
+
+<footer class="footer navbar-dark bg-dark py-3 mt-5">
+  <div class="container text-center">
+    <small class="text-light" *ngIf="versionInfo">{{ versionInfo }}</small>
+  </div>
+</footer>

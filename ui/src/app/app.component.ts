@@ -1,7 +1,7 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of } from 'rxjs';
 
@@ -38,6 +38,7 @@ export class AppComponent implements AfterViewInit {
   importInProgress = false;
   cancelImportFlag = false;
   versionInfo: string | null = null;
+  isAdvancedOpen = false;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -59,6 +60,9 @@ export class AppComponent implements AfterViewInit {
   faCircleHalfStroke = faCircleHalfStroke;
   faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
+  faFileImport = faFileImport;
+  faFileExport = faFileExport;
+  faCopy = faCopy;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
@@ -450,5 +454,9 @@ export class AppComponent implements AfterViewInit {
           this.versionInfo = '';
         }
       });
+  }
+
+  toggleAdvanced() {
+    this.isAdvancedOpen = !this.isAdvancedOpen;
   }
 }
