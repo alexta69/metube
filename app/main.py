@@ -224,7 +224,7 @@ def get_custom_dirs():
                 return re.search(config.CUSTOM_DIRS_EXCLUDE_REGEX, d) is None
 
         # Recursively lists all subdirectories of DOWNLOAD_DIR
-        dirs = list(filter(include_dir, map(convert, path.glob('**'))))
+        dirs = list(filter(include_dir, map(convert, path.glob('**/'))))
 
         return dirs
 

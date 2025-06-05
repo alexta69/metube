@@ -136,6 +136,11 @@
                               bindLabel="folder" 
                               [(ngModel)]="folder" 
                               [disabled]="addInProgress || downloads.loading"
+                              [virtualScroll]="true"
+                              [clearable]="true"
+                              [loading]="downloads.loading"
+                              [searchable]="true"
+                              [closeOnSelect]="true"
                               ngbTooltip="Choose where to save downloads. Type to create a new folder.">
                     </ng-select>
                   </div>

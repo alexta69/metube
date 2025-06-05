@@ -3,7 +3,7 @@ import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy } from '@fortawesome/free-solid-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { map, Observable, of } from 'rxjs';
+import { map, Observable, of, distinctUntilChanged } from 'rxjs';
 
 import { Download, DownloadsService, Status } from './downloads.service';
 import { MasterCheckboxComponent } from './master-checkbox.component';
@@ -135,16 +135,19 @@ export class AppComponent implements AfterViewInit {
   }
 
   getMatchingCustomDir() : Observable<string[]> {
-    return this.downloads.customDirsChanged.asObservable().pipe(map((output) => {
-      // Keep logic consistent with app/ytdl.py
-      if (this.isAudioType()) {
-        console.debug("Showing audio-specific download directories");
-        return output["audio_download_dir"];
-      } else {
-        console.debug("Showing default download directories");
-        return output["download_dir"];
-      }
-    }));
+    return this.downloads.customDirsChanged.asObservable().pipe(
+      map((output) => {
+        // Keep logic consistent with app/ytdl.py
+        if (this.isAudioType()) {
+          console.debug("Showing audio-specific download directories");
+          return output["audio_download_dir"];
+        } else {
+          console.debug("Showing default download directories");
+          return output["download_dir"];
+        }
+      }),
+      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr))
+    );
   }
 
   getConfiguration() {
