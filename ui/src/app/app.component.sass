@@ -126,3 +126,59 @@ td
                 white-space: nowrap
                 overflow: visible
                 text-overflow: ellipsis
+
+.footer
+  width: 100%
+  padding: 10px 0
+  background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.1))
+
+  .footer-content
+    display: flex
+    justify-content: center
+    align-items: center
+    gap: 20px
+    color: #fff
+    font-size: 0.9rem
+
+    .version-item
+      display: flex
+      align-items: center
+      gap: 8px
+
+      .version-label
+        font-size: 0.75rem
+        text-transform: uppercase
+        letter-spacing: 0.5px
+        opacity: 0.7
+
+      .version-value
+        font-family: monospace
+        font-size: 0.85rem
+        padding: 2px 6px
+        background: rgba(255,255,255,0.1)
+        border-radius: 4px
+
+    .version-separator
+      width: 1px
+      height: 16px
+      background: rgba(255,255,255,0.2)
+      margin: 0 4px
+
+    .github-link
+      display: flex
+      align-items: center
+      gap: 6px
+      color: #fff
+      text-decoration: none
+      font-size: 0.85rem
+      padding: 2px 8px
+      border-radius: 4px
+      transition: background-color 0.2s ease
+
+      &:hover
+        background: rgba(255,255,255,0.1)
+        color: #fff
+        text-decoration: none
+
+      i
+        font-size: 1rem

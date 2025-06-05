@@ -355,6 +355,21 @@
 
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
   <div class="container text-center">
-    <small class="text-light" *ngIf="versionInfo">{{ versionInfo }}</small>
+    <div class="footer-content" *ngIf="ytDlpVersion && metubeVersion">
+      <div class="version-item">
+        <span class="version-label">yt-dlp</span>
+        <span class="version-value">{{ytDlpVersion}}</span>
+      </div>
+      <div class="version-separator"></div>
+      <div class="version-item">
+        <span class="version-label">MeTube</span>
+        <span class="version-value">{{metubeVersion}}</span>
+      </div>
+      <div class="version-separator"></div>
+      <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
+        <fa-icon [icon]="faGithub"></fa-icon>
+        <span>GitHub</span>
+      </a>
+    </div>
   </div>
 </footer>

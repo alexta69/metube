@@ -258,7 +258,10 @@ def robots(request):
 
 @routes.get(config.URL_PREFIX + 'version')
 def version(request):
-    return web.json_response({"version": yt_dlp_version})
+    return web.json_response({
+        "yt-dlp": yt_dlp_version,
+        "version": os.getenv("METUBE_VERSION", "dev")
+    })
 
 if config.URL_PREFIX != '/':
     @routes.get('/')

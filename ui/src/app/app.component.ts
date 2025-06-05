@@ -2,6 +2,7 @@ import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy } from '@fortawesome/free-solid-svg-icons';
+import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of, distinctUntilChanged } from 'rxjs';
 
@@ -38,7 +39,8 @@ export class AppComponent implements AfterViewInit {
   batchImportStatus = '';
   importInProgress = false;
   cancelImportFlag = false;
-  versionInfo: string | null = null;
+  ytDlpVersion: string | null = null;
+  metubeVersion: string | null = null;
   isAdvancedOpen = false;
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
@@ -64,6 +66,7 @@ export class AppComponent implements AfterViewInit {
   faFileImport = faFileImport;
   faFileExport = faFileExport;
   faCopy = faCopy;
+  faGithub = faGithub;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
@@ -449,13 +452,15 @@ export class AppComponent implements AfterViewInit {
   fetchVersionInfo(): void {
     const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
     const versionUrl = `${baseUrl}version`;
-    this.http.get<{ version: string}>(versionUrl)
+    this.http.get<{ 'yt-dlp': string, version: string }>(versionUrl)
       .subscribe({
         next: (data) => {
-          this.versionInfo = `yt-dlp version: ${data.version}`;
+          this.ytDlpVersion = data['yt-dlp'];
+          this.metubeVersion = data.version;
         },
         error: () => {
-          this.versionInfo = '';
+          this.ytDlpVersion = null;
+          this.metubeVersion = null;
         }
       });
   }
