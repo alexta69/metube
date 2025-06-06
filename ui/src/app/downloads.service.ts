@@ -40,6 +40,7 @@ export class DownloadsService {
   doneChanged = new Subject();
   customDirsChanged = new Subject();
   configurationChanged = new Subject();
+  updated = new Subject();
 
   configuration = {};
   customDirs = {};
@@ -66,6 +67,7 @@ export class DownloadsService {
       data.checked = dl.checked;
       data.deleting = dl.deleting;
       this.queue.set(data.url, data);
+      this.updated.next(null);
     });
     socket.fromEvent('completed').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);

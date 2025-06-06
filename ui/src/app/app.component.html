@@ -4,6 +4,28 @@
       <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
       MeTube
     </a>
+    <div class="download-metrics">
+      <div class="metric" *ngIf="activeDownloads > 0">
+        <fa-icon [icon]="faDownload" class="text-primary"></fa-icon>
+        <span>{{activeDownloads}} downloading</span>
+      </div>
+      <div class="metric" *ngIf="queuedDownloads > 0">
+        <fa-icon [icon]="faClock" class="text-warning"></fa-icon>
+        <span>{{queuedDownloads}} queued</span>
+      </div>
+      <div class="metric" *ngIf="completedDownloads > 0">
+        <fa-icon [icon]="faCheck" class="text-success"></fa-icon>
+        <span>{{completedDownloads}} completed</span>
+      </div>
+      <div class="metric" *ngIf="failedDownloads > 0">
+        <fa-icon [icon]="faTimesCircle" class="text-danger"></fa-icon>
+        <span>{{failedDownloads}} failed</span>
+      </div>
+      <div class="metric" *ngIf="(totalSpeed | speed) !== ''">
+        <fa-icon [icon]="faTachometerAlt" class="text-info"></fa-icon>
+        <span>{{totalSpeed | speed }}</span>
+      </div>
+    </div>
     <!--
     <button class="navbar-toggler" type="button" data-toggle="collapse" data-target="#navbarsDefault" aria-controls="navbarsDefault" aria-expanded="false" aria-label="Toggle navigation">
       <span class="navbar-toggler-icon"></span>

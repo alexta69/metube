@@ -1,7 +1,7 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of, distinctUntilChanged } from 'rxjs';
@@ -43,6 +43,13 @@ export class AppComponent implements AfterViewInit {
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
 
+  // Download metrics
+  activeDownloads = 0;
+  queuedDownloads = 0;
+  completedDownloads = 0;
+  failedDownloads = 0;
+  totalSpeed = 0;
+
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
   @ViewChild('queueDownloadSelected') queueDownloadSelected: ElementRef;
@@ -67,6 +74,8 @@ export class AppComponent implements AfterViewInit {
   faFileExport = faFileExport;
   faCopy = faCopy;
   faGithub = faGithub;
+  faClock = faClock;
+  faTachometerAlt = faTachometerAlt;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
@@ -76,6 +85,18 @@ export class AppComponent implements AfterViewInit {
     this.autoStart = cookieService.get('metube_auto_start') !== 'false';
 
     this.activeTheme = this.getPreferredTheme(cookieService);
+
+    // Subscribe to download updates
+    this.downloads.queueChanged.subscribe(() => {
+      this.updateMetrics();
+    });
+    this.downloads.doneChanged.subscribe(() => {
+      this.updateMetrics();
+    });
+    // Subscribe to real-time updates
+    this.downloads.updated.subscribe(() => {
+      this.updateMetrics();
+    });
   }
 
   ngOnInit() {
@@ -467,5 +488,18 @@ export class AppComponent implements AfterViewInit {
 
   toggleAdvanced() {
     this.isAdvancedOpen = !this.isAdvancedOpen;
+  }
+
+  private updateMetrics() {
+    this.activeDownloads = Array.from(this.downloads.queue.values()).filter(d => d.status === 'downloading' || d.status === 'preparing').length;
+    this.queuedDownloads = Array.from(this.downloads.queue.values()).filter(d => d.status === 'pending').length;
+    this.completedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'finished').length;
+    this.failedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'error').length;
+    
+    // Calculate total speed from downloading items
+    const downloadingItems = Array.from(this.downloads.queue.values())
+      .filter(d => d.status === 'downloading');
+    
+    this.totalSpeed = downloadingItems.reduce((total, item) => total + (item.speed || 0), 0);
   }
 }
