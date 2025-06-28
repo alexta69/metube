@@ -4,6 +4,7 @@
 import os
 import sys
 from aiohttp import web
+from aiohttp.log import access_logger
 import ssl
 import socket
 import socketio
@@ -48,9 +49,11 @@ class Config:
         'DEFAULT_THEME': 'auto',
         'DOWNLOAD_MODE': 'limited',
         'MAX_CONCURRENT_DOWNLOADS': 3,
+        'LOGLEVEL': 'INFO',
+        'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -305,13 +308,34 @@ def supports_reuse_port():
     except (AttributeError, OSError):
         return False
 
+def parseLogLevel(logLevel):
+    match logLevel:
+        case 'DEBUG':
+            return logging.DEBUG
+        case 'INFO':
+            return logging.INFO
+        case 'WARNING':
+            return logging.WARNING
+        case 'ERROR':
+            return logging.ERROR
+        case 'CRITICAL':
+            return logging.CRITICAL
+        case _:
+            return None
+
+def isAccessLogEnabled():
+    if config.ENABLE_ACCESSLOG:
+        return access_logger
+    else:
+        return None
+
 if __name__ == '__main__':
-    logging.basicConfig(level=logging.DEBUG)
+    logging.basicConfig(level=parseLogLevel(config.LOGLEVEL))
     log.info(f"Listening on {config.HOST}:{config.PORT}")
 
     if config.HTTPS:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=config.CERTFILE, keyfile=config.KEYFILE)
-        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context)
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context, access_log=isAccessLogEnabled())
     else:
-        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port())
+        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), access_log=isAccessLogEnabled())

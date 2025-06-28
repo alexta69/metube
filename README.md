@@ -68,6 +68,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
     *   `limited`: Downloads are started concurrently but are capped by a concurrency limit. In this mode, a semaphore is used so that at most a fixed number of downloads run at any given time.
 *   **MAX\_CONCURRENT\_DOWNLOADS**  This flag is used only when **DOWNLOAD\_MODE** is set to **limited**.  
     It specifies the maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`. 
+* __LOGLEVEL__: Log level, can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `NONE`. Defaults to `INFO`. 
+* __ENABLE_ACCESSLOG__: whether to enable access log. Defaults to `false`. 
 
 The project's Wiki contains examples of useful configurations contributed by users of MeTube:
 * [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)
