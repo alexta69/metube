@@ -385,7 +385,6 @@ class DownloadQueue:
                 ytdl_options = dict(self.config.YTDL_OPTIONS)
                 if playlist_item_limit > 0:
                     log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
-                    ytdl_options['playlistend'] = playlist_item_limit
                 if auto_start is True:
                     download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl)
                     self.queue.put(download)
