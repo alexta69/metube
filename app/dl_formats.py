@@ -28,7 +28,9 @@ def get_format(format: str, quality: str) -> str:
 
     if format in AUDIO_FORMATS:
         # Audio quality needs to be set post-download, set in opts
-        return f"bestaudio[ext={format}]/bestaudio/best"
+        # Use a more robust format string that ensures audio-only download
+        # and has better fallbacks
+        return f"bestaudio[ext={format}]/bestaudio[ext=m4a]/bestaudio[ext=mp3]/bestaudio/best[ext!=webm]/best[ext!=webm]"
 
     if format in ("mp4", "any"):
         if quality == "audio":
