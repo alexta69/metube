@@ -12,12 +12,14 @@ import { MasterCheckboxComponent, SlaveCheckboxComponent } from './master-checkb
 import { MeTubeSocket } from './metube-socket';
 import { NgSelectModule } from '@ng-select/ng-select';
 import { ServiceWorkerModule } from '@angular/service-worker';
+import { YtdlpOptionComponent } from './settings/ytdlp-option/ytdlp-option.component';
 
 @NgModule({ declarations: [
         AppComponent,
         EtaPipe,
         SpeedPipe,
         FileSizePipe,
+        YtdlpOptionComponent,
         EncodeURIComponent,
         MasterCheckboxComponent,
         SlaveCheckboxComponent

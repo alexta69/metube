@@ -1,8 +1,10 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
+import { NgbModal } from '@ng-bootstrap/ng-bootstrap';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
 import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
+import { faGear  } from "@fortawesome/free-solid-svg-icons";
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of, distinctUntilChanged } from 'rxjs';
 
@@ -11,6 +13,8 @@ import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
 import { Theme, Themes } from './theme';
 import {KeyValue} from "@angular/common";
+import { Setting, Settings } from './settings';
+import { YtdlpOptionComponent } from './settings/ytdlp-option/ytdlp-option.component';
 
 @Component({
     selector: 'app-root',
@@ -31,6 +35,7 @@ export class AppComponent implements AfterViewInit {
   playlistItemLimit: number;
   addInProgress = false;
   themes: Theme[] = Themes;
+  settings: Setting[] = Settings;
   activeTheme: Theme;
   customDirs$: Observable<string[]>;
   showBatchPanel: boolean = false; 
@@ -66,6 +71,7 @@ export class AppComponent implements AfterViewInit {
   faRedoAlt = faRedoAlt;
   faSun = faSun;
   faMoon = faMoon;
+  faGear = faGear;
   faCheck = faCheck;
   faCircleHalfStroke = faCircleHalfStroke;
   faDownload = faDownload;
@@ -77,7 +83,7 @@ export class AppComponent implements AfterViewInit {
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
 
-  constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
+  constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient,private modalService: NgbModal) {
     this.format = cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
@@ -497,9 +503,19 @@ export class AppComponent implements AfterViewInit {
     this.failedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'error').length;
     
     // Calculate total speed from downloading items
-    const downloadingItems = Array.from(this.downloads.queue.values())
-      .filter(d => d.status === 'downloading');
+    const downloadingItems = Array.from(this.downloads.queue.values()).filter(d => d.status === 'downloading');
     
     this.totalSpeed = downloadingItems.reduce((total, item) => total + (item.speed || 0), 0);
+  }
+  openSettingsModal() {
+    const modalRef = this.modalService.open(YtdlpOptionComponent, {
+      size: 'lg',
+      windowClass: 'modal-responsive'
+    });
+  }
+  handleSettingClick(setting: Setting){
+    if (setting.id === 'ytdl_options') {
+    this.openSettingsModal(); 
+    }
   }
 }

@@ -1,0 +1,33 @@
+<div class="container mt-4">
+  <div class="row justify-content-center">
+    <!-- <div class="col-12 col-sm-11 col-md-10 col-lg-9 col-xl-8"> -->
+      <div class="p-4 bg-body rounded shadow-sm">
+        <h3>yt-dlp Options (JSON)</h3>
+        <p>Edit the yt-dlp configuration below.</p>
+
+        <form (ngSubmit)="saveOptions()" #form="ngForm">
+          <div class="mb-3">
+            <!-- <label for="jsonInput" class="form-label">yt-dlp Options (JSON)</label> -->
+            <textarea
+              id="jsonInput"
+              class="form-control"
+              rows="15"
+              [(ngModel)]="ytdlpOptions"
+              name="ytdlpOptions"
+              required
+            ></textarea>
+          </div>
+
+          <div class="d-flex justify-content-end mt-3">
+            <button type="submit" class="btn btn-primary" [disabled]="isSaving">
+              <fa-icon [icon]="faSave" *ngIf="!isSaving"></fa-icon>
+              {{ isSaving ? 'Saving...' : 'Save' }}
+            </button>
+          </div>
+
+          <div [ngClass]="{'text-success': isSuccess, 'text-danger': !isSuccess}" class="mt-2">{{ msg }}</div>
+        </form>
+      </div>
+    <!-- </div> -->
+  </div>
+</div>

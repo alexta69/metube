@@ -92,6 +92,20 @@ class Config:
                 sys.exit(1)
             self.YTDL_OPTIONS.update(opts)
 
+    def update_ytdl_options_file(self):
+        if not self.YTDL_OPTIONS_FILE:
+            log.info('YTDL_OPTIONS_FILE not set, writing to default location')
+            self.YTDL_OPTIONS_FILE = os.path.join(self.DOWNLOAD_DIR,'ytdl_options.json')
+        log.info('Writing YTDL_OPTIONS to %s', self.YTDL_OPTIONS_FILE)
+        try:
+            with open(config.YTDL_OPTIONS_FILE, 'w') as f:
+                f.write(serializer.encode(config.YTDL_OPTIONS))
+        except:
+            log.error('Failed to write YTDL_OPTIONS to %s', self.YTDL_OPTIONS_FILE)
+            self.YTDL_OPTIONS_FILE = ''
+            return False
+        return True
+
 config = Config()
 
 class ObjectSerializer(json.JSONEncoder):
@@ -241,6 +255,27 @@ def get_custom_dirs():
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
     }
+
+@routes.get(config.URL_PREFIX + 'ytdl_options')
+async def ytdl_options(request):
+    log.info("Sending yt-dlp options")
+    return web.Response(text=serializer.encode(config.YTDL_OPTIONS))
+
+@routes.post(config.URL_PREFIX + 'ytdl_options')
+async def update_ytdl_options(request):
+    try:
+        post = await request.json()
+        assert isinstance(post, dict)
+    except (json.decoder.JSONDecodeError, AssertionError):
+        log.info("Bad request: invalid data")
+        raise web.HTTPBadRequest(reason="invalid data,need json")
+    config.YTDL_OPTIONS = post
+
+    msg = 'Options updated' 
+    if not config.update_ytdl_options_file():
+        msg += ', but failed to write to file'
+    
+    return web.Response(text=serializer.encode({'msg':msg,'data':config.YTDL_OPTIONS}))
 
 @routes.get(config.URL_PREFIX)
 def index(request):

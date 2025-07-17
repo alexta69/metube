@@ -62,6 +62,26 @@
           </li>
         </ul>
       </div>
+      <div class="nav-item dropdown">
+        <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
+          id="settingsDropdown"
+          type="button"
+          aria-expanded="false"
+          data-bs-toggle="dropdown"
+          data-bs-display="static">
+          <fa-icon [icon]="faGear"></fa-icon>
+        </button>
+        <ul class="dropdown-menu dropdown-menu-end position-absolute" aria-labelledby="theme-select">
+          <li *ngFor="let setting of settings">
+            <button type="button" class="dropdown-item d-flex align-items-center" (click)="handleSettingClick(setting)">
+              <span class="me-2 opacity-50">
+                <fa-icon [icon]="setting.icon"></fa-icon>
+              </span>
+              {{ setting.displayName }}
+            </button>
+          </li>
+        </ul>
+      </div>
     </div>
   </div>
 </nav>
