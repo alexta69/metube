@@ -4,7 +4,7 @@
 services:
   metube:
     build: .
-    container_name: MeTube-Dev
+    container_name: MeTube
     restart: unless-stopped
     ports:
       - "8081:8081"
@@ -12,7 +12,7 @@ services:
       # Tells MeTube to use separate directories for video and audio downloads
       - DOWNLOAD_DIR=/downloads/video
       - AUDIO_DOWNLOAD_DIR=/downloads/audio
-      # Filename templates for downloads
+      # Sensible filename templates for downloads
       - OUTPUT_TEMPLATE=%(artist,uploader)s/%(artist,uploader)s - %(title)s%(genre& [%s]|)s (%(release_date>%Y-%m-%d,upload_date>%Y-%m-%d)s).%(ext)s
       - OUTPUT_TEMPLATE_PLAYLIST=%(playlist_title)s/%(artist,uploader)s - %(title)s%(genre& [%s]|)s (%(release_date>%Y-%m-%d,upload_date>%Y-%m-%d)s).%(ext)s
       # Development environment
