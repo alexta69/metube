@@ -3,6 +3,8 @@
 
 import os
 import sys
+import asyncio
+from pathlib import Path
 from aiohttp import web
 from aiohttp.log import access_logger
 import ssl
@@ -12,6 +14,7 @@ import logging
 import json
 import pathlib
 import re
+from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -39,6 +42,7 @@ class Config:
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
+        'YTDL_OPTIONS_FILE_RELOAD': 'false',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
@@ -53,7 +57,7 @@ class Config:
         'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG','YTDL_OPTIONS_FILE_RELOAD')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -91,6 +95,33 @@ class Config:
                 log.error('YTDL_OPTIONS_FILE contents is invalid')
                 sys.exit(1)
             self.YTDL_OPTIONS.update(opts)
+
+        if self.YTDL_OPTIONS_FILE_RELOAD and not self.YTDL_OPTIONS_FILE:
+            log.error('YTDL_OPTIONS_FILE_RELOAD is enabled but YTDL_OPTIONS_FILE is not set. ')
+            sys.exit(1)
+
+    def load_ytdl_options_file(self) -> tuple[bool, str]:
+        msg = ''
+        if not self.YTDL_OPTIONS_FILE:
+            msg='YTDL_OPTIONS_FILE is not set'
+            log.error(msg)
+            return (False, msg)
+        log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
+        if not os.path.exists(self.YTDL_OPTIONS_FILE):
+            msg = f'File "{self.YTDL_OPTIONS_FILE}" not found'
+            log.error(msg)
+            return (False, msg)
+        try:
+            with open(self.YTDL_OPTIONS_FILE) as json_data:
+                opts = json.load(json_data)
+            assert isinstance(opts, dict)
+        except (json.decoder.JSONDecodeError, AssertionError):
+            msg = 'YTDL_OPTIONS_FILE contents is invalid'
+            log.error(msg)
+            return (False, msg)
+
+        self.YTDL_OPTIONS.update(opts)
+        return (True, msg)
 
 config = Config()
 
@@ -130,6 +161,31 @@ class Notifier(DownloadQueueNotifier):
 
 dqueue = DownloadQueue(config, Notifier())
 app.on_startup.append(lambda app: dqueue.initialize())
+
+class FileOpsFilter(DefaultFilter):
+    def __call__(self, change_type: int, path: str) -> bool:
+        return (os.path.samefile(path, config.YTDL_OPTIONS_FILE) and
+                change_type in (Change.modified,Change.added))
+def get_options_update_time(success=True, msg=''):
+    result = {
+        'success': success,
+        'msg': msg,
+        'update_time': os.path.getmtime(config.YTDL_OPTIONS_FILE)
+    }
+    return result
+async def watch_files():
+    path_to_watch = Path(config.YTDL_OPTIONS_FILE).resolve()
+    async def _watch_files():
+        async for changes in awatch(path_to_watch, watch_filter=FileOpsFilter()):
+            success, msg = config.load_ytdl_options_file()
+            result = get_options_update_time(success, msg)
+            await sio.emit('ytdl_options_changed', serializer.encode(result))
+
+    log.info(f'Starting Watch File: {path_to_watch}')
+    asyncio.create_task(_watch_files())
+
+if config.YTDL_OPTIONS_FILE_RELOAD:
+    app.on_startup.append(lambda app: watch_files())
 
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
@@ -203,6 +259,8 @@ async def connect(sid, environ):
     await sio.emit('configuration', serializer.encode(config), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
+    if config.YTDL_OPTIONS_FILE_RELOAD:
+        await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
 def get_custom_dirs():
     def recursive_dirs(base):
