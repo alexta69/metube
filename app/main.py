@@ -42,7 +42,6 @@ class Config:
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
-        'YTDL_OPTIONS_FILE_RELOAD': 'false',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
@@ -57,7 +56,7 @@ class Config:
         'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG','YTDL_OPTIONS_FILE_RELOAD')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -82,30 +81,17 @@ class Config:
             log.error('YTDL_OPTIONS is invalid')
             sys.exit(1)
 
-        if self.YTDL_OPTIONS_FILE:
-            log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
-            if not os.path.exists(self.YTDL_OPTIONS_FILE):
-                log.error(f'File "{self.YTDL_OPTIONS_FILE}" not found')
-                sys.exit(1)
-            try:
-                with open(self.YTDL_OPTIONS_FILE) as json_data:
-                    opts = json.load(json_data)
-                assert isinstance(opts, dict)
-            except (json.decoder.JSONDecodeError, AssertionError):
-                log.error('YTDL_OPTIONS_FILE contents is invalid')
-                sys.exit(1)
-            self.YTDL_OPTIONS.update(opts)
-
-        if self.YTDL_OPTIONS_FILE_RELOAD and not self.YTDL_OPTIONS_FILE:
-            log.error('YTDL_OPTIONS_FILE_RELOAD is enabled but YTDL_OPTIONS_FILE is not set. ')
+        success,_ = self.load_ytdl_options_file(True)
+        if not success:
             sys.exit(1)
 
-    def load_ytdl_options_file(self) -> tuple[bool, str]:
+    def load_ytdl_options_file(self, allow_empty_path=False) -> tuple[bool, str]:
         msg = ''
         if not self.YTDL_OPTIONS_FILE:
             msg='YTDL_OPTIONS_FILE is not set'
-            log.error(msg)
-            return (False, msg)
+            if not allow_empty_path:
+                log.error(msg)
+            return (allow_empty_path, msg)
         log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
         if not os.path.exists(self.YTDL_OPTIONS_FILE):
             msg = f'File "{self.YTDL_OPTIONS_FILE}" not found'
@@ -184,7 +170,7 @@ async def watch_files():
     log.info(f'Starting Watch File: {path_to_watch}')
     asyncio.create_task(_watch_files())
 
-if config.YTDL_OPTIONS_FILE_RELOAD:
+if config.YTDL_OPTIONS_FILE:
     app.on_startup.append(lambda app: watch_files())
 
 @routes.post(config.URL_PREFIX + 'add')
@@ -259,7 +245,7 @@ async def connect(sid, environ):
     await sio.emit('configuration', serializer.encode(config), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
-    if config.YTDL_OPTIONS_FILE_RELOAD:
+    if config.YTDL_OPTIONS_FILE:
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
 def get_custom_dirs():
