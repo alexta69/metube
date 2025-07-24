@@ -9,7 +9,7 @@ pylint = "*"
 [packages]
 aiohttp = "*"
 python-socketio = "~=5.0"
-yt-dlp = "*"
+yt-dlp = { version = "*", extras = ["default", "curl-cffi"] }
 mutagen = "*"
 curl-cffi = "*"
 watchfiles = "*"
