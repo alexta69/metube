@@ -388,6 +388,11 @@
         <span class="version-value">{{metubeVersion}}</span>
       </div>
       <div class="version-separator"></div>
+      <div class="version-item" *ngIf="ytDlpOptionsUpdateTime">
+        <span class="version-label">yt-dlp-options</span>
+        <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
+      </div>
+      <div class="version-separator" *ngIf="ytDlpOptionsUpdateTime"></div>
       <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
         <fa-icon [icon]="faGithub"></fa-icon>
         <span>GitHub</span>
