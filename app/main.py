@@ -74,24 +74,21 @@ class Config:
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 
-        try:
-            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
-            assert isinstance(self.YTDL_OPTIONS, dict)
-        except (json.decoder.JSONDecodeError, AssertionError):
-            log.error('YTDL_OPTIONS is invalid')
-            sys.exit(1)
-
-        success,_ = self.load_ytdl_options_file(True)
+        success,_ = self.load_ytdl_options(True)
         if not success:
             sys.exit(1)
 
-    def load_ytdl_options_file(self, allow_empty_path=False) -> tuple[bool, str]:
+    def load_ytdl_options(self, is_init=False) -> tuple[bool, str]:
         msg = ''
+        if not self.load_ytdl_options_env(is_init):
+            msg = 'Environment variable YTDL_OPTIONS is invalid'
+            return (False, msg)
+        
         if not self.YTDL_OPTIONS_FILE:
             msg='YTDL_OPTIONS_FILE is not set'
-            if not allow_empty_path:
+            if not is_init:
                 log.error(msg)
-            return (allow_empty_path, msg)
+            return (is_init, msg)
         log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
         if not os.path.exists(self.YTDL_OPTIONS_FILE):
             msg = f'File "{self.YTDL_OPTIONS_FILE}" not found'
@@ -108,6 +105,20 @@ class Config:
 
         self.YTDL_OPTIONS.update(opts)
         return (True, msg)
+    
+    def load_ytdl_options_env(self, is_init=False) -> tuple[bool, str]:
+        k = 'YTDL_OPTIONS'
+        if not is_init:
+            
+            setattr(self, k, os.environ.get(k, '{}'))
+        print(os.environ.get(k, '{}'))
+        try:
+            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
+            assert isinstance(self.YTDL_OPTIONS, dict)
+        except (json.decoder.JSONDecodeError, AssertionError):
+            log.error('YTDL_OPTIONS is invalid')
+            return False
+        return True
 
 config = Config()
 
@@ -163,7 +174,7 @@ async def watch_files():
     path_to_watch = Path(config.YTDL_OPTIONS_FILE).resolve()
     async def _watch_files():
         async for changes in awatch(path_to_watch, watch_filter=FileOpsFilter()):
-            success, msg = config.load_ytdl_options_file()
+            success, msg = config.load_ytdl_options()
             result = get_options_update_time(success, msg)
             await sio.emit('ytdl_options_changed', serializer.encode(result))
 
