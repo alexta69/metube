@@ -3,6 +3,8 @@
 
 import os
 import sys
+import asyncio
+from pathlib import Path
 from aiohttp import web
 from aiohttp.log import access_logger
 import ssl
@@ -12,6 +14,7 @@ import logging
 import json
 import pathlib
 import re
+from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -71,26 +74,38 @@ class Config:
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 
-        try:
-            self.YTDL_OPTIONS = json.loads(self.YTDL_OPTIONS)
-            assert isinstance(self.YTDL_OPTIONS, dict)
-        except (json.decoder.JSONDecodeError, AssertionError):
-            log.error('YTDL_OPTIONS is invalid')
+        success,_ = self.load_ytdl_options()
+        if not success:
             sys.exit(1)
 
-        if self.YTDL_OPTIONS_FILE:
-            log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
-            if not os.path.exists(self.YTDL_OPTIONS_FILE):
-                log.error(f'File "{self.YTDL_OPTIONS_FILE}" not found')
-                sys.exit(1)
-            try:
-                with open(self.YTDL_OPTIONS_FILE) as json_data:
-                    opts = json.load(json_data)
-                assert isinstance(opts, dict)
-            except (json.decoder.JSONDecodeError, AssertionError):
-                log.error('YTDL_OPTIONS_FILE contents is invalid')
-                sys.exit(1)
-            self.YTDL_OPTIONS.update(opts)
+    def load_ytdl_options(self) -> tuple[bool, str]:
+        try:
+            self.YTDL_OPTIONS = json.loads(os.environ.get('YTDL_OPTIONS', '{}'))
+            assert isinstance(self.YTDL_OPTIONS, dict)
+        except (json.decoder.JSONDecodeError, AssertionError):
+            msg = 'Environment variable YTDL_OPTIONS is invalid'
+            log.error(msg)
+            return (False, msg)
+
+        if not self.YTDL_OPTIONS_FILE:
+            return (True, '')
+
+        log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
+        if not os.path.exists(self.YTDL_OPTIONS_FILE):
+            msg = f'File "{self.YTDL_OPTIONS_FILE}" not found'
+            log.error(msg)
+            return (False, msg)
+        try:
+            with open(self.YTDL_OPTIONS_FILE) as json_data:
+                opts = json.load(json_data)
+            assert isinstance(opts, dict)
+        except (json.decoder.JSONDecodeError, AssertionError):
+            msg = 'YTDL_OPTIONS_FILE contents is invalid'
+            log.error(msg)
+            return (False, msg)
+
+        self.YTDL_OPTIONS.update(opts)
+        return (True, '')
 
 config = Config()
 
@@ -130,6 +145,56 @@ class Notifier(DownloadQueueNotifier):
 
 dqueue = DownloadQueue(config, Notifier())
 app.on_startup.append(lambda app: dqueue.initialize())
+
+class FileOpsFilter(DefaultFilter):
+    def __call__(self, change_type: int, path: str) -> bool:
+        # Check if this path matches our YTDL_OPTIONS_FILE
+        if path != config.YTDL_OPTIONS_FILE:
+            return False
+
+        # For existing files, use samefile comparison to handle symlinks correctly
+        if os.path.exists(config.YTDL_OPTIONS_FILE):
+            try:
+                if not os.path.samefile(path, config.YTDL_OPTIONS_FILE):
+                    return False
+            except (OSError, IOError):
+                # If samefile fails, fall back to string comparison
+                if path != config.YTDL_OPTIONS_FILE:
+                    return False
+
+        # Accept all change types for our file: modified, added, deleted
+        return change_type in (Change.modified, Change.added, Change.deleted)
+
+def get_options_update_time(success=True, msg=''):
+    result = {
+        'success': success,
+        'msg': msg,
+        'update_time': None
+    }
+
+    # Only try to get file modification time if YTDL_OPTIONS_FILE is set and file exists
+    if config.YTDL_OPTIONS_FILE and os.path.exists(config.YTDL_OPTIONS_FILE):
+        try:
+            result['update_time'] = os.path.getmtime(config.YTDL_OPTIONS_FILE)
+        except (OSError, IOError) as e:
+            log.warning(f"Could not get modification time for {config.YTDL_OPTIONS_FILE}: {e}")
+            result['update_time'] = None
+
+    return result
+
+async def watch_files():
+    path_to_watch = Path(config.YTDL_OPTIONS_FILE).resolve()
+    async def _watch_files():
+        async for changes in awatch(path_to_watch, watch_filter=FileOpsFilter()):
+            success, msg = config.load_ytdl_options()
+            result = get_options_update_time(success, msg)
+            await sio.emit('ytdl_options_changed', serializer.encode(result))
+
+    log.info(f'Starting Watch File: {path_to_watch}')
+    asyncio.create_task(_watch_files())
+
+if config.YTDL_OPTIONS_FILE:
+    app.on_startup.append(lambda app: watch_files())
 
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
@@ -203,6 +268,8 @@ async def connect(sid, environ):
     await sio.emit('configuration', serializer.encode(config), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
+    if config.YTDL_OPTIONS_FILE:
+        await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
 def get_custom_dirs():
     def recursive_dirs(base):
