@@ -157,5 +157,12 @@ export class DownloadsService {
     return Array.from(this.queue.values()).map(download => download.url);
   }
   
-  
+  public updateDownloadConfig(downloadMode: string, maxConcurrentDownloads: number): Observable<Status> {
+    return this.http.post<Status>('update_download_config', {
+      download_mode: downloadMode,
+      max_concurrent_downloads: maxConcurrentDownloads
+    }).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
 }
