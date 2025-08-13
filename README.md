@@ -62,12 +62,12 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __YTDL_OPTIONS__: Additional options to pass to yt-dlp, in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L220). They roughly correspond to command-line options, though some do not have exact equivalents here, for example `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores. You may find [this script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) helpful for converting from command line options to `YTDL_OPTIONS`.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence.
 * __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container
-* __DOWNLOAD_MODE__ :This flag controls how downloads are scheduled and executed. Options are `sequential`, `concurrent`, and `limited`.  Defaults to `limited`:
-    *   `sequential`: Downloads are processed one at a time. A new download won’t start until the previous one has finished. This mode is useful for conserving system resources or ensuring downloads occur in a strict order.
+* __DOWNLOAD_MODE__ :This flag controls how downloads are scheduled and executed. Options are `sequential`, `concurrent`, and `limited`.  Defaults to `limited`. Can also be configured in the UI:
+    *   `sequential`: Downloads are processed one at a time. A new download won't start until the previous one has finished. This mode is useful for conserving system resources or ensuring downloads occur in a strict order.
     *   `concurrent`: Downloads are started immediately as they are added, with no built-in limit on how many run simultaneously. This mode may overwhelm your system if too many downloads start at once.
     *   `limited`: Downloads are started concurrently but are capped by a concurrency limit. In this mode, a semaphore is used so that at most a fixed number of downloads run at any given time.
 *   **MAX\_CONCURRENT\_DOWNLOADS**  This flag is used only when **DOWNLOAD\_MODE** is set to **limited**.  
-    It specifies the maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`. 
+    It specifies the maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`. Can also be configured in the UI.
 * __LOGLEVEL__: Log level, can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `NONE`. Defaults to `INFO`. 
 * __ENABLE_ACCESSLOG__: whether to enable access log. Defaults to `false`. 
 
