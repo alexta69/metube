@@ -74,6 +74,10 @@ class Config:
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 
+        # Convert relative addresses to absolute addresses to prevent the failure of file address comparison
+        if self.YTDL_OPTIONS_FILE and self.YTDL_OPTIONS_FILE.startswith('.'):
+            self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
+
         success,_ = self.load_ytdl_options()
         if not success:
             sys.exit(1)
@@ -183,14 +187,13 @@ def get_options_update_time(success=True, msg=''):
     return result
 
 async def watch_files():
-    path_to_watch = Path(config.YTDL_OPTIONS_FILE).resolve()
     async def _watch_files():
-        async for changes in awatch(path_to_watch, watch_filter=FileOpsFilter()):
+        async for changes in awatch(config.YTDL_OPTIONS_FILE, watch_filter=FileOpsFilter()):
             success, msg = config.load_ytdl_options()
             result = get_options_update_time(success, msg)
             await sio.emit('ytdl_options_changed', serializer.encode(result))
 
-    log.info(f'Starting Watch File: {path_to_watch}')
+    log.info(f'Starting Watch File: {config.YTDL_OPTIONS_FILE}')
     asyncio.create_task(_watch_files())
 
 if config.YTDL_OPTIONS_FILE:
