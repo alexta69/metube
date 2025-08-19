@@ -52,8 +52,8 @@ class Download:
     def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.temp_dir = temp_dir
-        self.output_template = output_template
-        self.output_template_chapter = output_template_chapter
+        self.output_template = self._add_format_identifier(format, output_template)
+        self.output_template_chapter = self._add_format_identifier(format, output_template_chapter)
         self.format = get_format(format, quality)
         self.ytdl_opts = get_opts(format, quality, ytdl_opts)
         if "impersonate" in self.ytdl_opts:
@@ -140,6 +140,8 @@ class Download:
             if self.status_queue is not None:
                 self.status_queue.put(None)
 
+        self._delete_format_identifier()
+
     def running(self):
         try:
             return self.proc is not None and self.proc.is_alive()
@@ -175,6 +177,46 @@ class Download:
             self.info.eta = status.get('eta')
             log.info(f"Updating status for {self.info.title}: {status}")
             await self.notifier.updated(self.info)
+    
+    def _add_format_identifier(self, identifier, template):
+        # Preventing the post-processing of YT-DLP from deleting the intermediate file which was download before.
+        return f'{identifier}_{template}'
+
+    def _delete_format_identifier(self):
+        # Delete the identifier in the file name after the post-processing is complete.
+        if self.canceled or self.info.status != 'finished' or not hasattr(self.info,'filename'):
+            return
+
+        try:
+            filename = re.sub(r'^\w+_', '', self.info.filename)
+            filepath_idt = os.path.join(self.download_dir, self.info.filename)
+            filepath = os.path.join(self.download_dir, filename)
+            if os.path.exists(filepath):
+                os.remove(filepath)
+            os.rename(filepath_idt, filepath)
+            log.info(f"Renamed file '{filepath_idt}' to '{filepath}'")
+        except PermissionError as e:
+            log.warning(f"Error deleting old file '{filepath}': {e} ")
+            return
+        except Exception as e:
+            log.warning(f"Error renaming file '{filepath_idt}': {e} ")
+            return
+
+        self.info.filename = filename
+
+    def delete_tmpfile(self):
+        if not self.tmpfilename:
+            return
+        tmpfilename = self.tmpfilename.rsplit('.')[0]
+        def is_tmpfile(filename):
+            return filename.startswith(tmpfilename)
+
+        tmpfiles = filter(is_tmpfile ,os.listdir(self.download_dir))
+        try:
+            for tmpfile in tmpfiles:
+                os.remove(tmpfile)
+        except:
+            pass
 
 class PersistentQueue:
     def __init__(self, path):
@@ -279,11 +321,7 @@ class DownloadQueue:
 
     def _post_download_cleanup(self, download):
         if download.info.status != 'finished':
-            if download.tmpfilename and os.path.isfile(download.tmpfilename):
-                try:
-                    os.remove(download.tmpfilename)
-                except:
-                    pass
+            download.delete_tmpfile()
             download.info.status = 'error'
         download.close()
         if self.queue.exists(download.info.id):
