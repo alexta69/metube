@@ -33,6 +33,7 @@ class DownloadQueueNotifier:
 class DownloadInfo:
     def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
+        self.id = f'{id}.{format}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
         self.quality = quality
@@ -203,7 +204,7 @@ class PersistentQueue:
             return sorted(shelf.items(), key=lambda item: item[1].timestamp)
 
     def put(self, value):
-        key = value.info.url
+        key = value.info.id
         self.dict[key] = value
         with shelve.open(self.path, 'w') as shelf:
             shelf[key] = value.info
@@ -285,10 +286,10 @@ class DownloadQueue:
                     pass
             download.info.status = 'error'
         download.close()
-        if self.queue.exists(download.info.url):
-            self.queue.delete(download.info.url)
+        if self.queue.exists(download.info.id):
+            self.queue.delete(download.info.id)
             if download.canceled:
-                asyncio.create_task(self.notifier.canceled(download.info.url))
+                asyncio.create_task(self.notifier.canceled(download.info.id))
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
@@ -361,9 +362,9 @@ class DownloadQueue:
             return {'status': 'ok'}
         elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
             log.debug('Processing as a video')
-            key = entry.get('webpage_url') or entry['url']
-            if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error)
+            url = entry.get('webpage_url') or entry['url']
+            dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], url, quality, format, folder, custom_name_prefix, error)
+            if not self.queue.exists(dl.id):
                 dldirectory, error_message = self.__calc_download_path(quality, format, folder)
                 if error_message is not None:
                     return error_message
