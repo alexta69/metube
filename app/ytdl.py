@@ -210,7 +210,7 @@ class Download:
         if not os.path.isdir(self.download_dir):
             return
 
-        tmpfilename = self.tmpfilename.rsplit('.')[0]
+        tmpfilename = os.path.basename(self.tmpfilename)
         def is_tmpfile(filename):
             return filename.startswith(tmpfilename)
 
