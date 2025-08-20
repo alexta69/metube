@@ -33,7 +33,7 @@ class DownloadQueueNotifier:
 class DownloadInfo:
     def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
-        self.id = f'{id}.{format}'
+        self.id = f'{self.id}.{format}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
         self.quality = quality
@@ -205,18 +205,21 @@ class Download:
         self.info.filename = filename
 
     def delete_tmpfile(self):
-        if not self.tmpfilename:
+        if not self.tmpfilename or not self.download_dir:
             return
+        if not os.path.isdir(self.download_dir):
+            return
+
         tmpfilename = self.tmpfilename.rsplit('.')[0]
         def is_tmpfile(filename):
             return filename.startswith(tmpfilename)
 
-        tmpfiles = filter(is_tmpfile ,os.listdir(self.download_dir))
         try:
+            tmpfiles = filter(is_tmpfile, os.listdir(self.download_dir))
             for tmpfile in tmpfiles:
-                os.remove(tmpfile)
-        except:
-            pass
+                os.remove(os.path.join(self.download_dir, tmpfile))
+        except Exception as e:
+            log.warning(f"Error deleting temporary files: {e}")
 
 class PersistentQueue:
     def __init__(self, path):
