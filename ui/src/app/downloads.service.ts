@@ -59,21 +59,21 @@ export class DownloadsService {
     });
     socket.fromEvent('added').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.set(data.url, data);
+      this.queue.set(data.id, data);
       this.queueChanged.next(null);
     });
     socket.fromEvent('updated').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      let dl: Download = this.queue.get(data.url);
+      let dl: Download = this.queue.get(data.id);
       data.checked = dl.checked;
       data.deleting = dl.deleting;
-      this.queue.set(data.url, data);
+      this.queue.set(data.id, data);
       this.updated.next(null);
     });
     socket.fromEvent('completed').subscribe((strdata: string) => {
       let data: Download = JSON.parse(strdata);
-      this.queue.delete(data.url);
-      this.done.set(data.url, data);
+      this.queue.delete(data.id);
+      this.done.set(data.id, data);
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
@@ -127,13 +127,13 @@ export class DownloadsService {
 
   public startByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
     return this.startById(ids);
   }
 
   public delByFilter(where: string, filter: (dl: Download) => boolean) {
     let ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
+    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.id) });
     return this.delById(where, ids);
   }
   public addDownloadByUrl(url: string): Promise<any> {

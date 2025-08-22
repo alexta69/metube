@@ -290,7 +290,7 @@
           <th scope="col" style="width: 1rem;">
             <app-master-checkbox #queueMasterCheckbox [id]="'queue'" [list]="downloads.queue" (changed)="queueSelectionChanged($event)"></app-master-checkbox>
           </th>
-          <th scope="col">Video</th>
+          <th scope="col">Media</th>
           <th scope="col" style="width: 8rem;">Speed</th>
           <th scope="col" style="width: 7rem;">ETA</th>
           <th scope="col" style="width: 6rem;"></th>
@@ -336,7 +336,8 @@
           <th scope="col" style="width: 1rem;">
             <app-master-checkbox #doneMasterCheckbox [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)"></app-master-checkbox>
           </th>
-          <th scope="col">Video</th>
+          <th scope="col">Media</th>
+          <th scope="col">Format</th>
           <th scope="col">File Size</th>
           <th scope="col" style="width: 8rem;"></th>
         </tr>
@@ -357,6 +358,9 @@
               <span *ngIf="download.value.msg"><br>{{download.value.msg}}</span>
               <span *ngIf="download.value.error"><br>Error: {{download.value.error}}</span>
             </ng-template>
+          </td>
+          <td>
+            <span *ngIf="download.value.format">{{ download.value.format }}</span>
           </td>
           <td>
             <span *ngIf="download.value.size">{{ download.value.size | fileSize }}</span>
