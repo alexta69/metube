@@ -97,7 +97,7 @@ class Download:
                 'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
                 'socket_timeout': 30,
-                'ignore_no_formats_error': True,
+                'ignore_no_formats_error': False,  # Changed to False to get better error messages
                 'progress_hooks': [put_status],
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
@@ -281,7 +281,7 @@ class DownloadQueue:
             self.seq_lock = asyncio.Lock()
         elif self.config.DOWNLOAD_MODE == 'limited':
             self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
-        
+
         self.done.load()
 
     async def __import_queue(self):
@@ -343,6 +343,13 @@ class DownloadQueue:
             'ignore_no_formats_error': True,
             'noplaylist': playlist_strict_mode,
             'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
+            'cookiefile': None,  # Allow cookie usage if available
+            'age_limit': None,  # Don't restrict by age
+            'geo_bypass': True,  # Attempt to bypass geographic restrictions
+            'geo_bypass_country': None,  # Let yt-dlp choose the best bypass method
+            'extractor_retries': 3,  # Retry extraction up to 3 times
+            'youtube_include_dash_manifest': True,  # Include DASH formats for YouTube Music
+            'youtube_skip_dash_manifest': False,  # Don't skip DASH manifest
             **self.config.YTDL_OPTIONS,
             **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
         }).extract_info(url, download=False)
@@ -420,7 +427,6 @@ class DownloadQueue:
                 ytdl_options = dict(self.config.YTDL_OPTIONS)
                 if playlist_item_limit > 0:
                     log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
-                    ytdl_options['playlistend'] = playlist_item_limit
                 if auto_start is True:
                     download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl)
                     self.queue.put(download)

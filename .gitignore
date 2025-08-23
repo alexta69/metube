@@ -14,6 +14,7 @@ speed-measure-plugin*.json
 
 # IDEs and editors
 /ui/.idea
+.idea/
 .project
 .classpath
 .c9/
@@ -44,6 +45,12 @@ testem.log
 .DS_Store
 Thumbs.db
 
-
+# Python
 __pycache__
 .venv
+
+# Environment files
+.env
+
+# Downloads directory
+downloads/
