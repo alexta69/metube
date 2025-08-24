@@ -7,6 +7,7 @@ import asyncio
 import multiprocessing
 import logging
 import re
+import subprocess
 
 import yt_dlp.networking.impersonate
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
@@ -45,6 +46,7 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
+        self.thumbnail = None
 
 class Download:
     manager = None
@@ -220,6 +222,13 @@ class Download:
                 os.remove(os.path.join(self.download_dir, tmpfile))
         except Exception as e:
             log.warning(f"Error deleting temporary files: {e}")
+    
+    def _is_audio_download(self) -> bool:
+        try:
+           return (self.info.format in AUDIO_FORMATS)
+        except Exception:
+            return False
+
 
 class PersistentQueue:
     def __init__(self, path):

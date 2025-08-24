@@ -6,6 +6,31 @@
     max-width: 960px
     margin: 4rem auto
 
+.thumb
+      width: 80px
+      object-fit: cover
+      border-radius: 4px
+      vertical-align: middle
+
+.thumb-grid-img
+      aspect-ratio: 16/9
+      object-fit: cover
+
+.metube-view-toggle .btn
+      min-width: 96px
+      font-weight: 500
+
+.metube-view-toggle .btn-outline-secondary
+      background-color: var(--bs-body-bg)
+      border-color: var(--bs-border-color)
+      color: var(--bs-body-color)
+
+.metube-view-toggle .btn-outline-secondary:hover
+      background-color: var(--bs-secondary-bg)
+
+.metube-view-toggle .btn-primary
+      box-shadow: 0 .25rem .5rem rgba(0,0,0,.08)
+
 .add-url-component
     margin: 0.5rem auto
 
@@ -31,7 +56,11 @@ button.add-url
     background: var(--bs-secondary-bg)
     padding: 0.5rem 0
     margin-top: 3.5rem
-
+    display: flex
+    align-items: center
+    justify-content: space-between
+    padding: 0.5rem 0.75rem
+    
 .metube-section-header:before
     content: ""
     position: absolute

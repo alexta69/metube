@@ -1,0 +1,11 @@
+{
+    "/socket.io": { "target": "http://localhost:8081", "ws": true, "secure": false, "changeOrigin": true },
+    "/add": { "target": "http://localhost:8081", "secure": false },
+    "/delete": { "target": "http://localhost:8081", "secure": false },
+    "/start": { "target": "http://localhost:8081", "secure": false },
+    "/history": { "target": "http://localhost:8081", "secure": false },
+    "/version": { "target": "http://localhost:8081", "secure": false },
+    "/robots.txt": { "target": "http://localhost:8081", "secure": false },
+    "/download": { "target": "http://localhost:8081", "secure": false },
+    "/thumb": { "target": "http://localhost:8081", "secure": false }
+}

@@ -4,6 +4,7 @@
 import os
 import sys
 import asyncio
+import subprocess
 from pathlib import Path
 from aiohttp import web
 from aiohttp.log import access_logger
@@ -263,6 +264,57 @@ async def history(request):
 
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
+
+@routes.get(config.URL_PREFIX + 'thumb')
+async def thumb(request):
+      # Query: base=video|audio, file=<filename>, folder=<subdir or empty>, t=<seconds>
+      base = request.query.get('base', 'video')
+      file = request.query.get('file') or ''
+      folder = request.query.get('folder', '').strip('/')
+      t = request.query.get('t', '1')
+
+      # Choose base dir
+      base_dir = config.AUDIO_DOWNLOAD_DIR if base == 'audio' else config.DOWNLOAD_DIR
+
+      # Build absolute path and secure it
+      # file is a filename relative to the download folder for that item
+      # folder (if any) is relative to base_dir
+      rel_parts = [p for p in [folder, file] if p]
+      abs_path = os.path.realpath(os.path.join(base_dir, *rel_parts))
+      real_base = os.path.realpath(base_dir)
+      if not abs_path.startswith(real_base):
+          raise web.HTTPBadRequest(text='Invalid path')
+      if not os.path.exists(abs_path):
+          raise web.HTTPNotFound()
+
+      # For audio, return 404 so the img error handler hides it (you’ll show a placeholder instead)
+      audio_exts = ('.mp3', '.m4a', '.opus', '.wav', '.flac')
+      if abs_path.lower().endswith(audio_exts):
+          raise web.HTTPNotFound()
+
+      # Run ffmpeg to stdout (single frame, scaled to width 320)
+      cmd = [
+          'ffmpeg', '-hide_banner', '-loglevel', 'error',
+          '-ss', t, '-i', abs_path,
+          '-frames:v', '1',
+          '-vf', 'scale=320:-1',
+          '-f', 'mjpeg', 'pipe:1',
+      ]
+      try:
+          proc = await asyncio.create_subprocess_exec(
+              *cmd, stdout=asyncio.subprocess.PIPE, stderr=asyncio.subprocess.PIPE
+          )
+      except FileNotFoundError:
+          raise web.HTTPServiceUnavailable(text='ffmpeg not found')
+
+      data, err = await proc.communicate()
+      if proc.returncode != 0 or not data:
+          raise web.HTTPNotFound(text='Could not generate thumbnail')
+
+      resp = web.Response(body=data, content_type='image/jpeg')
+      # Optional caching
+      resp.headers['Cache-Control'] = 'public, max-age=86400'
+      return resp
 
 @sio.event
 async def connect(sid, environ):

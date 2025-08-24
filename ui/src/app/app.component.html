@@ -321,7 +321,24 @@
     </table>
   </div>
 
-  <div class="metube-section-header">Completed</div>
+  <div class="metube-section-header">
+  <span>Completed</span>
+<div class="btn-group metube-view-toggle" role="group" aria-label="View">
+      <button type="button"
+              class="btn"
+              [ngClass]="viewMode==='list' ? 'btn-primary' : 'btn-outline-secondary'"
+              (click)="setView ? setView('list') : (viewMode='list')">
+        <fa-icon [icon]="faList" class="me-1"></fa-icon> List
+      </button>
+      <button type="button"
+              class="btn"
+              [ngClass]="viewMode==='grid' ? 'btn-primary' : 'btn-outline-secondary'"
+              (click)="setView ? setView('grid') : (viewMode='grid')">
+        <fa-icon [icon]="faGrid" class="me-1"></fa-icon> Grid
+      </button>
+    </div>
+    </div>
+  <div *ngIf="viewMode==='list'">
   <div class="px-2 py-3 border-bottom">
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt"></fa-icon>&nbsp; Clear selected</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle"></fa-icon>&nbsp; Clear completed</button>
@@ -352,6 +369,7 @@
               <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" class="text-success"></fa-icon>
               <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" class="text-danger"></fa-icon>
             </div>
+
             <span ngbTooltip="{{download.value.msg}} | {{download.value.error}}"><a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a></span>
             <ng-template #noDownloadLink>
               {{download.value.title}}
@@ -377,6 +395,52 @@
       </tbody>
     </table>
   </div>
+  </div>
+  <div *ngIf="viewMode==='grid'" class="py-3">
+   <div class="row row-cols-2 row-cols-md-4 row-cols-lg-5 g-3">
+      <div class="col" *ngFor="let download of downloads.done | keyvalue: asIsOrder; trackBy: identifyDownloadRow">
+        <div class="card h-100">
+          <img
+            *ngIf="getThumbnailUrl(download.value) as thumb"
+            [src]="thumb"
+            alt=""
+            class="card-img-top thumb-grid-img"
+            loading="lazy"
+            (error)="onImgError($event)"
+          />
+          <div class="card-body">
+            <div class="text-truncate" [title]="download.value.title">
+              <a *ngIf="!!download.value.filename; else noLink"
+                 [href]="buildDownloadLink(download.value)"
+                 target="_blank">{{ download.value.title }}</a>
+              <ng-template #noLink>{{ download.value.title }}</ng-template>
+            </div>
+            <small class="text-body-secondary" *ngIf="download.value.size">
+              {{ download.value.size | fileSize }}
+            </small>
+          </div>
+          <div class="card-footer d-flex justify-content-end gap-2">
+            <button *ngIf="download.value.status=='error'" type="button" class="btn btn-link p-0"
+                    (click)="retryDownload(download.key, download.value)">
+              <fa-icon [icon]="faRedoAlt"></fa-icon>
+            </button>
+            <a *ngIf="download.value.filename" [href]="buildDownloadLink(download.value)" download class="btn btn-link
+p-0">
+              <fa-icon [icon]="faDownload"></fa-icon>
+            </a>
+            <a [href]="download.value.url" target="_blank" class="btn btn-link p-0">
+              <fa-icon [icon]="faExternalLinkAlt"></fa-icon>
+            </a>
+            <button type="button" class="btn btn-link p-0" (click)="delDownload('done', download.key)">
+              <fa-icon [icon]="faTrashAlt"></fa-icon>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  
+
 </main><!-- /.container -->
 
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
