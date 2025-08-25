@@ -44,6 +44,10 @@ testem.log
 .DS_Store
 Thumbs.db
 
+# MeTube runtime databases
+queue*
+completed*
+pending*
 
 __pycache__
 .venv
