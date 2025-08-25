@@ -264,11 +264,63 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
+@routes.post(config.URL_PREFIX + 'update_download_config')
+async def update_download_config(request):
+    post = await request.json()
+    download_mode = post.get('download_mode')
+    max_concurrent = post.get('max_concurrent_downloads')
+    
+    if download_mode not in ['sequential', 'concurrent', 'limited']:
+        raise web.HTTPBadRequest(text='Invalid download_mode')
+    
+    if max_concurrent is not None:
+        try:
+            max_concurrent = int(max_concurrent)
+            if max_concurrent < 1:
+                raise ValueError()
+        except ValueError:
+            raise web.HTTPBadRequest(text='max_concurrent_downloads must be a positive integer')
+    
+    # Update config
+    config.DOWNLOAD_MODE = download_mode
+    if max_concurrent is not None:
+        config.MAX_CONCURRENT_DOWNLOADS = max_concurrent
+    
+    # Update download queue configuration
+    if download_mode == 'sequential':
+        if not hasattr(dqueue, 'seq_lock'):
+            dqueue.seq_lock = asyncio.Lock()
+        dqueue.semaphore = None
+    elif download_mode == 'limited':
+        dqueue.semaphore = asyncio.Semaphore(int(config.MAX_CONCURRENT_DOWNLOADS))
+        if hasattr(dqueue, 'seq_lock'):
+            delattr(dqueue, 'seq_lock')
+    else:  # concurrent
+        dqueue.semaphore = None
+        if hasattr(dqueue, 'seq_lock'):
+            delattr(dqueue, 'seq_lock')
+    
+    # Notify all clients of the configuration change
+    await sio.emit('configuration', serializer.encode(config))
+    
+    return web.Response(text=serializer.encode({'status': 'ok'}))
+
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
-    await sio.emit('configuration', serializer.encode(config), to=sid)
+    # Include download settings in configuration
+    config_dict = {
+        'CUSTOM_DIRS': config.CUSTOM_DIRS,
+        'CREATE_CUSTOM_DIRS': config.CREATE_CUSTOM_DIRS,
+        'DEFAULT_OPTION_PLAYLIST_STRICT_MODE': config.DEFAULT_OPTION_PLAYLIST_STRICT_MODE,
+        'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT': config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT,
+        'PUBLIC_HOST_URL': config.PUBLIC_HOST_URL,
+        'PUBLIC_HOST_AUDIO_URL': config.PUBLIC_HOST_AUDIO_URL,
+        'DOWNLOAD_MODE': config.DOWNLOAD_MODE,
+        'MAX_CONCURRENT_DOWNLOADS': config.MAX_CONCURRENT_DOWNLOADS
+    }
+    await sio.emit('configuration', serializer.encode(config_dict), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
     if config.YTDL_OPTIONS_FILE:
