@@ -103,6 +103,38 @@ __Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it f
 
 __Firefox:__ contributed by [nanocortex](https://github.com/nanocortex). You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
 
+## Bulk Import
+
+MeTube supports importing multiple URLs at once with enhanced validation and feedback:
+
+### Features
+- **Direct Access**: Click the "Bulk Import" button next to the main Download button
+- **Real-time Validation**: See live feedback as you type URLs (✅ Valid, ❌ Invalid, ⚠️ Duplicates)
+- **Smart Filtering**: Only valid URLs are imported, with confirmation for problematic ones
+- **Duplicate Detection**: Automatically identifies and handles duplicate URLs
+- **Professional Interface**: Enhanced modal with monospace font and expandable error details
+- **Progress Tracking**: Monitor import progress with cancellation support
+
+### Usage
+1. Click the **"Bulk Import"** button on the main interface
+2. Paste multiple URLs (one per line) into the textarea
+3. Watch the real-time validation badges show URL status
+4. Review any issues in the expandable "Show issues" section
+5. Click **"Import X"** to process only the valid URLs
+
+### Supported URL Formats
+The bulk import validates URLs using standard HTTP/HTTPS protocols and supports various video platforms:
+- YouTube videos: `https://youtube.com/watch?v=...`, `https://youtu.be/...`
+- YouTube playlists: `https://youtube.com/playlist?list=...`
+- Other video platforms supported by yt-dlp
+- Any valid HTTP/HTTPS URL
+
+### Advanced Features
+- **Error Details**: Expandable section showing specific invalid URLs (limited to first 3 with "and X more" for large lists)
+- **Confirmation Dialogs**: Smart prompts when invalid URLs are detected
+- **Performance Optimized**: Handles hundreds of URLs efficiently
+- **Accessibility**: Full WCAG compliance with proper labels and ARIA attributes
+
 ## iOS Shortcut
 
 [rithask](https://github.com/rithask) created an iOS shortcut to send URLs to MeTube from Safari. Enter the MeTube instance address when prompted which will be saved for later use. You can run the shortcut from Safari’s share menu. The shortcut can be downloaded from [this iCloud link](https://www.icloud.com/shortcuts/66627a9f334c467baabdb2769763a1a6).
