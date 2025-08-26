@@ -39,6 +39,8 @@ export class AppComponent implements AfterViewInit {
   batchImportStatus = '';
   importInProgress = false;
   cancelImportFlag = false;
+  urlValidationResults: { valid: string[], invalid: string[], duplicates: string[] } = { valid: [], invalid: [], duplicates: [] };
+  parsedUrlCount = 0;
   ytDlpOptionsUpdateTime: string | null = null;
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
@@ -361,6 +363,48 @@ export class AppComponent implements AfterViewInit {
     this.batchImportStatus = '';
     this.importInProgress = false;
     this.cancelImportFlag = false;
+    this.urlValidationResults = { valid: [], invalid: [], duplicates: [] };
+    this.parsedUrlCount = 0;
+  }
+
+  // Validate URLs in real-time as user types
+  validateBatchUrls(): void {
+    const urls = this.batchImportText
+      .split(/\r?\n/)
+      .map(url => url.trim())
+      .filter(url => url.length > 0);
+    
+    this.parsedUrlCount = urls.length;
+    
+    if (urls.length === 0) {
+      this.urlValidationResults = { valid: [], invalid: [], duplicates: [] };
+      return;
+    }
+
+    // Basic URL validation regex
+    const urlRegex = /^https?:\/\/.+/i;
+    const valid: string[] = [];
+    const invalid: string[] = [];
+    const seen = new Set<string>();
+    const duplicates: string[] = [];
+
+    urls.forEach(url => {
+      if (seen.has(url)) {
+        if (!duplicates.includes(url)) {
+          duplicates.push(url);
+        }
+        return;
+      }
+      seen.add(url);
+
+      if (urlRegex.test(url)) {
+        valid.push(url);
+      } else {
+        invalid.push(url);
+      }
+    });
+
+    this.urlValidationResults = { valid, invalid, duplicates };
   }
 
   // Close the Batch Import modal
@@ -370,13 +414,19 @@ export class AppComponent implements AfterViewInit {
 
   // Start importing URLs from the batch modal textarea
   startBatchImport(): void {
-    const urls = this.batchImportText
-      .split(/\r?\n/)
-      .map(url => url.trim())
-      .filter(url => url.length > 0);
+    // Run validation first to get latest results
+    this.validateBatchUrls();
+    
+    const urls = this.urlValidationResults.valid;
     if (urls.length === 0) {
-      alert('No valid URLs found.');
+      alert('No valid URLs found. Please check your URLs and try again.');
       return;
+    }
+    
+    // Show warning if there are invalid URLs
+    if (this.urlValidationResults.invalid.length > 0) {
+      const proceed = confirm(`Found ${this.urlValidationResults.invalid.length} invalid URLs that will be skipped. Continue with ${urls.length} valid URLs?`);
+      if (!proceed) return;
     }
     this.importInProgress = true;
     this.cancelImportFlag = false;

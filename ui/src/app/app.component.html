@@ -88,6 +88,14 @@
               <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
               {{ addInProgress ? "Adding..." : "Download" }}
             </button>
+            <button class="btn btn-outline-primary btn-lg px-3" 
+                    type="button" 
+                    (click)="openBatchImportModal()" 
+                    [disabled]="addInProgress || downloads.loading"
+                    ngbTooltip="Import multiple URLs at once">
+              <fa-icon [icon]="faFileImport"></fa-icon>
+              Bulk Import
+            </button>
           </div>
         </div>
       </div>
@@ -255,10 +263,77 @@
           <button type="button" class="btn-close" aria-label="Close" (click)="closeBatchImportModal()"></button>
         </div>
         <div class="modal-body">
-          <textarea [(ngModel)]="batchImportText" class="form-control" rows="6"
-            placeholder="Paste one video URL per line"></textarea>
-          <div class="mt-2">
-            <small *ngIf="batchImportStatus">{{ batchImportStatus }}</small>
+          <div class="mb-3">
+            <label for="batchImportTextarea" class="form-label">URLs (one per line)</label>
+            <textarea [(ngModel)]="batchImportText" 
+                      (input)="validateBatchUrls()"
+                      class="form-control" 
+                      rows="8" 
+                      id="batchImportTextarea"
+                      placeholder="Paste video URLs here, one per line:&#10;https://youtube.com/watch?v=...&#10;https://youtube.com/playlist?list=...&#10;https://youtu.be/..."></textarea>
+          </div>
+          
+          <!-- URL Summary -->
+          <div class="url-summary mb-3" *ngIf="parsedUrlCount > 0">
+            <div class="row g-2">
+              <div class="col-md-3" *ngIf="urlValidationResults.valid.length > 0">
+                <div class="badge bg-success w-100">
+                  <fa-icon [icon]="faCheck" class="me-1"></fa-icon>
+                  {{urlValidationResults.valid.length}} Valid
+                </div>
+              </div>
+              <div class="col-md-3" *ngIf="urlValidationResults.invalid.length > 0">
+                <div class="badge bg-danger w-100">
+                  <fa-icon [icon]="faTimesCircle" class="me-1"></fa-icon>
+                  {{urlValidationResults.invalid.length}} Invalid
+                </div>
+              </div>
+              <div class="col-md-3" *ngIf="urlValidationResults.duplicates.length > 0">
+                <div class="badge bg-warning w-100">
+                  <fa-icon [icon]="faCopy" class="me-1"></fa-icon>
+                  {{urlValidationResults.duplicates.length}} Duplicates
+                </div>
+              </div>
+              <div class="col-md-3">
+                <div class="badge bg-info w-100">
+                  Total: {{parsedUrlCount}}
+                </div>
+              </div>
+            </div>
+            
+            <!-- Detailed validation messages -->
+            <div class="mt-2" *ngIf="urlValidationResults.invalid.length > 0 || urlValidationResults.duplicates.length > 0">
+              <details class="small">
+                <summary class="text-muted">Show issues</summary>
+                <div class="mt-2">
+                  <div *ngIf="urlValidationResults.invalid.length > 0" class="text-danger">
+                    <strong>Invalid URLs:</strong>
+                    <ul class="mb-2">
+                      <li *ngFor="let url of urlValidationResults.invalid.slice(0, 3)">{{url}}</li>
+                      <li *ngIf="urlValidationResults.invalid.length > 3" class="text-muted">
+                        ...and {{urlValidationResults.invalid.length - 3}} more
+                      </li>
+                    </ul>
+                  </div>
+                  <div *ngIf="urlValidationResults.duplicates.length > 0" class="text-warning">
+                    <strong>Duplicate URLs:</strong>
+                    <ul class="mb-0">
+                      <li *ngFor="let url of urlValidationResults.duplicates.slice(0, 3)">{{url}}</li>
+                      <li *ngIf="urlValidationResults.duplicates.length > 3" class="text-muted">
+                        ...and {{urlValidationResults.duplicates.length - 3}} more
+                      </li>
+                    </ul>
+                  </div>
+                </div>
+              </details>
+            </div>
+          </div>
+
+          <!-- Import Status -->
+          <div class="mt-2" *ngIf="batchImportStatus">
+            <div class="alert alert-info mb-0">
+              <small>{{ batchImportStatus }}</small>
+            </div>
           </div>
         </div>
         <div class="modal-footer">
@@ -266,8 +341,13 @@
             Cancel Import
           </button>
           <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
-          <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
-            Import URLs
+          <button type="button" 
+                  class="btn btn-primary" 
+                  (click)="startBatchImport()" 
+                  [disabled]="importInProgress || urlValidationResults.valid.length === 0">
+            <fa-icon [icon]="faFileImport" class="me-2" *ngIf="!importInProgress"></fa-icon>
+            <span class="spinner-border spinner-border-sm me-2" *ngIf="importInProgress"></span>
+            {{ importInProgress ? 'Importing...' : 'Import ' + (urlValidationResults.valid.length || 'URLs') }}
           </button>
         </div>
       </div>
