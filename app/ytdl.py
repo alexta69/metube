@@ -180,21 +180,36 @@ class Download:
     
     def _add_format_identifier(self, identifier, template):
         # Preventing the post-processing of YT-DLP from deleting the intermediate file which was download before.
-        return f'{identifier}_{template}'
+        if template is None: 
+            return
+
+        if identifier is None:
+            identifier = 'None'
+        dirname = os.path.dirname(template)
+        basename = os.path.basename(template)
+        new_basename = f'{identifier}_{basename}'
+        return os.path.join(dirname, new_basename) if dirname else new_basename
 
     def _delete_format_identifier(self):
         # Delete the identifier in the file name after the post-processing is complete.
         if self.canceled or self.info.status != 'finished' or not hasattr(self.info,'filename'):
             return
+        
+        dirname = os.path.dirname(self.info.filename)
+        download_dir = self.download_dir
+        if dirname:
+            download_dir = os.path.join(download_dir, dirname)
+        
+        filename_idt = os.path.basename(self.info.filename)
+        filename = re.sub(r'^\w+_', '', filename_idt)
 
+        filepath_idt = os.path.join(download_dir, filename_idt)
+        filepath = os.path.join(download_dir, filename)
         try:
-            filename = re.sub(r'^\w+_', '', self.info.filename)
-            filepath_idt = os.path.join(self.download_dir, self.info.filename)
-            filepath = os.path.join(self.download_dir, filename)
             if os.path.exists(filepath):
                 os.remove(filepath)
             os.rename(filepath_idt, filepath)
-            log.info(f"Renamed file '{filepath_idt}' to '{filepath}'")
+            self.info.filename = os.path.join(dirname, filename) if dirname else filename
         except PermissionError as e:
             log.warning(f"Error deleting old file '{filepath}': {e} ")
             return
@@ -202,7 +217,7 @@ class Download:
             log.warning(f"Error renaming file '{filepath_idt}': {e} ")
             return
 
-        self.info.filename = filename
+        
 
     def delete_tmpfile(self):
         if not self.tmpfilename or not self.download_dir:
