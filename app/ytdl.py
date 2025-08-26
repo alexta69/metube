@@ -202,6 +202,8 @@ class Download:
         
         filename_idt = os.path.basename(self.info.filename)
         filename = re.sub(r'^\w+_', '', filename_idt)
+        if filename_idt == filename:
+            return
 
         filepath_idt = os.path.join(download_dir, filename_idt)
         filepath = os.path.join(download_dir, filename)
