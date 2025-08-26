@@ -2,7 +2,7 @@ FROM node:lts-alpine as builder
 
 WORKDIR /metube
 COPY ui ./
-RUN npm ci && \
+RUN npm install && \
     node_modules/.bin/ng build --configuration production
 
 
