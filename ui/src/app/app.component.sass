@@ -29,8 +29,11 @@ button.add-url
     font-weight: 300
     position: relative
     background: var(--bs-secondary-bg)
-    padding: 0.5rem 0
+    padding: 0.5rem 0.75rem
     margin-top: 3.5rem
+    display: flex
+    align-items: center
+    justify-content: space-between
 
 .metube-section-header:before
     content: ""
@@ -41,6 +44,31 @@ button.add-url
     right: 0
     border-left: 9999px solid var(--bs-secondary-bg)
     box-shadow: 9999px 0 0 var(--bs-secondary-bg)
+
+.metube-view-toggle .btn
+      min-width: 96px
+      font-weight: 500
+
+.metube-view-toggle .btn-outline-secondary
+      background-color: var(--bs-body-bg)
+      border-color: var(--bs-border-color)
+      color: var(--bs-body-color)
+
+.metube-view-toggle .btn-outline-secondary:hover
+      background-color: var(--bs-secondary-bg)
+
+.metube-view-toggle .btn-primary
+      box-shadow: 0 .25rem .5rem rgba(0,0,0,.08)
+
+.thumb
+      width: 80px
+      object-fit: cover
+      border-radius: 4px
+      vertical-align: middle
+
+.thumb-grid-img
+      aspect-ratio: 16/9
+      object-fit: cover
 
 button:hover
     text-decoration: none
