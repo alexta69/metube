@@ -1233,11 +1233,11 @@
                 "default"
             ],
             "hashes": [
-                "sha256:0b8fd3bb7c54bc2e7ecb5cdac7d64c30e2503ea4d3dd9ae24d4f09e22aaa95f4",
-                "sha256:ed74768d2a93b29933ab14099da19497ef571637f7aa375140dd3d882b9c1854"
+                "sha256:68a03b5c50e3d0f6af7244bd4bf491c1b12e4e2112b051cde05cdfd2647eb9a8",
+                "sha256:9ce080f80b2258e872fe8a75f4707ea2c644e697477186e20b9a04d9a9ea37cf"
             ],
             "markers": "python_version >= '3.9'",
-            "version": "==2025.8.27"
+            "version": "==2025.9.5"
         }
     },
     "develop": {
