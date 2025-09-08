@@ -1,0 +1,45 @@
+name: 💬 General Discussion
+description: Start a general discussion about MeTube
+title: "[Discussion]: "
+labels: ["discussion"]
+assignees: []
+
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed these steps before starting a discussion
+      options:
+        - label: I have searched existing discussions to ensure this topic hasn't been discussed before
+          required: true
+        - label: I have read the [README](https://github.com/alexta69/metube#readme) and relevant sections
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Discussion Guidelines
+        
+        This is for general discussions about MeTube. For specific issues, please use:
+        - **Bug reports** → Use the Bug Report issue template
+        - **Feature requests** → Use the Feature Request issue template
+        - **Questions** → Use the Question issue template
+
+  - type: textarea
+    id: discussion-topic
+    attributes:
+      label: Discussion Topic
+      description: What would you like to discuss about MeTube?
+      placeholder: Please provide a clear topic for discussion
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful for the discussion
+      placeholder: Links, examples, or other relevant information
+    validations:
+      required: false

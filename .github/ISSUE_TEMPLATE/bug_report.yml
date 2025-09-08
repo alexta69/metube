@@ -1,0 +1,87 @@
+name: 🐛 Bug Report
+description: Report a bug or unexpected behavior in MeTube
+title: "[Bug]: "
+labels: ["bug"]
+assignees: []
+
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed these steps before submitting your bug report
+      options:
+        - label: I have searched existing issues and discussions to ensure this bug hasn't been reported before
+          required: true
+        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#troubleshooting-and-submitting-issues) in the README
+          required: true
+        - label: I have tested this issue with yt-dlp directly (not just through MeTube UI) as described in the README
+          required: true
+        - label: I have checked that this is not a yt-dlp issue (if it is, please report it to [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues) instead)
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Important Notes
+        - **MeTube is only a UI for yt-dlp** - issues with authentication, postprocessing, permissions, or other yt-dlp functionality should be reported to the [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues)
+        - Before reporting, please test with yt-dlp directly using: `docker exec -ti metube sh` then `cd /downloads` and run yt-dlp commands
+        - If yt-dlp works directly but MeTube doesn't, then it's a MeTube issue
+
+  - type: textarea
+    id: bug-description
+    attributes:
+      label: Bug Description
+      description: Describe the bug, what you expected to happen, and what actually happened
+      placeholder: |
+        What happened?
+        What did you expect to happen?
+        Steps to reproduce:
+        1. Go to '...'
+        2. Click on '....'
+        3. See error
+    validations:
+      required: true
+
+  - type: textarea
+    id: ytdl-test-results
+    attributes:
+      label: yt-dlp Direct Test Results
+      description: Results of testing the same URL/configuration directly with yt-dlp (required)
+      placeholder: |
+        Command used: yt-dlp [your-command-here]
+        Result: [success/error and output]
+    validations:
+      required: true
+
+  - type: textarea
+    id: environment-and-config
+    attributes:
+      label: Environment & Configuration
+      description: Your setup details and MeTube configuration
+      placeholder: |
+        Environment:
+        - MeTube version: [e.g., latest, specific version]
+        - Docker image: [e.g., ghcr.io/alexta69/metube:latest]
+        - Operating System: [e.g., Ubuntu 20.04, Windows 10, macOS 12]
+        
+        Configuration:
+        ```yaml
+        # Your docker-compose.yml or environment variables
+        ```
+        
+        Logs:
+        ```bash
+        docker logs metube
+        ```
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful
+      placeholder: Screenshots, error messages, or other relevant information
+    validations:
+      required: false

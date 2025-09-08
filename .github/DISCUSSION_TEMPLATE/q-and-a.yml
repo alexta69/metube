@@ -1,0 +1,60 @@
+name: ❓ Q&A
+description: Ask a question and get answers from the community
+title: "[Q&A]: "
+labels: ["q-and-a"]
+assignees: []
+
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed these steps before asking your question
+      options:
+        - label: I have searched existing discussions and issues to see if my question has been answered before
+          required: true
+        - label: I have read the [README](https://github.com/alexta69/metube#readme) and relevant sections
+          required: true
+        - label: I have checked the [Wiki](https://github.com/alexta69/metube/wiki) for configuration examples
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Quick Resources
+        
+        Before asking your question, please check these resources:
+        - **[README](https://github.com/alexta69/metube#readme)** - Complete setup and configuration guide
+        - **[YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)** - Common yt-dlp configurations
+        - **[OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)** - Filename template examples
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know about MeTube?
+      placeholder: |
+        What are you trying to achieve?
+        What's your current setup?
+        What have you tried so far?
+    validations:
+      required: true
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful (configuration, errors, screenshots, etc.)
+      placeholder: |
+        Configuration:
+        ```yaml
+        # Your docker-compose.yml or environment variables
+        ```
+        
+        Error messages or logs:
+        [Paste any error messages or logs here]
+        
+        Other relevant information:
+        [Screenshots, examples, etc.]
+    validations:
+      required: false

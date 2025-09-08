@@ -1,0 +1,62 @@
+name: ✨ Feature Request
+description: Suggest a new feature or enhancement for MeTube
+title: "[Feature]: "
+labels: ["enhancement"]
+assignees: []
+
+body:
+  - type: checkboxes
+    id: prerequisites
+    attributes:
+      label: Prerequisites
+      description: Please confirm you have completed these steps before submitting your feature request
+      options:
+        - label: I have searched existing issues and discussions to ensure this feature hasn't been requested before
+          required: true
+        - label: I have read the [feature request guidelines](https://github.com/alexta69/metube#submitting-feature-requests) in the README
+          required: true
+        - label: I understand that MeTube development relies on community contributions and the maintainer is not likely to implement this feature
+          required: true
+        - label: I have considered if this feature should be implemented in yt-dlp instead of MeTube (if so, please report to [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues))
+          required: true
+
+  - type: markdown
+    attributes:
+      value: |
+        ## Important Notes
+        - **MeTube development relies on code contributions by the community** - the project is feature-complete for the maintainer's use cases
+        - **Consider if this belongs in yt-dlp** - if it's related to video downloading, processing, or site support, it might belong in the [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues) instead
+        - **Some features may not be accepted** - in an effort to reduce bloat, some PRs may not be accepted
+
+  - type: textarea
+    id: feature-description
+    attributes:
+      label: Feature Description
+      description: Describe the feature you'd like to see and what problem it solves
+      placeholder: |
+        What feature would you like to see?
+        What problem does it solve?
+        How would it work?
+    validations:
+      required: true
+
+  - type: dropdown
+    id: implementation-plan
+    attributes:
+      label: Implementation Plan
+      description: Do you plan to implement this feature yourself? (Optional - others may pick it up)
+      options:
+        - "Yes, I will implement this feature and submit a PR"
+        - "No, I'm requesting this feature but cannot implement it"
+        - "Maybe, I'd like to discuss the implementation approach first"
+    validations:
+      required: false
+
+  - type: textarea
+    id: additional-context
+    attributes:
+      label: Additional Context
+      description: Any other information that might be helpful (mockups, technical details, alternatives, etc.)
+      placeholder: Screenshots, mockups, technical details, or other relevant information
+    validations:
+      required: false
