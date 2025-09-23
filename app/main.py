@@ -42,6 +42,7 @@ class Config:
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
+        'YTDL_PLUGINS_DIR': '',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',

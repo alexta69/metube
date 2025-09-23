@@ -89,7 +89,7 @@ class Download:
                         filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
 
-            ret = yt_dlp.YoutubeDL(params={
+            params = {
                 'quiet': True,
                 'no_color': True,
                 'paths': {"home": self.download_dir, "temp": self.temp_dir},
@@ -100,7 +100,15 @@ class Download:
                 'progress_hooks': [put_status],
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
-            }).download([self.info.url])
+            }
+            # Add plugin directories if configured
+            if hasattr(self.manager.config, 'YTDL_PLUGINS_DIR') and self.manager.config.YTDL_PLUGINS_DIR:
+                import glob
+                plugin_dirs = glob.glob(f"{self.manager.config.YTDL_PLUGINS_DIR}/*")
+                plugin_dirs = [d for d in plugin_dirs if os.path.isdir(d)]
+                if plugin_dirs:
+                    params['plugin_dirs'] = plugin_dirs
+            ret = yt_dlp.YoutubeDL(params=params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
@@ -294,7 +302,7 @@ class DownloadQueue:
                 asyncio.create_task(self.notifier.completed(download.info))
 
     def __extract_info(self, url, playlist_strict_mode):
-        return yt_dlp.YoutubeDL(params={
+        params = {
             'quiet': True,
             'no_color': True,
             'extract_flat': True,
@@ -303,7 +311,15 @@ class DownloadQueue:
             'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
             **self.config.YTDL_OPTIONS,
             **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
-        }).extract_info(url, download=False)
+        }
+        # Add plugin directories if configured
+        if hasattr(self.config, 'YTDL_PLUGINS_DIR') and self.config.YTDL_PLUGINS_DIR:
+            import glob
+            plugin_dirs = glob.glob(f"{self.config.YTDL_PLUGINS_DIR}/*")
+            plugin_dirs = [d for d in plugin_dirs if os.path.isdir(d)]
+            if plugin_dirs:
+                params['plugin_dirs'] = plugin_dirs
+        return yt_dlp.YoutubeDL(params=params).extract_info(url, download=False)
 
     def __calc_download_path(self, quality, format, folder):
         base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR

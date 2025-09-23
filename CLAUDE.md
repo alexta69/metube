@@ -123,6 +123,19 @@ MeTube 是 yt-dlp 的 Web GUI，具有以下架构：
 }
 ```
 
+### Context7 MCP 服务
+```json
+{
+  "mcpServers": {
+    "context7": {
+      "command": "npx",
+      "args": ["-y", "@context7/mcp"],
+      "env": {}
+    }
+  }
+}
+```
+
 ## Agents 配置
 
 ### 代码审查 Agent
