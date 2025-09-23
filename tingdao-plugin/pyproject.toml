@@ -1,0 +1,14 @@
+[build-system]
+requires = ["setuptools"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "yt-dlp-tingdao-plugin"
+version = "1.0.0"
+description = "yt-dlp extractor plugin for tingdao.org audio content"
+authors = [{name = "Claude Code Assistant"}]
+license = {text = "Public Domain"}
+requires-python = ">=3.7"
+
+[tool.setuptools.packages.find]
+where = ["."]

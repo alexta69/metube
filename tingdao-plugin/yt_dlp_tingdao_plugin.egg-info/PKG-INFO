@@ -1,0 +1,7 @@
+Metadata-Version: 2.4
+Name: yt-dlp-tingdao-plugin
+Version: 1.0.0
+Summary: yt-dlp extractor plugin for tingdao.org audio content
+Author: Claude Code Assistant
+License: Public Domain
+Requires-Python: >=3.7

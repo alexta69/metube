@@ -1,0 +1,8 @@
+README.md
+pyproject.toml
+setup.cfg
+yt_dlp_plugins/extractor/tingdao.py
+yt_dlp_tingdao_plugin.egg-info/PKG-INFO
+yt_dlp_tingdao_plugin.egg-info/SOURCES.txt
+yt_dlp_tingdao_plugin.egg-info/dependency_links.txt
+yt_dlp_tingdao_plugin.egg-info/top_level.txt

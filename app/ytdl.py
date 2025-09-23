@@ -102,7 +102,10 @@ class Download:
                 **self.ytdl_opts,
             }
             # Add plugin directories if configured
-            if hasattr(self.manager.config, 'YTDL_PLUGINS_DIR') and self.manager.config.YTDL_PLUGINS_DIR:
+            if (self.manager and
+                hasattr(self.manager, 'config') and
+                hasattr(self.manager.config, 'YTDL_PLUGINS_DIR') and
+                self.manager.config.YTDL_PLUGINS_DIR):
                 import glob
                 plugin_dirs = glob.glob(f"{self.manager.config.YTDL_PLUGINS_DIR}/*")
                 plugin_dirs = [d for d in plugin_dirs if os.path.isdir(d)]
@@ -313,7 +316,8 @@ class DownloadQueue:
             **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
         }
         # Add plugin directories if configured
-        if hasattr(self.config, 'YTDL_PLUGINS_DIR') and self.config.YTDL_PLUGINS_DIR:
+        if (hasattr(self.config, 'YTDL_PLUGINS_DIR') and
+            self.config.YTDL_PLUGINS_DIR):
             import glob
             plugin_dirs = glob.glob(f"{self.config.YTDL_PLUGINS_DIR}/*")
             plugin_dirs = [d for d in plugin_dirs if os.path.isdir(d)]
