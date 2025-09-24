@@ -1,0 +1,18 @@
+[project]
+name = "metube"
+version = "0.1.0"
+description = "Web GUI for youtube-dl (using yt-dlp) with playlist support"
+requires-python = ">=3.13"
+dependencies = [
+    "aiohttp",
+    "python-socketio>=5.0,<6.0",
+    "yt-dlp[default,curl-cffi]",
+    "mutagen",
+    "curl-cffi",
+    "watchfiles",
+]
+
+[dependency-groups]
+dev = [
+    "pylint",
+]

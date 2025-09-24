@@ -19,16 +19,23 @@ jobs:
         with:
           python-version: '3.13'
       -
+        name: Install uv
+        uses: astral-sh/setup-uv@v6
+      -
         name: Update yt-dlp
         run: |
-          pip install pipenv
-          pipenv sync
-          VER=`pipenv run pip list -o | awk '$1 == "yt-dlp" {print $3}'`
-          if [ -n "$VER" ]; then
-            pipenv update yt-dlp[default,curl-cffi]
-            pipenv lock
+          uv sync --locked
+          # Check if yt-dlp has updates available
+          LATEST_VERSION=$(uv pip list --outdated --format json | jq -r '.[] | select(.name == "yt-dlp") | .latest_version')
+          CURRENT_VERSION=$(uv pip list --format json | jq -r '.[] | select(.name == "yt-dlp") | .version')
+          if [ -n "$LATEST_VERSION" ] && [ "$LATEST_VERSION" != "$CURRENT_VERSION" ]; then
+            echo "Updating yt-dlp from $CURRENT_VERSION to $LATEST_VERSION"
+            uv lock --upgrade-package "yt-dlp[default,curl-cffi]"
             git config --global user.email "updater@metube"
             git config --global user.name "AutoUpdater"
-            git commit -m 'upgraded yt-dlp' Pipfile.lock
+            git add uv.lock
+            git commit -m "upgrade yt-dlp from $CURRENT_VERSION to $LATEST_VERSION"
             git push
+          else
+            echo "yt-dlp is already up to date ($CURRENT_VERSION)"
           fi
