@@ -207,6 +207,34 @@
                 </div>
               </div>
 
+              <!-- Download Configuration -->
+              <div class="row mt-3" *ngIf="isAdvancedOpen">
+                <div class="col">
+                  <h6>Download Configuration</h6>
+                  <div class="row">
+                    <div class="col-md-6">
+                      <label for="downloadMode" class="form-label">Download Mode</label>
+                      <select id="downloadMode" class="form-select" [(ngModel)]="downloadMode" (change)="onDownloadModeChange()">
+                        <option *ngFor="let mode of availableDownloadModes" [value]="mode.id">{{mode.name}}</option>
+                      </select>
+                      <div class="form-text">
+                        <small>Sequential: Downloads one at a time<br>
+                        Limited: Downloads up to the specified number concurrently<br>
+                        Unlimited: No limit on concurrent downloads</small>
+                      </div>
+                    </div>
+                    <div class="col-md-6" *ngIf="downloadMode === 'limited'">
+                      <label for="maxConcurrent" class="form-label">Max Concurrent Downloads</label>
+                      <input type="number" id="maxConcurrent" class="form-control" min="1" max="20" 
+                             [(ngModel)]="maxConcurrentDownloads" (change)="onMaxConcurrentChange()">
+                      <div class="form-text">
+                        <small>Maximum number of simultaneous downloads (1-20)</small>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
               <!-- Advanced Actions -->
               <div class="row">
                 <div class="col-12">

@@ -44,6 +44,15 @@ export class AppComponent implements AfterViewInit {
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
 
+  // Download configuration
+  downloadMode: string = 'limited';
+  maxConcurrentDownloads: number = 3;
+  availableDownloadModes = [
+    { id: 'sequential', name: 'Sequential (one at a time)' },
+    { id: 'limited', name: 'Limited concurrent' },
+    { id: 'concurrent', name: 'Unlimited concurrent' }
+  ];
+
   // Download metrics
   activeDownloads = 0;
   queuedDownloads = 0;
@@ -195,6 +204,14 @@ export class AppComponent implements AfterViewInit {
         const playlistItemLimit = config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'];
         if (playlistItemLimit !== '0') {
           this.playlistItemLimit = playlistItemLimit;
+        }
+        
+        // Update download configuration
+        if (config['DOWNLOAD_MODE']) {
+          this.downloadMode = config['DOWNLOAD_MODE'];
+        }
+        if (config['MAX_CONCURRENT_DOWNLOADS']) {
+          this.maxConcurrentDownloads = config['MAX_CONCURRENT_DOWNLOADS'];
         }
       }
     });
@@ -515,5 +532,25 @@ export class AppComponent implements AfterViewInit {
       .filter(d => d.status === 'downloading');
     
     this.totalSpeed = downloadingItems.reduce((total, item) => total + (item.speed || 0), 0);
+  }
+
+  updateDownloadConfig() {
+    this.downloads.updateDownloadConfig(this.downloadMode, this.maxConcurrentDownloads)
+      .subscribe((status: Status) => {
+        if (status.status === 'error') {
+          alert(`Error updating download configuration: ${status.msg}`);
+        }
+      });
+  }
+
+  onDownloadModeChange() {
+    this.updateDownloadConfig();
+  }
+
+  onMaxConcurrentChange() {
+    if (this.maxConcurrentDownloads < 1) {
+      this.maxConcurrentDownloads = 1;
+    }
+    this.updateDownloadConfig();
   }
 }
