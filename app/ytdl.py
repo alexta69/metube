@@ -240,11 +240,16 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0))
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0), getattr(v, 'auto_start', True))
+
+    async def __import_pending(self):
+        for k, v in self.pending.saved_items():
+            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0), getattr(v, 'auto_start', False))
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
         asyncio.create_task(self.__import_queue())
+        asyncio.create_task(self.__import_pending())
 
     async def __start_download(self, download):
         if download.canceled:
