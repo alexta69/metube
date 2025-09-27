@@ -31,7 +31,7 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error):
+    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
@@ -44,6 +44,8 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
+        self.entry = entry
+        self.playlist_item_limit = playlist_item_limit
 
 class Download:
     manager = None
@@ -240,11 +242,11 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0), getattr(v, 'auto_start', True))
+            await self.__add_download(v, True)
 
     async def __import_pending(self):
         for k, v in self.pending.saved_items():
-            await self.add(v.url, v.quality, v.format, v.folder, v.custom_name_prefix, getattr(v, 'playlist_strict_mode', False), getattr(v, 'playlist_item_limit', 0), getattr(v, 'auto_start', False))
+            await self.__add_download(v, False)
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
@@ -327,6 +329,32 @@ class DownloadQueue:
             dldirectory = base_directory
         return dldirectory, None
 
+    async def __add_download(self, dl, auto_start):
+        dldirectory, error_message = self.__calc_download_path(dl.quality, dl.format, dl.folder)
+        if error_message is not None:
+            return error_message
+        output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
+        output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
+        entry = getattr(dl, 'entry', None)
+        if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
+            if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
+                output = self.config.OUTPUT_TEMPLATE_PLAYLIST
+            for property, value in entry.items():
+                if property.startswith("playlist"):
+                    output = output.replace(f"%({property})s", str(value))
+        ytdl_options = dict(self.config.YTDL_OPTIONS)
+        playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
+        if playlist_item_limit > 0:
+            log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
+            ytdl_options['playlistend'] = playlist_item_limit
+        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
+        if auto_start is True:
+            self.queue.put(download)
+            asyncio.create_task(self.__start_download(download))
+        else:
+            self.pending.put(download)
+        await self.notifier.added(dl)
+
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -368,29 +396,8 @@ class DownloadQueue:
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error)
-                dldirectory, error_message = self.__calc_download_path(quality, format, folder)
-                if error_message is not None:
-                    return error_message
-                output = self.config.OUTPUT_TEMPLATE if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
-                output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
-                if 'playlist' in entry and entry['playlist'] is not None:
-                    if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
-                        output = self.config.OUTPUT_TEMPLATE_PLAYLIST
-                    for property, value in entry.items():
-                        if property.startswith("playlist"):
-                            output = output.replace(f"%({property})s", str(value))
-                ytdl_options = dict(self.config.YTDL_OPTIONS)
-                if playlist_item_limit > 0:
-                    log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
-                    ytdl_options['playlistend'] = playlist_item_limit
-                if auto_start is True:
-                    download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl)
-                    self.queue.put(download)
-                    asyncio.create_task(self.__start_download(download))
-                else:
-                    self.pending.put(Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, quality, format, ytdl_options, dl))
-                await self.notifier.added(dl)
+                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit)
+                await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
