@@ -13,7 +13,7 @@ body:
       options:
         - label: I have searched existing issues and discussions to ensure this bug hasn't been reported before
           required: true
-        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#troubleshooting-and-submitting-issues) in the README
+        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#-troubleshooting-and-submitting-issues) in the README
           required: true
         - label: I have tested this issue with yt-dlp directly (not just through MeTube UI) as described in the README
           required: true

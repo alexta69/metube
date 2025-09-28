@@ -17,7 +17,7 @@ body:
           required: true
         - label: I have checked the [Wiki](https://github.com/alexta69/metube/wiki) for configuration examples
           required: true
-        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#troubleshooting-and-submitting-issues) if this is a technical issue
+        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#-troubleshooting-and-submitting-issues) if this is a technical issue
           required: true
 
   - type: markdown

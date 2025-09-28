@@ -13,7 +13,7 @@ body:
       options:
         - label: I have searched existing discussions and issues for similar configuration problems
           required: true
-        - label: I have read the [configuration section](https://github.com/alexta69/metube#configuration-via-environment-variables) in the README
+        - label: I have read the [configuration section](https://github.com/alexta69/metube#%EF%B8%8F-configuration-via-environment-variables) in the README
           required: true
         - label: I have checked the [Wiki](https://github.com/alexta69/metube/wiki) for configuration examples
           required: true
@@ -24,7 +24,7 @@ body:
         ## Configuration Resources
         
         Before asking for help, please check these resources:
-        - **[Configuration Guide](https://github.com/alexta69/metube#configuration-via-environment-variables)** - All available environment variables
+        - **[Configuration Guide](https://github.com/alexta69/metube#%EF%B8%8F-configuration-via-environment-variables)** - All available environment variables
         - **[YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)** - Common yt-dlp configurations
         - **[OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)** - Filename template examples
 

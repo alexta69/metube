@@ -13,7 +13,7 @@ body:
       options:
         - label: I have searched existing issues and discussions to ensure this feature hasn't been requested before
           required: true
-        - label: I have read the [feature request guidelines](https://github.com/alexta69/metube#submitting-feature-requests) in the README
+        - label: I have read the [feature request guidelines](https://github.com/alexta69/metube#-submitting-feature-requests) in the README
           required: true
         - label: I understand that MeTube development relies on community contributions and the maintainer is not likely to implement this feature
           required: true
