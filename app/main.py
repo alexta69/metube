@@ -115,10 +115,18 @@ config = Config()
 
 class ObjectSerializer(json.JSONEncoder):
     def default(self, obj):
+        # First try to use __dict__ for custom objects
         if hasattr(obj, '__dict__'):
             return obj.__dict__
-        else:
-            return json.JSONEncoder.default(self, obj)
+        # Convert iterables (generators, dict_items, etc.) to lists
+        # Exclude strings and bytes which are also iterable
+        elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
+            try:
+                return list(obj)
+            except:
+                pass
+        # Fall back to default behavior
+        return json.JSONEncoder.default(self, obj)
 
 serializer = ObjectSerializer()
 app = web.Application()
