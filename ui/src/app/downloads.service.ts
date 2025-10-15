@@ -26,6 +26,7 @@ export interface Download {
   speed: number;
   eta: number;
   filename: string;
+  custom_name?: string;
   checked?: boolean;
   deleting?: boolean;
 }
@@ -125,8 +126,12 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, playlistStrictMode: boolean, playlistItemLimit: number, autoStart: boolean) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, playlist_strict_mode: playlistStrictMode, playlist_item_limit: playlistItemLimit, auto_start: autoStart}).pipe(
+  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, playlistStrictMode: boolean, playlistItemLimit: number, autoStart: boolean, customName?: string) {
+    const payload: Record<string, any> = {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, playlist_strict_mode: playlistStrictMode, playlist_item_limit: playlistItemLimit, auto_start: autoStart};
+    if (customName) {
+      payload.custom_name = customName;
+    }
+    return this.http.post<Status>('add', payload).pipe(
       catchError(this.handleHTTPError)
     );
   }

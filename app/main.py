@@ -224,12 +224,30 @@ async def add(request):
     format = post.get('format')
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
+    custom_name = post.get('custom_name')
     playlist_strict_mode = post.get('playlist_strict_mode')
     playlist_item_limit = post.get('playlist_item_limit')
     auto_start = post.get('auto_start')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
+    if custom_name is not None and not isinstance(custom_name, str):
+        log.error("Bad request: custom_name must be a string")
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'invalid custom name'}))
+    sanitized_custom_name = ''
+    if isinstance(custom_name, str):
+        sanitized_custom_name = custom_name.strip()
+        if sanitized_custom_name:
+            if any(sep in sanitized_custom_name for sep in ('/', '\\')) or '..' in sanitized_custom_name:
+                log.error("Bad request: custom_name contains invalid characters")
+                return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'invalid custom name'}))
+            dot_index = sanitized_custom_name.rfind('.')
+            if dot_index > 0:
+                sanitized_custom_name = sanitized_custom_name[:dot_index]
+            sanitized_custom_name = sanitized_custom_name.strip()
+            if not sanitized_custom_name:
+                log.error("Bad request: custom_name missing after sanitization")
+                return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'invalid custom name'}))
     if auto_start is None:
         auto_start = True
     if playlist_strict_mode is None:
@@ -239,7 +257,7 @@ async def add(request):
 
     playlist_item_limit = int(playlist_item_limit)
 
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start)
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, sanitized_custom_name, playlist_strict_mode, playlist_item_limit, auto_start)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

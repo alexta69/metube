@@ -91,6 +91,22 @@
           </div>
         </div>
       </div>
+      <div class="row mb-3">
+        <div class="col">
+          <label for="customName" class="form-label mb-1">Name (no extension) <span class="text-muted">(optional)</span></label>
+          <input type="text"
+                 id="customName"
+                 name="customName"
+                 class="form-control"
+                 autocomplete="off"
+                 spellcheck="false"
+                 placeholder="e.g. my-video"
+                 [disabled]="addInProgress || downloads.loading"
+                 [(ngModel)]="customName"
+                 [ngModelOptions]="{standalone: true}">
+          <small class="form-text text-muted">The extension is added automatically; avoid dots or slashes.</small>
+        </div>
+      </div>
 
       <!-- Options Row -->
       <div class="row mb-3 g-3">

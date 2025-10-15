@@ -33,6 +33,7 @@ export class AppComponent implements AfterViewInit {
   format: string;
   folder: string;
   customNamePrefix: string;
+  customName: string = '';
   autoStart: boolean;
   playlistStrictMode: boolean;
   playlistItemLimit: number;
@@ -270,14 +271,31 @@ export class AppComponent implements AfterViewInit {
     playlistStrictMode = playlistStrictMode ?? this.playlistStrictMode
     playlistItemLimit = playlistItemLimit ?? this.playlistItemLimit
     autoStart = autoStart ?? this.autoStart
+    let sanitizedCustomName = '';
+    if (this.customName && this.customName.trim()) {
+      const raw = this.customName.trim();
+      if (/[\\/]/.test(raw) || raw.includes('..')) {
+        alert('Name cannot include path separators or "..".');
+        return;
+      }
+      sanitizedCustomName = this.getFilenameStem(raw);
+      if (!sanitizedCustomName) {
+        alert('Invalid name provided.');
+        return;
+      }
+      this.customName = sanitizedCustomName;
+    } else {
+      this.customName = '';
+    }
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' customName='+sanitizedCustomName+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart, sanitizedCustomName).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
         this.addUrl = '';
+        this.customName = '';
       }
       this.addInProgress = false;
     });
@@ -479,7 +497,7 @@ export class AppComponent implements AfterViewInit {
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistStrictMode, this.playlistItemLimit, this.autoStart)
+        this.playlistStrictMode, this.playlistItemLimit, this.autoStart, undefined)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
