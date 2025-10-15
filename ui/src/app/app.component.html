@@ -73,17 +73,17 @@
       <div class="row mb-4">
         <div class="col">
           <div class="input-group input-group-lg shadow-sm">
-            <input type="text" 
-                   autocomplete="off" 
-                   spellcheck="false" 
-                   class="form-control form-control-lg" 
-                   placeholder="Enter video or playlist URL" 
-                   name="addUrl" 
-                   [(ngModel)]="addUrl" 
+            <input type="text"
+                   autocomplete="off"
+                   spellcheck="false"
+                   class="form-control form-control-lg"
+                   placeholder="Enter video or playlist URL"
+                   name="addUrl"
+                   [(ngModel)]="addUrl"
                    [disabled]="addInProgress || downloads.loading">
-            <button class="btn btn-primary btn-lg px-4" 
-                    type="submit" 
-                    (click)="addDownload()" 
+            <button class="btn btn-primary btn-lg px-4"
+                    type="submit"
+                    (click)="addDownload()"
                     [disabled]="addInProgress || downloads.loading">
               <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
               {{ addInProgress ? "Adding..." : "Download" }}
@@ -97,10 +97,10 @@
         <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Quality</span>
-            <select class="form-select" 
-                    name="quality" 
-                    [(ngModel)]="quality" 
-                    (change)="qualityChanged()" 
+            <select class="form-select"
+                    name="quality"
+                    [(ngModel)]="quality"
+                    (change)="qualityChanged()"
                     [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
             </select>
@@ -109,18 +109,18 @@
         <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Format</span>
-            <select class="form-select" 
-                    name="format" 
-                    [(ngModel)]="format" 
-                    (change)="formatChanged()" 
+            <select class="form-select"
+                    name="format"
+                    [(ngModel)]="format"
+                    (change)="formatChanged()"
                     [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
             </select>
           </div>
         </div>
         <div class="col-md-4">
-          <button type="button" 
-                  class="btn btn-outline-secondary w-100 h-100" 
+          <button type="button"
+                  class="btn btn-outline-secondary w-100 h-100"
                   (click)="toggleAdvanced()">
             Advanced Options
           </button>
@@ -137,10 +137,10 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Auto Start</span>
-                    <select class="form-select" 
-                            name="autoStart" 
-                            [(ngModel)]="autoStart" 
-                            (change)="autoStartChanged()" 
+                    <select class="form-select"
+                            name="autoStart"
+                            [(ngModel)]="autoStart"
+                            (change)="autoStartChanged()"
                             [disabled]="addInProgress || downloads.loading"
                             ngbTooltip="Automatically start downloads when added">
                       <option [ngValue]="true">Yes</option>
@@ -151,12 +151,12 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Download Folder</span>
-                    <ng-select [items]="customDirs$ | async" 
-                              placeholder="Default" 
-                              [addTag]="allowCustomDir.bind(this)" 
-                              addTagText="Create directory" 
-                              bindLabel="folder" 
-                              [(ngModel)]="folder" 
+                    <ng-select [items]="customDirs$ | async"
+                              placeholder="Default"
+                              [addTag]="allowCustomDir.bind(this)"
+                              addTagText="Create directory"
+                              bindLabel="folder"
+                              [(ngModel)]="folder"
                               [disabled]="addInProgress || downloads.loading"
                               [virtualScroll]="true"
                               [clearable]="true"
@@ -170,11 +170,11 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Custom Name Prefix</span>
-                    <input type="text" 
-                           class="form-control" 
-                           placeholder="Default" 
-                           name="customNamePrefix" 
-                           [(ngModel)]="customNamePrefix" 
+                    <input type="text"
+                           class="form-control"
+                           placeholder="Default"
+                           name="customNamePrefix"
+                           [(ngModel)]="customNamePrefix"
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Add a prefix to downloaded filenames">
                   </div>
@@ -182,24 +182,24 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
-                    <input type="number" 
-                           min="0" 
-                           class="form-control" 
-                           placeholder="Default" 
-                           name="playlistItemLimit" 
-                           (keydown)="isNumber($event)" 
-                           [(ngModel)]="playlistItemLimit" 
+                    <input type="number"
+                           min="0"
+                           class="form-control"
+                           placeholder="Default"
+                           name="playlistItemLimit"
+                           (keydown)="isNumber($event)"
+                           [(ngModel)]="playlistItemLimit"
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Maximum number of items to download from a playlist (0 = no limit)">
                   </div>
                 </div>
                 <div class="col-12">
                   <div class="form-check form-switch">
-                    <input class="form-check-input" 
-                           type="checkbox" 
-                           role="switch" 
-                           name="playlistStrictMode" 
-                           [(ngModel)]="playlistStrictMode" 
+                    <input class="form-check-input"
+                           type="checkbox"
+                           role="switch"
+                           name="playlistStrictMode"
+                           [(ngModel)]="playlistStrictMode"
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Only download playlists when URL explicitly points to a playlist">
                     <label class="form-check-label">Strict Playlist Mode</label>
@@ -213,24 +213,24 @@
                   <hr class="my-3">
                   <div class="row g-2">
                     <div class="col-md-4">
-                      <button type="button" 
-                              class="btn btn-secondary w-100" 
+                      <button type="button"
+                              class="btn btn-secondary w-100"
                               (click)="openBatchImportModal()">
                         <fa-icon [icon]="faFileImport" class="me-2"></fa-icon>
                         Import URLs
                       </button>
                     </div>
                     <div class="col-md-4">
-                      <button type="button" 
-                              class="btn btn-secondary w-100" 
+                      <button type="button"
+                              class="btn btn-secondary w-100"
                               (click)="exportBatchUrls('all')">
                         <fa-icon [icon]="faFileExport" class="me-2"></fa-icon>
                         Export URLs
                       </button>
                     </div>
                     <div class="col-md-4">
-                      <button type="button" 
-                              class="btn btn-secondary w-100" 
+                      <button type="button"
+                              class="btn btn-secondary w-100"
                               (click)="copyBatchUrls('all')">
                         <fa-icon [icon]="faCopy" class="me-2"></fa-icon>
                         Copy URLs
@@ -245,7 +245,7 @@
       </div>
     </div>
   </form>
-  
+
   <!-- Batch Import Modal -->
   <div class="modal fade" tabindex="-1" role="dialog" [ngClass]="{'show': batchImportModalOpen}" [ngStyle]="{'display': batchImportModalOpen ? 'block' : 'none'}">
     <div class="modal-dialog" role="document">
@@ -273,7 +273,7 @@
       </div>
     </div>
   </div>
-  
+
 
   <div *ngIf="downloads.loading" class="alert alert-info" role="alert">
     Connecting to server...
@@ -346,17 +346,49 @@
           <td>
             <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckbox" [checkable]="download.value"></app-slave-checkbox>
           </td>
-          <td>
+          <td [ngClass]="{'rename-container': renameState[download.key]?.editing}">
             <div style="display: inline-block; width: 1.5rem;">
               <fa-icon *ngIf="download.value.status == 'finished'" [icon]="faCheckCircle" class="text-success"></fa-icon>
               <fa-icon *ngIf="download.value.status == 'error'" [icon]="faTimesCircle" class="text-danger"></fa-icon>
             </div>
-            <span ngbTooltip="{{download.value.msg}} | {{download.value.error}}"><a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a></span>
-            <ng-template #noDownloadLink>
-              {{download.value.title}}
-              <span *ngIf="download.value.msg"><br>{{download.value.msg}}</span>
-              <span *ngIf="download.value.error"><br>Error: {{download.value.error}}</span>
+            <ng-container *ngIf="download.value.status === 'finished' && renameState[download.key]?.editing; else viewDownloadTitle">
+              <div class="rename-inline">
+                <input class="form-control form-control-sm rename-input"
+                       [disabled]="renameState[download.key]?.submitting"
+                       [(ngModel)]="renameState[download.key].value"
+                       [ngModelOptions]="{standalone: true}"
+                       (keyup.enter)="submitRename(download.key, download.value)"
+                       (keyup.escape)="cancelRename(download.key)"
+                       placeholder="New name">
+                <div class="rename-actions">
+                  <button type="button"
+                          class="btn btn-sm btn-primary"
+                          (click)="submitRename(download.key, download.value)"
+                          [disabled]="renameState[download.key]?.submitting">
+                    Save
+                  </button>
+                  <button type="button"
+                          class="btn btn-sm btn-secondary"
+                          (click)="cancelRename(download.key)"
+                          [disabled]="renameState[download.key]?.submitting">
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            </ng-container>
+            <ng-template #viewDownloadTitle>
+              <span ngbTooltip="{{download.value.msg}} | {{download.value.error}}">
+                <a *ngIf="!!download.value.filename; else noDownloadLink" href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.filename || download.value.title }}</a>
+              </span>
+              <ng-template #noDownloadLink>
+                {{download.value.title}}
+                <span *ngIf="download.value.msg"><br>{{download.value.msg}}</span>
+                <span *ngIf="download.value.error"><br>Error: {{download.value.error}}</span>
+              </ng-template>
             </ng-template>
+            <div *ngIf="renameState[download.key]?.error" class="text-danger small mt-2">
+              {{ renameState[download.key].error }}
+            </div>
           </td>
           <td>
             <span *ngIf="download.value.size">{{ download.value.size | fileSize }}</span>
@@ -366,6 +398,7 @@
               <button *ngIf="download.value.status == 'error'" type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value)"><fa-icon [icon]="faRedoAlt"></fa-icon></button>
               <a *ngIf="download.value.filename" href="{{buildDownloadLink(download.value)}}" download class="btn btn-link"><fa-icon [icon]="faDownload"></fa-icon></a>
               <a href="{{download.value.url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt"></fa-icon></a>
+              <button *ngIf="download.value.status == 'finished' && !renameState[download.key]?.editing" type="button" class="btn btn-link" (click)="beginRename(download.key, download.value)"><fa-icon [icon]="faPen"></fa-icon></button>
               <button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt"></fa-icon></button>
             </div>
           </td>

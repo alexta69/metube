@@ -155,6 +155,10 @@ class Notifier(DownloadQueueNotifier):
         log.info(f"Notifier: Download cleared - {id}")
         await sio.emit('cleared', serializer.encode(id))
 
+    async def renamed(self, dl):
+        log.info(f"Notifier: Download renamed - {dl.url}")
+        await sio.emit('renamed', serializer.encode(dl))
+
 dqueue = DownloadQueue(config, Notifier())
 app.on_startup.append(lambda app: dqueue.initialize())
 
@@ -257,6 +261,24 @@ async def start(request):
     log.info(f"Received request to start pending downloads for ids: {ids}")
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
+
+@routes.post(config.URL_PREFIX + 'rename')
+async def rename(request):
+    try:
+        post = await request.json()
+    except json.JSONDecodeError:
+        log.error("Bad request: invalid JSON in rename")
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'invalid json'}))
+
+    id = post.get('id')
+    new_name = post.get('new_name')
+    if not id or not isinstance(new_name, str) or not new_name.strip():
+        log.error("Bad request: missing id or new_name for rename")
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'missing id or new_name'}))
+
+    status = await dqueue.rename(id, new_name)
+    http_status = 200 if status.get('status') == 'ok' else 200
+    return web.Response(text=serializer.encode(status), status=http_status)
 
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):

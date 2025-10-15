@@ -30,6 +30,9 @@ class DownloadQueueNotifier:
     async def cleared(self, id):
         raise NotImplementedError
 
+    async def renamed(self, dl):
+        raise NotImplementedError
+
 class DownloadInfo:
     def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
@@ -457,6 +460,67 @@ class DownloadQueue:
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
+
+    async def rename(self, id, new_name):
+        log.info(f"Rename requested for download {id} -> {new_name!r}")
+        if not isinstance(new_name, str):
+            return {'status': 'error', 'msg': 'new_name must be a string'}
+        new_name = new_name.strip()
+        if not id or not new_name:
+            return {'status': 'error', 'msg': 'missing id or new_name'}
+        if any(sep in new_name for sep in ('/', '\\')):
+            return {'status': 'error', 'msg': 'new_name cannot contain path separators'}
+        if '..' in new_name:
+            return {'status': 'error', 'msg': 'invalid name'}
+        if not self.done.exists(id):
+            log.warn(f'requested rename for non-existent download {id}')
+            return {'status': 'error', 'msg': 'download not found'}
+        download = self.done.get(id)
+        info = download.info
+        if info.status != 'finished':
+            return {'status': 'error', 'msg': 'only finished downloads can be renamed'}
+        if not getattr(info, 'filename', None):
+            return {'status': 'error', 'msg': 'original filename unavailable'}
+
+        dldirectory, error_message = self.__calc_download_path(info.quality, info.format, info.folder)
+        if error_message is not None:
+            return error_message
+
+        current_relative = info.filename
+        current_basename = os.path.basename(current_relative)
+        current_dir = os.path.dirname(current_relative)
+        _, ext = os.path.splitext(current_basename)
+        if ext and new_name.lower().endswith(ext.lower()):
+            return {'status': 'error', 'msg': 'do not include the file extension'}
+        target_basename = f"{new_name}{ext}"
+        target_relative = os.path.join(current_dir, target_basename) if current_dir else target_basename
+        current_path = os.path.join(dldirectory, current_relative)
+        target_path = os.path.join(dldirectory, target_relative)
+
+        current_norm = os.path.normcase(os.path.normpath(current_path))
+        target_norm = os.path.normcase(os.path.normpath(target_path))
+        if target_norm == current_norm:
+            log.info(f"Rename skipped for download {id}; target matches current filename")
+            return {'status': 'ok', 'filename': info.filename}
+
+        if os.path.exists(target_path) and target_norm != current_norm:
+            log.info(f"Rename failed for download {id}; target {target_path} already exists")
+            return {'status': 'error', 'msg': 'target filename already exists'}
+        if not os.path.exists(current_path):
+            log.info(f"Rename failed for download {id}; source {current_path} missing")
+            return {'status': 'error', 'msg': 'original file missing'}
+
+        try:
+            os.replace(current_path, target_path)
+        except OSError as exc:
+            log.error(f"Rename failed for download {id}: {exc}")
+            return {'status': 'error', 'msg': f'rename failed: {exc}'}
+
+        info.filename = target_relative
+        self.done.put(download)
+        asyncio.create_task(self.notifier.renamed(info))
+        log.info(f"Rename successful for download {id}: {current_basename} -> {target_basename}")
+        return {'status': 'ok', 'filename': info.filename}
 
     def get(self):
         return (list((k, v.info) for k, v in self.queue.items()) +

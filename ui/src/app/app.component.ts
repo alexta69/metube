@@ -1,7 +1,7 @@
 import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
 import { HttpClient } from '@angular/common/http';
 import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
+import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faPen } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { map, Observable, of, distinctUntilChanged } from 'rxjs';
@@ -11,6 +11,13 @@ import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
 import { Theme, Themes } from './theme';
 import {KeyValue} from "@angular/common";
+
+interface RenameState {
+  editing: boolean;
+  value: string;
+  error?: string;
+  submitting?: boolean;
+}
 
 @Component({
     selector: 'app-root',
@@ -50,6 +57,7 @@ export class AppComponent implements AfterViewInit {
   completedDownloads = 0;
   failedDownloads = 0;
   totalSpeed = 0;
+  renameState: Record<string, RenameState> = {};
 
   @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
   @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
@@ -77,6 +85,7 @@ export class AppComponent implements AfterViewInit {
   faGithub = faGithub;
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
+  faPen = faPen;
 
   constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
     this.format = cookieService.get('metube_format') || 'any';
@@ -321,6 +330,78 @@ export class AppComponent implements AfterViewInit {
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
+      }
+    });
+  }
+
+  private getFilenameStem(filename: string): string {
+    if (!filename) {
+      return '';
+    }
+    const base = filename.split('/').pop();
+    if (!base) {
+      return '';
+    }
+    const lastDot = base.lastIndexOf('.');
+    return lastDot > 0 ? base.substring(0, lastDot) : base;
+  }
+
+  private getFilenameExtension(filename: string): string {
+    if (!filename) {
+      return '';
+    }
+    const base = filename.split('/').pop();
+    if (!base) {
+      return '';
+    }
+    const lastDot = base.lastIndexOf('.');
+    return lastDot > -1 ? base.substring(lastDot) : '';
+  }
+
+  beginRename(key: string, download: Download) {
+    if (!download.filename || download.status !== 'finished') {
+      return;
+    }
+    this.renameState[key] = {
+      editing: true,
+      value: this.getFilenameStem(download.filename)
+    };
+  }
+
+  cancelRename(key: string) {
+    delete this.renameState[key];
+  }
+
+  submitRename(key: string, download: Download) {
+    const state = this.renameState[key];
+    if (!state || state.submitting) {
+      return;
+    }
+    const trimmed = state.value.trim();
+    if (!trimmed) {
+      state.error = 'Name cannot be empty';
+      return;
+    }
+    if (/[\\/]/.test(trimmed) || trimmed.includes('..')) {
+      state.error = 'Invalid characters in name';
+      return;
+    }
+    const ext = this.getFilenameExtension(download.filename);
+    if (ext && trimmed.toLowerCase().endsWith(ext.toLowerCase())) {
+      state.error = 'Do not include the file extension';
+      return;
+    }
+    state.submitting = true;
+    state.error = undefined;
+    this.downloads.rename(download.url, trimmed).subscribe((status: Status) => {
+      state.submitting = false;
+      if (status.status === 'ok') {
+        if (status.filename) {
+          download.filename = status.filename;
+        }
+        this.cancelRename(key);
+      } else {
+        state.error = status.msg || 'Rename failed';
       }
     });
   }

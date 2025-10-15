@@ -7,6 +7,7 @@ import { MeTubeSocket } from './metube-socket';
 export interface Status {
   status: string;
   msg?: string;
+  filename?: string;
 }
 
 export interface Download {
@@ -87,6 +88,20 @@ export class DownloadsService {
       this.done.delete(data);
       this.doneChanged.next(null);
     });
+    socket.fromEvent('renamed').subscribe((strdata: string) => {
+      let data: Download = JSON.parse(strdata);
+      const existing = this.done.get(data.url);
+      let merged: Download;
+      if (existing) {
+        merged = { ...existing, ...data };
+        merged.checked = existing.checked;
+        merged.deleting = existing.deleting;
+      } else {
+        merged = data;
+      }
+      this.done.set(data.url, merged);
+      this.doneChanged.next(null);
+    });
     socket.fromEvent('configuration').subscribe((strdata: string) => {
       let data = JSON.parse(strdata);
       console.debug("got configuration:", data);
@@ -123,6 +138,12 @@ export class DownloadsService {
   public delById(where: string, ids: string[]) {
     ids.forEach(id => this[where].get(id).deleting = true);
     return this.http.post('delete', {where: where, ids: ids});
+  }
+
+  public rename(id: string, newName: string) {
+    return this.http.post<Status>('rename', { id: id, new_name: newName }).pipe(
+      catchError(this.handleHTTPError)
+    );
   }
 
   public startByFilter(where: string, filter: (dl: Download) => boolean) {
