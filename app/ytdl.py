@@ -51,6 +51,8 @@ class DownloadInfo:
         self.error = error
         self.entry = entry
         self.playlist_item_limit = playlist_item_limit
+        if self.custom_name:
+            self.title = self.custom_name
 
 class Download:
     manager = None
@@ -345,6 +347,7 @@ class DownloadQueue:
                 log.info(f'Custom name conflict for download {dl.url} at {dldirectory} name "{custom_name}"')
                 return conflict
             output = f'{custom_name}.%(ext)s'
+            dl.title = custom_name
         else:
             output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
         output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
@@ -541,6 +544,7 @@ class DownloadQueue:
             return {'status': 'error', 'msg': f'rename failed: {exc}'}
 
         info.filename = target_relative
+        info.title = os.path.splitext(target_basename)[0]
         self.done.put(download)
         asyncio.create_task(self.notifier.renamed(info))
         log.info(f"Rename successful for download {id}: {current_basename} -> {target_basename}")

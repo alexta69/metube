@@ -416,6 +416,7 @@ export class AppComponent implements AfterViewInit {
       if (status.status === 'ok') {
         if (status.filename) {
           download.filename = status.filename;
+          download.title = this.getFilenameStem(status.filename);
         }
         this.cancelRename(key);
       } else {
