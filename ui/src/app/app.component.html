@@ -73,17 +73,17 @@
       <div class="row mb-4">
         <div class="col">
           <div class="input-group input-group-lg shadow-sm">
-            <input type="text"
-                   autocomplete="off"
-                   spellcheck="false"
-                   class="form-control form-control-lg"
-                   placeholder="Enter video or playlist URL"
-                   name="addUrl"
-                   [(ngModel)]="addUrl"
+            <input type="text" 
+                   autocomplete="off" 
+                   spellcheck="false" 
+                   class="form-control form-control-lg" 
+                   placeholder="Enter video or playlist URL" 
+                   name="addUrl" 
+                   [(ngModel)]="addUrl" 
                    [disabled]="addInProgress || downloads.loading">
-            <button class="btn btn-primary btn-lg px-4"
-                    type="submit"
-                    (click)="addDownload()"
+            <button class="btn btn-primary btn-lg px-4" 
+                    type="submit" 
+                    (click)="addDownload()" 
                     [disabled]="addInProgress || downloads.loading">
               <span class="spinner-border spinner-border-sm" role="status" id="add-spinner" *ngIf="addInProgress"></span>
               {{ addInProgress ? "Adding..." : "Download" }}
@@ -113,10 +113,10 @@
         <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Quality</span>
-            <select class="form-select"
-                    name="quality"
-                    [(ngModel)]="quality"
-                    (change)="qualityChanged()"
+            <select class="form-select" 
+                    name="quality" 
+                    [(ngModel)]="quality" 
+                    (change)="qualityChanged()" 
                     [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let q of qualities" [ngValue]="q.id">{{ q.text }}</option>
             </select>
@@ -125,18 +125,18 @@
         <div class="col-md-4">
           <div class="input-group">
             <span class="input-group-text">Format</span>
-            <select class="form-select"
-                    name="format"
-                    [(ngModel)]="format"
-                    (change)="formatChanged()"
+            <select class="form-select" 
+                    name="format" 
+                    [(ngModel)]="format" 
+                    (change)="formatChanged()" 
                     [disabled]="addInProgress || downloads.loading">
               <option *ngFor="let f of formats" [ngValue]="f.id">{{ f.text }}</option>
             </select>
           </div>
         </div>
         <div class="col-md-4">
-          <button type="button"
-                  class="btn btn-outline-secondary w-100 h-100"
+          <button type="button" 
+                  class="btn btn-outline-secondary w-100 h-100" 
                   (click)="toggleAdvanced()">
             Advanced Options
           </button>
@@ -153,10 +153,10 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Auto Start</span>
-                    <select class="form-select"
-                            name="autoStart"
-                            [(ngModel)]="autoStart"
-                            (change)="autoStartChanged()"
+                    <select class="form-select" 
+                            name="autoStart" 
+                            [(ngModel)]="autoStart" 
+                            (change)="autoStartChanged()" 
                             [disabled]="addInProgress || downloads.loading"
                             ngbTooltip="Automatically start downloads when added">
                       <option [ngValue]="true">Yes</option>
@@ -167,12 +167,12 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Download Folder</span>
-                    <ng-select [items]="customDirs$ | async"
-                              placeholder="Default"
-                              [addTag]="allowCustomDir.bind(this)"
-                              addTagText="Create directory"
-                              bindLabel="folder"
-                              [(ngModel)]="folder"
+                    <ng-select [items]="customDirs$ | async" 
+                              placeholder="Default" 
+                              [addTag]="allowCustomDir.bind(this)" 
+                              addTagText="Create directory" 
+                              bindLabel="folder" 
+                              [(ngModel)]="folder" 
                               [disabled]="addInProgress || downloads.loading"
                               [virtualScroll]="true"
                               [clearable]="true"
@@ -186,11 +186,11 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Custom Name Prefix</span>
-                    <input type="text"
-                           class="form-control"
-                           placeholder="Default"
-                           name="customNamePrefix"
-                           [(ngModel)]="customNamePrefix"
+                    <input type="text" 
+                           class="form-control" 
+                           placeholder="Default" 
+                           name="customNamePrefix" 
+                           [(ngModel)]="customNamePrefix" 
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Add a prefix to downloaded filenames">
                   </div>
@@ -198,24 +198,24 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
-                    <input type="number"
-                           min="0"
-                           class="form-control"
-                           placeholder="Default"
-                           name="playlistItemLimit"
-                           (keydown)="isNumber($event)"
-                           [(ngModel)]="playlistItemLimit"
+                    <input type="number" 
+                           min="0" 
+                           class="form-control" 
+                           placeholder="Default" 
+                           name="playlistItemLimit" 
+                           (keydown)="isNumber($event)" 
+                           [(ngModel)]="playlistItemLimit" 
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Maximum number of items to download from a playlist (0 = no limit)">
                   </div>
                 </div>
                 <div class="col-12">
                   <div class="form-check form-switch">
-                    <input class="form-check-input"
-                           type="checkbox"
-                           role="switch"
-                           name="playlistStrictMode"
-                           [(ngModel)]="playlistStrictMode"
+                    <input class="form-check-input" 
+                           type="checkbox" 
+                           role="switch" 
+                           name="playlistStrictMode" 
+                           [(ngModel)]="playlistStrictMode" 
                            [disabled]="addInProgress || downloads.loading"
                            ngbTooltip="Only download playlists when URL explicitly points to a playlist">
                     <label class="form-check-label">Strict Playlist Mode</label>
@@ -229,24 +229,24 @@
                   <hr class="my-3">
                   <div class="row g-2">
                     <div class="col-md-4">
-                      <button type="button"
-                              class="btn btn-secondary w-100"
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
                               (click)="openBatchImportModal()">
                         <fa-icon [icon]="faFileImport" class="me-2"></fa-icon>
                         Import URLs
                       </button>
                     </div>
                     <div class="col-md-4">
-                      <button type="button"
-                              class="btn btn-secondary w-100"
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
                               (click)="exportBatchUrls('all')">
                         <fa-icon [icon]="faFileExport" class="me-2"></fa-icon>
                         Export URLs
                       </button>
                     </div>
                     <div class="col-md-4">
-                      <button type="button"
-                              class="btn btn-secondary w-100"
+                      <button type="button" 
+                              class="btn btn-secondary w-100" 
                               (click)="copyBatchUrls('all')">
                         <fa-icon [icon]="faCopy" class="me-2"></fa-icon>
                         Copy URLs
@@ -261,7 +261,7 @@
       </div>
     </div>
   </form>
-
+  
   <!-- Batch Import Modal -->
   <div class="modal fade" tabindex="-1" role="dialog" [ngClass]="{'show': batchImportModalOpen}" [ngStyle]="{'display': batchImportModalOpen ? 'block' : 'none'}">
     <div class="modal-dialog" role="document">
@@ -289,7 +289,7 @@
       </div>
     </div>
   </div>
-
+  
 
   <div *ngIf="downloads.loading" class="alert alert-info" role="alert">
     Connecting to server...
