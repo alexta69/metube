@@ -26,6 +26,7 @@ export class AppComponent implements AfterViewInit {
   format: string;
   folder: string;
   customNamePrefix: string;
+  customName: string;
   autoStart: boolean;
   playlistStrictMode: boolean;
   playlistItemLimit: number;
@@ -252,19 +253,20 @@ export class AppComponent implements AfterViewInit {
     this.quality = exists ? this.quality : 'best'
   }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, customName?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
     folder = folder ?? this.folder
     customNamePrefix = customNamePrefix ?? this.customNamePrefix
+    customName = customName ?? this.customName
     playlistStrictMode = playlistStrictMode ?? this.playlistStrictMode
     playlistItemLimit = playlistItemLimit ?? this.playlistItemLimit
     autoStart = autoStart ?? this.autoStart
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
+    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' customName='+customName+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, customName, playlistStrictMode, playlistItemLimit, autoStart).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -279,7 +281,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_strict_mode, download.playlist_item_limit, true);
+    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.custom_name, download.playlist_strict_mode, download.playlist_item_limit, true);
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -397,7 +399,7 @@ export class AppComponent implements AfterViewInit {
       const url = urls[index];
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
-      this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
+      this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix, this.customName,
         this.playlistStrictMode, this.playlistItemLimit, this.autoStart)
         .subscribe({
           next: (status: Status) => {

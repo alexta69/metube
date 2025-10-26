@@ -17,6 +17,7 @@ export interface Download {
   format: string;
   folder: string;
   custom_name_prefix: string;
+  custom_name: string;
   playlist_strict_mode: boolean;
   playlist_item_limit: number;
   status: string;
@@ -110,8 +111,8 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, playlistStrictMode: boolean, playlistItemLimit: number, autoStart: boolean) {
-    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, playlist_strict_mode: playlistStrictMode, playlist_item_limit: playlistItemLimit, auto_start: autoStart}).pipe(
+  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, customName: string, playlistStrictMode: boolean, playlistItemLimit: number, autoStart: boolean) {
+    return this.http.post<Status>('add', {url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, custom_name: customName, playlist_strict_mode: playlistStrictMode, playlist_item_limit: playlistItemLimit, auto_start: autoStart}).pipe(
       catchError(this.handleHTTPError)
     );
   }
@@ -141,12 +142,13 @@ export class DownloadsService {
     const defaultFormat = 'mp4';
     const defaultFolder = ''; 
     const defaultCustomNamePrefix = '';
+    const defaultCustomName = '';
     const defaultPlaylistStrictMode = false;
     const defaultPlaylistItemLimit = 0;
     const defaultAutoStart = true;
     
     return new Promise((resolve, reject) => {
-      this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart)
+      this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultCustomName, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart)
         .subscribe(
           response => resolve(response),
           error => reject(error)

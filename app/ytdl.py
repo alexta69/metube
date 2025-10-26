@@ -31,14 +31,24 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit):
-        self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
-        self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
+    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, custom_name, error, entry, playlist_item_limit):
+        # Handle custom name logic - if custom_name is provided, use it; otherwise use prefix logic
+        if custom_name and len(custom_name.strip()) > 0:
+            self.id = custom_name
+            self.title = custom_name
+        elif len(custom_name_prefix) > 0:
+            self.id = f'{custom_name_prefix}.{id}'
+            self.title = f'{custom_name_prefix}.{title}'
+        else:
+            self.id = id
+            self.title = title
+        
         self.url = url
         self.quality = quality
         self.format = format
         self.folder = folder
         self.custom_name_prefix = custom_name_prefix
+        self.custom_name = custom_name
         self.msg = self.percent = self.speed = self.eta = None
         self.status = "pending"
         self.size = None
@@ -333,12 +343,31 @@ class DownloadQueue:
         dldirectory, error_message = self.__calc_download_path(dl.quality, dl.format, dl.folder)
         if error_message is not None:
             return error_message
-        output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
+        # Handle custom naming in output template
+        if hasattr(dl, 'custom_name') and dl.custom_name and len(dl.custom_name.strip()) > 0:
+            # Create a custom output template using the custom name
+            # Replace %(title)s with the custom name in the template
+            output = self.config.OUTPUT_TEMPLATE.replace('%(title)s', dl.custom_name)
+        elif len(dl.custom_name_prefix) > 0:
+            output = f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
+        else:
+            output = self.config.OUTPUT_TEMPLATE
         output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
         entry = getattr(dl, 'entry', None)
         if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
             if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
-                output = self.config.OUTPUT_TEMPLATE_PLAYLIST
+                # Start with the playlist template
+                playlist_output = self.config.OUTPUT_TEMPLATE_PLAYLIST
+                
+                # Apply custom naming logic to playlist template
+                if hasattr(dl, 'custom_name') and dl.custom_name and len(dl.custom_name.strip()) > 0:
+                    # Replace title with custom name
+                    output = playlist_output.replace('%(title)s', dl.custom_name)
+                elif len(dl.custom_name_prefix) > 0:
+                    # Add prefix to the playlist template
+                    output = f'{dl.custom_name_prefix}.{playlist_output}'
+                else:
+                    output = playlist_output
             for property, value in entry.items():
                 if property.startswith("playlist"):
                     output = output.replace(f"%({property})s", str(value))
@@ -347,6 +376,7 @@ class DownloadQueue:
         if playlist_item_limit > 0:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
+            
         download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
         if auto_start is True:
             self.queue.put(download)
@@ -355,7 +385,7 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already):
+    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, custom_name, playlist_strict_mode, playlist_item_limit, auto_start, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -371,7 +401,7 @@ class DownloadQueue:
 
         if etype.startswith('url'):
             log.debug('Processing as an url')
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, custom_name, playlist_strict_mode, playlist_item_limit, auto_start, already)
         elif etype == 'playlist':
             log.debug('Processing as a playlist')
             entries = entry['entries']
@@ -388,7 +418,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already))
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, custom_name, playlist_strict_mode, playlist_item_limit, auto_start, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -396,13 +426,13 @@ class DownloadQueue:
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit)
+                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, custom_name, error, entry, playlist_item_limit)
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
-        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=}')
+    async def add(self, url, quality, format, folder, custom_name_prefix, custom_name, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
+        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {custom_name=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=}')
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -413,7 +443,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url, playlist_strict_mode)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, custom_name, playlist_strict_mode, playlist_item_limit, auto_start, already)
 
     async def start_pending(self, ids):
         for id in ids:
