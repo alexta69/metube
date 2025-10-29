@@ -14,6 +14,24 @@ from datetime import datetime
 
 log = logging.getLogger('ytdl')
 
+def sanitize_custom_input(input):
+    # Remove or replace dangerous characters
+    # Path separators and traversal patterns
+    input = input.replace('/', '_')
+    input = input.replace('\\', '_')
+    input = input.replace('..', '_')
+    
+    # Command injection patterns
+    input = re.sub(r'[;&|`$(){}[\]<>]', '_', input)
+    
+    # Control characters and other problematic characters
+    input = re.sub(r'[\x00-\x1f\x7f-\x9f]', '_', input)
+    
+    # Replace multiple underscores with single underscore
+    input = re.sub(r'_+', '_', input)
+    
+    return input
+
 class DownloadQueueNotifier:
     async def added(self, dl):
         raise NotImplementedError
@@ -32,9 +50,15 @@ class DownloadQueueNotifier:
 
 class DownloadInfo:
     def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, custom_name, error, entry, playlist_item_limit):
+        # Sanitize custom inputs to prevent path traversal and command injection attacks
+        if custom_name:
+            custom_name = sanitize_custom_input(custom_name)
+        if custom_name_prefix:
+            custom_name_prefix = sanitize_custom_input(custom_name_prefix)
+        
         # Handle custom name logic - if custom_name is provided, use it; otherwise use prefix logic
         if custom_name and len(custom_name.strip()) > 0:
-            self.id = custom_name
+            self.id = id
             self.title = custom_name
         elif len(custom_name_prefix) > 0:
             self.id = f'{custom_name_prefix}.{id}'
@@ -344,7 +368,7 @@ class DownloadQueue:
         if error_message is not None:
             return error_message
         # Handle custom naming in output template
-        if hasattr(dl, 'custom_name') and dl.custom_name and len(dl.custom_name.strip()) > 0:
+        if dl.custom_name and len(dl.custom_name.strip()) > 0:
             # Create a custom output template using the custom name
             # Replace %(title)s with the custom name in the template
             output = self.config.OUTPUT_TEMPLATE.replace('%(title)s', dl.custom_name)
@@ -360,7 +384,7 @@ class DownloadQueue:
                 playlist_output = self.config.OUTPUT_TEMPLATE_PLAYLIST
                 
                 # Apply custom naming logic to playlist template
-                if hasattr(dl, 'custom_name') and dl.custom_name and len(dl.custom_name.strip()) > 0:
+                if dl.custom_name and len(dl.custom_name.strip()) > 0:
                     # Replace title with custom name
                     output = playlist_output.replace('%(title)s', dl.custom_name)
                 elif len(dl.custom_name_prefix) > 0:
