@@ -385,8 +385,14 @@ class DownloadQueue:
                 
                 # Apply custom naming logic to playlist template
                 if dl.custom_name and len(dl.custom_name.strip()) > 0:
-                    # Replace title with custom name
-                    output = playlist_output.replace('%(title)s', dl.custom_name)
+                    # If playlist has multiple entries, append entry id to custom name to avoid overwriting
+                    playlist_entries = entry.get('entries')
+                    if playlist_entries and isinstance(playlist_entries, list) and len(playlist_entries) > 1:
+                        entry_id = entry.get('id') or ''
+                        custom_name_with_id = f"{dl.custom_name}_{entry_id}" if entry_id else dl.custom_name
+                        output = playlist_output.replace('%(title)s', custom_name_with_id)
+                    else:
+                        output = playlist_output.replace('%(title)s', dl.custom_name)
                 elif len(dl.custom_name_prefix) > 0:
                     # Add prefix to the playlist template
                     output = f'{dl.custom_name_prefix}.{playlist_output}'
