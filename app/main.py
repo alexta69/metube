@@ -353,8 +353,8 @@ if config.URL_PREFIX != '/':
     def index_redirect_dir(request):
         return web.HTTPFound(config.URL_PREFIX)
 
-routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
-routes.static(config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+routes.static(config.URL_PREFIX + config.PUBLIC_HOST_URL, config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
+routes.static(config.URL_PREFIX + config.PUBLIC_HOST_AUDIO_URL, config.AUDIO_DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
 routes.static(config.URL_PREFIX, os.path.join(config.BASE_DIR, 'ui/dist/metube/browser'))
 try:
     app.add_routes(routes)
