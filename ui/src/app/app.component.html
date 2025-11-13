@@ -181,6 +181,18 @@
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
+                    <span class="input-group-text">Custom Name</span>
+                    <input type="text" 
+                           class="form-control" 
+                           placeholder="Default" 
+                           name="customName" 
+                           [(ngModel)]="customName" 
+                           [disabled]="addInProgress || downloads.loading"
+                           ngbTooltip="Rename downloaded file (extension will be added automatically)">
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
                     <input type="number" 
                            min="0" 
@@ -193,7 +205,7 @@
                            ngbTooltip="Maximum number of items to download from a playlist (0 = no limit)">
                   </div>
                 </div>
-                <div class="col-12">
+                <div class="col-6">
                   <div class="form-check form-switch">
                     <input class="form-check-input" 
                            type="checkbox" 
