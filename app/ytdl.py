@@ -7,12 +7,24 @@ import asyncio
 import multiprocessing
 import logging
 import re
+import types
 
 import yt_dlp.networking.impersonate
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
 
 log = logging.getLogger('ytdl')
+
+def _convert_generators_to_lists(obj):
+    """Recursively convert generators to lists in a dictionary to make it pickleable."""
+    if isinstance(obj, types.GeneratorType):
+        return list(obj)
+    elif isinstance(obj, dict):
+        return {k: _convert_generators_to_lists(v) for k, v in obj.items()}
+    elif isinstance(obj, (list, tuple)):
+        return type(obj)(_convert_generators_to_lists(item) for item in obj)
+    else:
+        return obj
 
 class DownloadQueueNotifier:
     async def added(self, dl):
@@ -44,7 +56,8 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        self.entry = entry
+        # Convert generators to lists to make entry pickleable
+        self.entry = _convert_generators_to_lists(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
 
 class Download:
@@ -375,6 +388,9 @@ class DownloadQueue:
         elif etype == 'playlist':
             log.debug('Processing as a playlist')
             entries = entry['entries']
+            # Convert generator to list if needed (for len() and slicing operations)
+            if isinstance(entries, types.GeneratorType):
+                entries = list(entries)
             log.info(f'playlist detected with {len(entries)} entries')
             playlist_index_digits = len(str(len(entries)))
             results = []
