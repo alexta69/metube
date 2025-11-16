@@ -44,38 +44,51 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        # Extract only picklable playlist metadata from entry
+        # Convert non-picklable objects (like generators) to picklable forms (lists)
         # This prevents issues when shelve tries to pickle DownloadInfo objects
-        # that contain non-picklable objects like generators
         self.entry = self._extract_picklable_entry(entry) if entry else None
         self.playlist_item_limit = playlist_item_limit
 
     @staticmethod
     def _extract_picklable_entry(entry):
-        """Extract only picklable data from entry dict.
+        """Convert non-picklable objects in entry dict to picklable forms.
         
         This is needed because yt-dlp may return entry dicts containing
         non-picklable objects like generators, which cause errors when
-        shelve tries to persist DownloadInfo objects.
+        shelve tries to persist DownloadInfo objects. We convert generators
+        and other iterables to lists to preserve the data while making it picklable.
         """
         if not isinstance(entry, dict):
             return None
         
-        # Extract only basic types that are picklable
         picklable_entry = {}
         for key, value in entry.items():
-            # Only include playlist-related properties (used for output template)
-            # and other simple string/int/bool values
-            if key.startswith('playlist') or key in ('id', 'title', 'url', 'webpage_url', '_type'):
+            try:
+                # Try to use the value as-is if it's already a basic picklable type
                 if isinstance(value, (str, int, float, bool, type(None))):
                     picklable_entry[key] = value
+                elif isinstance(value, dict):
+                    # Recursively handle nested dicts
+                    picklable_entry[key] = DownloadInfo._extract_picklable_entry(value)
                 elif isinstance(value, (list, tuple)):
-                    # For lists/tuples, only include if all items are basic types
+                    # Already a list/tuple, keep it
+                    picklable_entry[key] = value
+                elif hasattr(value, '__iter__') and not isinstance(value, (str, bytes)):
+                    # Convert generators and other iterables to lists
                     try:
-                        if all(isinstance(item, (str, int, float, bool, type(None))) for item in value):
-                            picklable_entry[key] = value
-                    except (TypeError, AttributeError):
+                        picklable_entry[key] = list(value)
+                    except (TypeError, ValueError):
+                        # If conversion fails, skip this entry
                         pass
+                else:
+                    # For other types, try to pickle them to see if they work
+                    # If they don't, we'll skip them
+                    import pickle
+                    pickle.dumps(value)
+                    picklable_entry[key] = value
+            except (TypeError, pickle.PicklingError):
+                # Skip values that can't be pickled
+                pass
         
         return picklable_entry if picklable_entry else None
 
