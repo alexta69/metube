@@ -123,14 +123,10 @@ class ObjectSerializer(json.JSONEncoder):
         elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
             try:
                 return list(obj)
-            except (TypeError, ValueError, RuntimeError):
-                # If conversion to list fails, log a warning and return a placeholder
-                log.warning(f"Failed to convert {type(obj).__name__} to list, using string representation")
-                return str(obj)
-        # For objects that can't be serialized, return their string representation
-        # This prevents HTTP 500 errors while still providing useful information
-        log.warning(f"Object of type {type(obj).__name__} is not directly JSON serializable, using string representation")
-        return str(obj)
+            except:
+                pass
+        # Fall back to default behavior
+        return json.JSONEncoder.default(self, obj)
 
 serializer = ObjectSerializer()
 app = web.Application()

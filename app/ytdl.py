@@ -44,8 +44,40 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        self.entry = entry
+        # Extract only picklable playlist metadata from entry
+        # This prevents issues when shelve tries to pickle DownloadInfo objects
+        # that contain non-picklable objects like generators
+        self.entry = self._extract_picklable_entry(entry) if entry else None
         self.playlist_item_limit = playlist_item_limit
+
+    @staticmethod
+    def _extract_picklable_entry(entry):
+        """Extract only picklable data from entry dict.
+        
+        This is needed because yt-dlp may return entry dicts containing
+        non-picklable objects like generators, which cause errors when
+        shelve tries to persist DownloadInfo objects.
+        """
+        if not isinstance(entry, dict):
+            return None
+        
+        # Extract only basic types that are picklable
+        picklable_entry = {}
+        for key, value in entry.items():
+            # Only include playlist-related properties (used for output template)
+            # and other simple string/int/bool values
+            if key.startswith('playlist') or key in ('id', 'title', 'url', 'webpage_url', '_type'):
+                if isinstance(value, (str, int, float, bool, type(None))):
+                    picklable_entry[key] = value
+                elif isinstance(value, (list, tuple)):
+                    # For lists/tuples, only include if all items are basic types
+                    try:
+                        if all(isinstance(item, (str, int, float, bool, type(None))) for item in value):
+                            picklable_entry[key] = value
+                    except (TypeError, AttributeError):
+                        pass
+        
+        return picklable_entry if picklable_entry else None
 
 class Download:
     manager = None
