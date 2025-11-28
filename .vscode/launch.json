@@ -6,7 +6,7 @@
     "configurations": [
         {
             "name": "Python: MeTube",
-            "type": "python",
+            "type": "debugpy",
             "request": "launch",
             "program": "${workspaceFolder}/app/main.py",
             "windows": {
