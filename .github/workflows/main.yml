@@ -151,9 +151,6 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
           TAG_NAME: ${{ steps.date.outputs.date }}
         run: |
-          # Authenticate GitHub CLI
-          echo "$GITHUB_TOKEN" | gh auth login --with-token
-          
           # Check if release exists and delete it
           if gh release view "$TAG_NAME" &>/dev/null; then
             echo "Release $TAG_NAME already exists, deleting it..."
