@@ -146,6 +146,29 @@ jobs:
             cat release_body.txt
             echo EOF
           } >> $GITHUB_OUTPUT
+      - name: Delete existing release if present
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG_NAME: ${{ steps.date.outputs.date }}
+        run: |
+          # Authenticate GitHub CLI
+          echo "$GITHUB_TOKEN" | gh auth login --with-token
+          
+          # Check if release exists and delete it
+          if gh release view "$TAG_NAME" &>/dev/null; then
+            echo "Release $TAG_NAME already exists, deleting it..."
+            gh release delete "$TAG_NAME" --yes || true
+          fi
+          
+          # Fetch tags to check remote
+          git fetch --tags
+          
+          # Check if tag exists (locally or remotely) and delete it
+          if git rev-parse "$TAG_NAME" &>/dev/null 2>&1 || git ls-remote --tags origin "$TAG_NAME" | grep -q "$TAG_NAME"; then
+            echo "Tag $TAG_NAME already exists, deleting it..."
+            git tag -d "$TAG_NAME" 2>/dev/null || true
+            git push origin ":refs/tags/$TAG_NAME" || true
+          fi
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v1
         with:
