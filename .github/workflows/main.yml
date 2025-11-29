@@ -65,3 +65,94 @@ jobs:
         with:
           entrypoint: node
           args: /opt/docker-readme-sync/sync
+
+  create-release:
+    needs: dockerhub-build-push
+    runs-on: ubuntu-latest
+    steps:
+      - name: Get current date
+        id: date
+        run: echo "date=$(date +'%Y.%m.%d')" >> $GITHUB_OUTPUT
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Get commits since last release
+        id: commits
+        run: |
+          # Fetch all tags
+          git fetch --tags
+          
+          # Get the last tag (sorted by version, using date format YYYY.MM.DD)
+          LAST_TAG=$(git tag -l --sort=-version:refname | grep -E '^[0-9]{4}\.[0-9]{2}\.[0-9]{2}$' | head -n 1)
+          
+          if [ -z "$LAST_TAG" ]; then
+            # No previous release, skip commits for first release
+            COMMITS=""
+            echo "has_commits=false" >> $GITHUB_OUTPUT
+          else
+            # Get commits since last tag
+            COMMITS=$(git log ${LAST_TAG}..HEAD --pretty=format:"- %s (%h)" --no-merges)
+            if [ -z "$COMMITS" ]; then
+              echo "has_commits=false" >> $GITHUB_OUTPUT
+            else
+              echo "has_commits=true" >> $GITHUB_OUTPUT
+            fi
+          fi
+          
+          # Escape for use in YAML/multiline output
+          {
+            echo 'commits<<EOF'
+            echo "$COMMITS"
+            echo EOF
+          } >> $GITHUB_OUTPUT
+          
+          # Also output for debugging
+          echo "Last tag: ${LAST_TAG:-none}"
+          echo "Commits since last release:"
+          echo "$COMMITS"
+      - name: Generate release body
+        id: release_body
+        env:
+          DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPOSITORY }}
+          GHCR_REPO: ghcr.io/${{ github.repository }}
+          DATE: ${{ steps.date.outputs.date }}
+          HAS_COMMITS: ${{ steps.commits.outputs.has_commits }}
+          COMMITS: ${{ steps.commits.outputs.commits }}
+        run: |
+          {
+            echo '## Docker Images'
+            echo ''
+            echo 'Docker images have been built and pushed:'
+            echo ''
+            echo '**Docker Hub:**'
+            echo "- \`${DOCKERHUB_REPO}:latest\`"
+            echo "- \`${DOCKERHUB_REPO}:${DATE}\`"
+            echo ''
+            echo '**GitHub Container Registry:**'
+            echo "- \`${GHCR_REPO}:latest\`"
+            echo "- \`${GHCR_REPO}:${DATE}\`"
+            
+            if [ "$HAS_COMMITS" = "true" ] && [ -n "$COMMITS" ]; then
+              echo ''
+              echo '## Changes'
+              echo ''
+              echo "$COMMITS"
+            fi
+          } > release_body.txt
+          
+          {
+            echo 'body<<EOF'
+            cat release_body.txt
+            echo EOF
+          } >> $GITHUB_OUTPUT
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v1
+        with:
+          tag_name: ${{ steps.date.outputs.date }}
+          name: Release ${{ steps.date.outputs.date }}
+          body_path: release_body.txt
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
