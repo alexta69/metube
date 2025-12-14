@@ -246,7 +246,7 @@ The engine which powers the actual video downloads in MeTube is [yt-dlp](https:/
 
 There's an automatic nightly build of MeTube which looks for a new version of yt-dlp, and if one exists, the build pulls it and publishes an updated docker image. Therefore, in order to keep up with the changes, it's recommended that you update your MeTube container regularly with the latest image.
 
-I recommend installing and setting up [watchtower](https://github.com/containrrr/watchtower) for this purpose.
+I recommend installing and setting up [watchtower](https://github.com/nicholas-fedor/watchtower) for this purpose.
 
 ## 🔧 Troubleshooting and submitting issues
 
