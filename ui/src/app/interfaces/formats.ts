@@ -1,13 +1,5 @@
-export interface Format {
-  id: string;
-  text: string;
-  qualities: Quality[];
-}
+import { Format } from "./format";
 
-export interface Quality {
-  id: string;
-  text: string;
-}
 
 export const Formats: Format[] = [
   {
