@@ -7,6 +7,7 @@
     "build": "ng build",
     "build:watch": "ng build --watch",
     "test": "ng test",
+    "test:coverage": "ng test --coverage",
     "lint": "ng lint"
   },
   "prettier": {
@@ -52,6 +53,9 @@
     "@angular/compiler-cli": "^21.0.0",
     "@angular/localize": "^21.0.0",
     "@eslint/js": "^9.39.1",
+    "@testing-library/angular": "^18.1.1",
+    "@testing-library/user-event": "^14.6.1",
+    "@vitest/coverage-v8": "^4.0.15",
     "angular-eslint": "21.1.0",
     "eslint": "^9.39.1",
     "jsdom": "^27.1.0",

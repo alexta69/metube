@@ -28,7 +28,7 @@ export class SpeedPipe implements PipeTransform {
     });
   }
 
-  transform(value: number): string {
+  transform(value: number | null | undefined): string {
     // If speed is invalid or 0, return empty string
     if (value === null || value === undefined || isNaN(value) || value <= 0) {
       return '';

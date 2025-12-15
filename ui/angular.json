@@ -83,7 +83,10 @@
            "defaultConfiguration": "development"
         },
         "test": {
-          "builder": "@angular/build:unit-test"
+          "builder": "@angular/build:unit-test",
+          "options": {
+            "coverageExclude": ["**/index.ts", "src/app/interfaces/*.ts", "src/app/theme.ts"]
+          }
         },
        "lint": {
           "builder": "@angular-eslint/builder:lint",

@@ -4,7 +4,7 @@ import { Pipe, PipeTransform } from "@angular/core";
     name: 'eta',
 })
 export class EtaPipe implements PipeTransform {
-  transform(value: number): string | null {
+  transform(value: number | null): string | null {
     if (value === null) {
       return null;
     }

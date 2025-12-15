@@ -1,0 +1,44 @@
+name: Run FE unit tests
+
+on:
+  push:
+    branches:
+      - '**'
+  pull_request:
+    branches:
+      - '**'
+
+jobs:
+  frontend-tests:
+    name: Frontend Unit Tests
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+
+      - name: Install pnpm and run install
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10.10.0
+          working-directory: ui
+          run_install: true
+
+      - name: Generate coverage report
+        working-directory: ui
+        run: pnpm test:coverage
+        continue-on-error: true
+
+      - name: Upload coverage reports
+        uses: codecov/codecov-action@v4
+        if: success()
+        with:
+          directory: ui/coverage
+          flags: frontend
+          fail_ci_if_error: false
+        continue-on-error: true
