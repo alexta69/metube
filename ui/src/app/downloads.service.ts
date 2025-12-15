@@ -27,6 +27,7 @@ export interface Download {
   filename: string;
   checked?: boolean;
   deleting?: boolean;
+  thumbnail?: string;
 }
 
 @Injectable({

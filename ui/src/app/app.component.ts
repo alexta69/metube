@@ -11,6 +11,7 @@ import { MasterCheckboxComponent } from './master-checkbox.component';
 import { Formats, Format, Quality } from './formats';
 import { Theme, Themes } from './theme';
 import {KeyValue} from "@angular/common";
+import { faList, faTableCells, faGrip } from '@fortawesome/free-solid-svg-icons';
 
 @Component({
     selector: 'app-root',
@@ -43,6 +44,10 @@ export class AppComponent implements AfterViewInit {
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
+  viewMode: 'list' | 'grid' = 'list';
+  faList = faList;
+  faTableCells = faTableCells;
+  faGrid = faGrip;
 
   // Download metrics
   activeDownloads = 0;
@@ -502,6 +507,43 @@ export class AppComponent implements AfterViewInit {
 
   toggleAdvanced() {
     this.isAdvancedOpen = !this.isAdvancedOpen;
+  }
+
+  getThumbnailUrl(dl: Download): string | null {
+    if (this.isAudioDownload(dl)) {
+      // show your local placeholder for audio
+      return 'assets/audio-placeholder.png';
+    }
+    // Build query: base (video/audio), folder (if any), file (the filename)
+    const params = new URLSearchParams();
+    // Decide base by the same logic you use for buildDownloadLink
+    const isAudio = dl.quality === 'audio' ||
+                    (dl.format && ['mp3','m4a','opus','wav','flac'].includes(dl.format));
+    params.set('base', isAudio ? 'audio' : 'video');
+    if (dl.folder) params.set('folder', dl.folder);
+    if (dl.filename) params.set('file', dl.filename);
+    params.set('t', '1'); // second to seek; tweak if you like
+    return `thumb?${params.toString()}`;
+  }
+
+  onImgError(ev: Event) {
+      const img = ev.target as HTMLImageElement | null;
+      if (img) img.style.display = 'none';
+  }
+
+  isAudioDownload(dl: Download): boolean {
+        const audioExts = ['.mp3','.m4a','.opus','.wav','.flac'];
+        if (dl.quality === 'audio') return true;
+        if (dl.format && ['mp3','m4a','opus','wav','flac'].includes(dl.format)) return true;
+        if (dl.filename) {
+          const lower = dl.filename.toLowerCase();
+          if (audioExts.some(ext => lower.endsWith(ext))) return true;
+        }
+        return false;
+  }
+
+  setView(mode: 'list' | 'grid') { 
+    this.viewMode = mode; localStorage.setItem('completedView', mode);
   }
 
   private updateMetrics() {
