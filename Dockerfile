@@ -2,8 +2,8 @@ FROM node:lts-alpine AS builder
 
 WORKDIR /metube
 COPY ui ./
-RUN npm ci && \
-    node_modules/.bin/ng build --configuration production
+RUN corepack enable && corepack prepare pnpm --activate
+RUN pnpm install && pnpm run build
 
 
 FROM python:3.13-alpine
