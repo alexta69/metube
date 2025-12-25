@@ -1,38 +1,16 @@
-import { Injectable } from '@angular/core';
+import { inject, Injectable } from '@angular/core';
 import { HttpClient, HttpErrorResponse } from '@angular/common/http';
-import { Observable, of, Subject } from 'rxjs';
+import { of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
-import { MeTubeSocket } from './metube-socket';
-
-export interface Status {
-  status: string;
-  msg?: string;
-}
-
-export interface Download {
-  id: string;
-  title: string;
-  url: string;
-  quality: string;
-  format: string;
-  folder: string;
-  custom_name_prefix: string;
-  playlist_strict_mode: boolean;
-  playlist_item_limit: number;
-  status: string;
-  msg: string;
-  percent: number;
-  speed: number;
-  eta: number;
-  filename: string;
-  checked?: boolean;
-  deleting?: boolean;
-}
-
+import { MeTubeSocket } from './metube-socket.service';
+import { Download, Status, State } from '../interfaces';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 @Injectable({
   providedIn: 'root'
 })
 export class DownloadsService {
+  private http = inject(HttpClient);
+  private socket = inject(MeTubeSocket);
   loading = true;
   queue = new Map<string, Download>();
   done = new Map<string, Download>();
@@ -43,13 +21,16 @@ export class DownloadsService {
   configurationChanged = new Subject();
   updated = new Subject();
 
-  configuration = {};
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  configuration: any = {};
   customDirs = {};
 
-  constructor(private http: HttpClient, private socket: MeTubeSocket) {
-    socket.fromEvent('all').subscribe((strdata: string) => {
+  constructor() {
+    this.socket.fromEvent('all')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
       this.loading = false;
-      let data: [[[string, Download]], [[string, Download]]] = JSON.parse(strdata);
+      const data: [[[string, Download]], [[string, Download]]] = JSON.parse(strdata);
       this.queue.clear();
       data[0].forEach(entry => this.queue.set(...entry));
       this.done.clear();
@@ -57,56 +38,72 @@ export class DownloadsService {
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
-    socket.fromEvent('added').subscribe((strdata: string) => {
-      let data: Download = JSON.parse(strdata);
+    this.socket.fromEvent('added')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: Download = JSON.parse(strdata);
       this.queue.set(data.url, data);
       this.queueChanged.next(null);
     });
-    socket.fromEvent('updated').subscribe((strdata: string) => {
-      let data: Download = JSON.parse(strdata);
-      let dl: Download = this.queue.get(data.url);
-      data.checked = dl.checked;
-      data.deleting = dl.deleting;
+    this.socket.fromEvent('updated')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: Download = JSON.parse(strdata);
+      const dl: Download | undefined  = this.queue.get(data.url);
+      data.checked = !!dl?.checked;
+      data.deleting = !!dl?.deleting;
       this.queue.set(data.url, data);
       this.updated.next(null);
     });
-    socket.fromEvent('completed').subscribe((strdata: string) => {
-      let data: Download = JSON.parse(strdata);
+    this.socket.fromEvent('completed')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: Download = JSON.parse(strdata);
       this.queue.delete(data.url);
       this.done.set(data.url, data);
       this.queueChanged.next(null);
       this.doneChanged.next(null);
     });
-    socket.fromEvent('canceled').subscribe((strdata: string) => {
-      let data: string = JSON.parse(strdata);
+    this.socket.fromEvent('canceled')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: string = JSON.parse(strdata);
       this.queue.delete(data);
       this.queueChanged.next(null);
     });
-    socket.fromEvent('cleared').subscribe((strdata: string) => {
-      let data: string = JSON.parse(strdata);
+    this.socket.fromEvent('cleared')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: string = JSON.parse(strdata);
       this.done.delete(data);
       this.doneChanged.next(null);
     });
-    socket.fromEvent('configuration').subscribe((strdata: string) => {
-      let data = JSON.parse(strdata);
+    this.socket.fromEvent('configuration')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data = JSON.parse(strdata);
       console.debug("got configuration:", data);
       this.configuration = data;
       this.configurationChanged.next(data);
     });
-    socket.fromEvent('custom_dirs').subscribe((strdata: string) => {
-      let data = JSON.parse(strdata);
+    this.socket.fromEvent('custom_dirs')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data = JSON.parse(strdata);
       console.debug("got custom_dirs:", data);
       this.customDirs = data;
       this.customDirsChanged.next(data);
     });
-    socket.fromEvent('ytdl_options_changed').subscribe((strdata: string) => {
-      let data = JSON.parse(strdata);
+    this.socket.fromEvent('ytdl_options_changed')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data = JSON.parse(strdata);
       this.ytdlOptionsChanged.next(data);
     });
   }
 
   handleHTTPError(error: HttpErrorResponse) {
-    var msg = error.error instanceof ErrorEvent ? error.error.message : error.error;
+    const msg = error.error instanceof ErrorEvent ? error.error.message : error.error;
     return of({status: 'error', msg: msg})
   }
 
@@ -120,23 +117,32 @@ export class DownloadsService {
     return this.http.post('start', {ids: ids});
   }
 
-  public delById(where: string, ids: string[]) {
-    ids.forEach(id => this[where].get(id).deleting = true);
+  public delById(where: State, ids: string[]) {
+    ids.forEach(id => {
+      const obj = this[where].get(id)
+      if (obj) {
+        obj.deleting = true
+      }
+  });
     return this.http.post('delete', {where: where, ids: ids});
   }
 
-  public startByFilter(where: string, filter: (dl: Download) => boolean) {
-    let ids: string[] = [];
+  public startByFilter(where: State, filter: (dl: Download) => boolean) {
+    const ids: string[] = [];
     this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.startById(ids);
   }
 
-  public delByFilter(where: string, filter: (dl: Download) => boolean) {
-    let ids: string[] = [];
+  public delByFilter(where: State, filter: (dl: Download) => boolean) {
+    const ids: string[] = [];
     this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
   }
-  public addDownloadByUrl(url: string): Promise<any> {
+  public addDownloadByUrl(url: string): Promise<{
+    response: Status} | {
+    status: string;
+    msg?: string;
+  }> {
     const defaultQuality = 'best';
     const defaultFormat = 'mp4';
     const defaultFolder = ''; 
@@ -147,10 +153,10 @@ export class DownloadsService {
     
     return new Promise((resolve, reject) => {
       this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart)
-        .subscribe(
-          response => resolve(response),
-          error => reject(error)
-        );
+        .subscribe({
+          next: (response) => resolve(response),
+          error: (error) => reject(error)
+        });
     });
   }
   public exportQueueUrls(): string[] {

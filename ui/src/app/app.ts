@@ -1,39 +1,58 @@
-import { Component, ViewChild, ElementRef, AfterViewInit } from '@angular/core';
+import { AsyncPipe, KeyValuePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { faTrashAlt, faCheckCircle, faTimesCircle, IconDefinition } from '@fortawesome/free-regular-svg-icons';
-import { faRedoAlt, faSun, faMoon, faCircleHalfStroke, faCheck, faExternalLinkAlt, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
+import { AfterViewInit, Component, ElementRef, viewChild, inject, OnInit } from '@angular/core';
+import { Observable, map, distinctUntilChanged } from 'rxjs';
+import { FormsModule } from '@angular/forms';
+import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
+import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
+import { NgSelectModule } from '@ng-select/ng-select';  
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { map, Observable, of, distinctUntilChanged } from 'rxjs';
-
-import { Download, DownloadsService, Status } from './downloads.service';
-import { MasterCheckboxComponent } from './master-checkbox.component';
-import { Formats, Format, Quality } from './formats';
-import { Theme, Themes } from './theme';
-import {KeyValue} from "@angular/common";
+import { DownloadsService } from './services/downloads.service';
+import { Themes } from './theme';
+import { Download, Status, Theme , Quality, Format, Formats, State } from './interfaces';
+import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
+import { MasterCheckboxComponent , SlaveCheckboxComponent} from './components/';
 
 @Component({
-    selector: 'app-root',
-    templateUrl: './app.component.html',
-    styleUrls: ['./app.component.sass'],
-    standalone: false
+  selector: 'app-root',
+  imports: [
+        FormsModule,
+        KeyValuePipe,
+        AsyncPipe,
+        FontAwesomeModule,
+        NgbModule,
+        NgSelectModule,
+        EtaPipe,
+        SpeedPipe,
+        FileSizePipe,
+        MasterCheckboxComponent,
+        SlaveCheckboxComponent,
+  ],
+  templateUrl: './app.html',
+  styleUrl: './app.sass',
 })
-export class AppComponent implements AfterViewInit {
-  addUrl: string;
+export class App implements AfterViewInit, OnInit {
+  downloads = inject(DownloadsService);
+  private cookieService = inject(CookieService);
+  private http = inject(HttpClient);
+
+  addUrl!: string;
   formats: Format[] = Formats;
-  qualities: Quality[];
+  qualities!: Quality[];
   quality: string;
   format: string;
-  folder: string;
-  customNamePrefix: string;
+  folder!: string;
+  customNamePrefix!: string;
   autoStart: boolean;
-  playlistStrictMode: boolean;
-  playlistItemLimit: number;
+  playlistStrictMode!: boolean;
+  playlistItemLimit!: number;
   addInProgress = false;
   themes: Theme[] = Themes;
-  activeTheme: Theme;
-  customDirs$: Observable<string[]>;
-  showBatchPanel: boolean = false; 
+  activeTheme: Theme | undefined;
+  customDirs$!: Observable<string[]>;
+  showBatchPanel = false; 
   batchImportModalOpen = false;
   batchImportText = '';
   batchImportStatus = '';
@@ -51,15 +70,15 @@ export class AppComponent implements AfterViewInit {
   failedDownloads = 0;
   totalSpeed = 0;
 
-  @ViewChild('queueMasterCheckbox') queueMasterCheckbox: MasterCheckboxComponent;
-  @ViewChild('queueDelSelected') queueDelSelected: ElementRef;
-  @ViewChild('queueDownloadSelected') queueDownloadSelected: ElementRef;
-  @ViewChild('doneMasterCheckbox') doneMasterCheckbox: MasterCheckboxComponent;
-  @ViewChild('doneDelSelected') doneDelSelected: ElementRef;
-  @ViewChild('doneClearCompleted') doneClearCompleted: ElementRef;
-  @ViewChild('doneClearFailed') doneClearFailed: ElementRef;
-  @ViewChild('doneRetryFailed') doneRetryFailed: ElementRef;
-  @ViewChild('doneDownloadSelected') doneDownloadSelected: ElementRef;
+  readonly queueMasterCheckbox = viewChild<MasterCheckboxComponent>('queueMasterCheckboxRef');
+  readonly queueDelSelected = viewChild.required<ElementRef>('queueDelSelected');
+  readonly queueDownloadSelected = viewChild.required<ElementRef>('queueDownloadSelected');
+  readonly doneMasterCheckbox = viewChild<MasterCheckboxComponent>('doneMasterCheckboxRef');
+  readonly doneDelSelected = viewChild.required<ElementRef>('doneDelSelected');
+  readonly doneClearCompleted = viewChild.required<ElementRef>('doneClearCompleted');
+  readonly doneClearFailed = viewChild.required<ElementRef>('doneClearFailed');
+  readonly doneRetryFailed = viewChild.required<ElementRef>('doneRetryFailed');
+  readonly doneDownloadSelected = viewChild.required<ElementRef>('doneDownloadSelected');
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
@@ -78,14 +97,14 @@ export class AppComponent implements AfterViewInit {
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
 
-  constructor(public downloads: DownloadsService, private cookieService: CookieService, private http: HttpClient) {
-    this.format = cookieService.get('metube_format') || 'any';
+  constructor() {
+    this.format = this.cookieService.get('metube_format') || 'any';
     // Needs to be set or qualities won't automatically be set
     this.setQualities()
-    this.quality = cookieService.get('metube_quality') || 'best';
-    this.autoStart = cookieService.get('metube_auto_start') !== 'false';
+    this.quality = this.cookieService.get('metube_quality') || 'best';
+    this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
 
-    this.activeTheme = this.getPreferredTheme(cookieService);
+    this.activeTheme = this.getPreferredTheme(this.cookieService);
 
     // Subscribe to download updates
     this.downloads.queueChanged.subscribe(() => {
@@ -104,10 +123,10 @@ export class AppComponent implements AfterViewInit {
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.customDirs$ = this.getMatchingCustomDir();
-    this.setTheme(this.activeTheme);
+    this.setTheme(this.activeTheme!);
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (this.activeTheme.id === 'auto') {
+      if (this.activeTheme && this.activeTheme.id === 'auto') {
          this.setTheme(this.activeTheme);
       }
     });
@@ -115,27 +134,30 @@ export class AppComponent implements AfterViewInit {
 
   ngAfterViewInit() {
     this.downloads.queueChanged.subscribe(() => {
-      this.queueMasterCheckbox.selectionChanged();
+      this.queueMasterCheckbox()?.selectionChanged();
     });
     this.downloads.doneChanged.subscribe(() => {
-      this.doneMasterCheckbox.selectionChanged();
-      let completed: number = 0, failed: number = 0;
+      this.doneMasterCheckbox()?.selectionChanged();
+      let completed = 0, failed = 0;
       this.downloads.done.forEach(dl => {
         if (dl.status === 'finished')
           completed++;
         else if (dl.status === 'error')
           failed++;
       });
-      this.doneClearCompleted.nativeElement.disabled = completed === 0;
-      this.doneClearFailed.nativeElement.disabled = failed === 0;
-      this.doneRetryFailed.nativeElement.disabled = failed === 0;
+      this.doneClearCompleted().nativeElement.disabled = completed === 0;
+      this.doneClearFailed().nativeElement.disabled = failed === 0;
+      this.doneRetryFailed().nativeElement.disabled = failed === 0;
     });
     this.fetchVersionInfo();
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
   //  https://github.com/angular/angular/issues/31420
-  asIsOrder(a, b) {
+    
+   
+      
+  asIsOrder() {
     return 1;
   }
 
@@ -162,7 +184,8 @@ export class AppComponent implements AfterViewInit {
 
   getMatchingCustomDir() : Observable<string[]> {
     return this.downloads.customDirsChanged.asObservable().pipe(
-      map((output) => {
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      map((output: any) => {
         // Keep logic consistent with app/ytdl.py
         if (this.isAudioType()) {
           console.debug("Showing audio-specific download directories");
@@ -178,7 +201,8 @@ export class AppComponent implements AfterViewInit {
 
   getYtdlOptionsUpdateTime() {
     this.downloads.ytdlOptionsChanged.subscribe({
-      next: (data) => {
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      next: (data:any) => {
         if (data['success']){
           const date = new Date(data['update_time'] * 1000);
           this.ytDlpOptionsUpdateTime=date.toLocaleString();
@@ -190,7 +214,8 @@ export class AppComponent implements AfterViewInit {
   }
   getConfiguration() {
     this.downloads.configurationChanged.subscribe({
-      next: (config) => {
+       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      next: (config: any) => {
         this.playlistStrictMode = config['DEFAULT_OPTION_PLAYLIST_STRICT_MODE'];
         const playlistItemLimit = config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'];
         if (playlistItemLimit !== '0') {
@@ -236,21 +261,24 @@ export class AppComponent implements AfterViewInit {
   }
 
   queueSelectionChanged(checked: number) {
-    this.queueDelSelected.nativeElement.disabled = checked == 0;
-    this.queueDownloadSelected.nativeElement.disabled = checked == 0;
+    this.queueDelSelected().nativeElement.disabled = checked == 0;
+    this.queueDownloadSelected().nativeElement.disabled = checked == 0;
   }
 
   doneSelectionChanged(checked: number) {
-    this.doneDelSelected.nativeElement.disabled = checked == 0;
-    this.doneDownloadSelected.nativeElement.disabled = checked == 0;
+    this.doneDelSelected().nativeElement.disabled = checked == 0;
+    this.doneDownloadSelected().nativeElement.disabled = checked == 0;
   }
 
   setQualities() {
     // qualities for specific format
-    this.qualities = this.formats.find(el => el.id == this.format).qualities
-    const exists = this.qualities.find(el => el.id === this.quality)
-    this.quality = exists ? this.quality : 'best'
+    const format = this.formats.find(el => el.id == this.format)
+    if (format) {
+      this.qualities = format.qualities
+      const exists = this.qualities.find(el => el.id === this.quality)
+      this.quality = exists ? this.quality : 'best'
   }
+}
 
   addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean) {
     url = url ?? this.addUrl
@@ -283,16 +311,16 @@ export class AppComponent implements AfterViewInit {
     this.downloads.delById('done', [key]).subscribe();
   }
 
-  delDownload(where: string, id: string) {
+  delDownload(where: State, id: string) {
     this.downloads.delById(where, [id]).subscribe();
   }
 
-  startSelectedDownloads(where: string){
-    this.downloads.startByFilter(where, dl => dl.checked).subscribe();
+  startSelectedDownloads(where: State){
+    this.downloads.startByFilter(where, dl => !!dl.checked).subscribe();
   }
 
-  delSelectedDownloads(where: string) {
-    this.downloads.delByFilter(where, dl => dl.checked).subscribe();
+  delSelectedDownloads(where: State) {
+    this.downloads.delByFilter(where, dl => !!dl.checked).subscribe();
   }
 
   clearCompletedDownloads() {
@@ -312,7 +340,8 @@ export class AppComponent implements AfterViewInit {
   }
 
   downloadSelectedFiles() {
-    this.downloads.done.forEach((dl, key) => {
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
+    this.downloads.done.forEach((dl, _) => {
       if (dl.status === 'finished' && dl.checked) {
         const link = document.createElement('a');
         link.href = this.buildDownloadLink(dl);
@@ -338,13 +367,10 @@ export class AppComponent implements AfterViewInit {
     return baseDir + encodeURIComponent(download.filename);
   }
 
-  identifyDownloadRow(index: number, row: KeyValue<string, Download>) {
-    return row.key;
-  }
 
-  isNumber(event) {
-    const charCode = (event.which) ? event.which : event.keyCode;
-    if (charCode > 31 && (charCode < 48 || charCode > 57)) {
+  isNumber(event: KeyboardEvent) {
+    const charCode = +event.code || event.keyCode;
+    if (charCode > 31 && (charCode  < 48 || charCode > 57)) {
       event.preventDefault();
     }
   }
@@ -485,6 +511,7 @@ export class AppComponent implements AfterViewInit {
   }
 
   fetchVersionInfo(): void {
+    // eslint-disable-next-line no-useless-escape    
     const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
     const versionUrl = `${baseUrl}version`;
     this.http.get<{ 'yt-dlp': string, version: string }>(versionUrl)

@@ -1,11 +1,6 @@
-import { IconDefinition } from "@fortawesome/fontawesome-svg-core";
 import { faCircleHalfStroke, faMoon, faSun  } from "@fortawesome/free-solid-svg-icons";
+import { Theme } from "./interfaces/theme";
 
-export interface Theme {
-  id: string;
-  displayName: string;
-  icon: IconDefinition;
-}
 
 export const Themes: Theme[] = [
   {
