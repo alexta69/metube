@@ -187,7 +187,7 @@ class Download:
                     self.info.percent = status['downloaded_bytes'] / total * 100
             self.info.speed = status.get('speed')
             self.info.eta = status.get('eta')
-            log.info(f"Updating status for {self.info.title}: {status}")
+            log.debug(f"Updating status for {self.info.title}: {status}")
             await self.notifier.updated(self.info)
 
 class PersistentQueue:
