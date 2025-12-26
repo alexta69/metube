@@ -140,7 +140,7 @@ class Notifier(DownloadQueueNotifier):
         await sio.emit('added', serializer.encode(dl))
 
     async def updated(self, dl):
-        log.info(f"Notifier: Download updated - {dl.title}")
+        log.debug(f"Notifier: Download updated - {dl.title}")
         await sio.emit('updated', serializer.encode(dl))
 
     async def completed(self, dl):
