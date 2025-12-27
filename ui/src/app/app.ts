@@ -367,6 +367,16 @@ export class App implements AfterViewInit, OnInit {
     return baseDir + encodeURIComponent(download.filename);
   }
 
+  buildResultItemTooltip(download: Download) {
+    const parts = [];
+    if (download.msg) {
+      parts.push(download.msg);
+    }
+    if (download.error) {
+      parts.push(download.error);
+    }
+    return parts.join(' | ');
+  }
 
   isNumber(event: KeyboardEvent) {
     const charCode = +event.code || event.keyCode;

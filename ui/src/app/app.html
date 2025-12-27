@@ -395,7 +395,7 @@
                   <fa-icon [icon]="faTimesCircle" class="text-danger" />
                 }
               </div>
-              <span ngbTooltip="{{download.value.msg}} | {{download.value.error}}">@if (!!download.value.filename) {
+              <span ngbTooltip="{{buildResultItemTooltip(download.value)}}">@if (!!download.value.filename) {
                 <a href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a>
               } @else {
                 {{download.value.title}}
