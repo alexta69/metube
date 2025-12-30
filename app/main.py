@@ -21,6 +21,24 @@ from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
 
+def parseLogLevel(logLevel):
+    match logLevel:
+        case 'DEBUG':
+            return logging.DEBUG
+        case 'INFO':
+            return logging.INFO
+        case 'WARNING':
+            return logging.WARNING
+        case 'ERROR':
+            return logging.ERROR
+        case 'CRITICAL':
+            return logging.CRITICAL
+        case _:
+            return None
+
+# Configure logging before Config() uses it so early messages are not dropped.
+logging.basicConfig(level=parseLogLevel(os.environ.get('LOGLEVEL', 'INFO')) or logging.INFO)
+
 class Config:
     _DEFAULTS = {
         'DOWNLOAD_DIR': '.',
@@ -386,21 +404,6 @@ def supports_reuse_port():
     except (AttributeError, OSError):
         return False
 
-def parseLogLevel(logLevel):
-    match logLevel:
-        case 'DEBUG':
-            return logging.DEBUG
-        case 'INFO':
-            return logging.INFO
-        case 'WARNING':
-            return logging.WARNING
-        case 'ERROR':
-            return logging.ERROR
-        case 'CRITICAL':
-            return logging.CRITICAL
-        case _:
-            return None
-
 def isAccessLogEnabled():
     if config.ENABLE_ACCESSLOG:
         return access_logger
@@ -408,7 +411,7 @@ def isAccessLogEnabled():
         return None
 
 if __name__ == '__main__':
-    logging.basicConfig(level=parseLogLevel(config.LOGLEVEL))
+    logging.getLogger().setLevel(parseLogLevel(config.LOGLEVEL) or logging.INFO)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
 
     if config.HTTPS:
