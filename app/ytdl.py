@@ -83,6 +83,7 @@ class Download:
     def _download(self):
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
+            debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
             def put_status(st):
                 self.status_queue.put({k: v for k, v in st.items() if k in (
                     'tmpfilename',
@@ -105,7 +106,8 @@ class Download:
                     self.status_queue.put({'status': 'finished', 'filename': filename})
 
             ret = yt_dlp.YoutubeDL(params={
-                'quiet': True,
+                'quiet': not debug_logging,
+                'verbose': debug_logging,
                 'no_color': True,
                 'paths': {"home": self.download_dir, "temp": self.temp_dir},
                 'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
@@ -314,8 +316,10 @@ class DownloadQueue:
                 asyncio.create_task(self.notifier.completed(download.info))
 
     def __extract_info(self, url, playlist_strict_mode):
+        debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
         return yt_dlp.YoutubeDL(params={
-            'quiet': True,
+            'quiet': not debug_logging,
+            'verbose': debug_logging,
             'no_color': True,
             'extract_flat': True,
             'ignore_no_formats_error': True,
