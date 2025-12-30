@@ -37,7 +37,9 @@ def parseLogLevel(logLevel):
             return None
 
 # Configure logging before Config() uses it so early messages are not dropped.
-logging.basicConfig(level=parseLogLevel(os.environ.get('LOGLEVEL', 'INFO')) or logging.INFO)
+# Only configure if no handlers are set (avoid clobbering hosting app settings).
+if not logging.getLogger().hasHandlers():
+    logging.basicConfig(level=parseLogLevel(os.environ.get('LOGLEVEL', 'INFO')) or logging.INFO)
 
 class Config:
     _DEFAULTS = {
@@ -130,6 +132,10 @@ class Config:
         return (True, '')
 
 config = Config()
+# Align root logger level with Config (keeps a single source of truth).
+# This re-applies the log level after Config loads, in case LOGLEVEL was
+# overridden by config file settings or differs from the environment variable.
+logging.getLogger().setLevel(parseLogLevel(str(config.LOGLEVEL)) or logging.INFO)
 
 class ObjectSerializer(json.JSONEncoder):
     def default(self, obj):
