@@ -5,30 +5,30 @@ import { Observable, map, distinctUntilChanged } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
-import { NgSelectModule } from '@ng-select/ng-select';  
+import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { DownloadsService } from './services/downloads.service';
 import { Themes } from './theme';
-import { Download, Status, Theme , Quality, Format, Formats, State } from './interfaces';
+import { Download, Status, Theme, Quality, Format, Formats, State } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
-import { MasterCheckboxComponent , SlaveCheckboxComponent} from './components/';
+import { MasterCheckboxComponent, SlaveCheckboxComponent } from './components/';
 
 @Component({
   selector: 'app-root',
   imports: [
-        FormsModule,
-        KeyValuePipe,
-        AsyncPipe,
-        FontAwesomeModule,
-        NgbModule,
-        NgSelectModule,
-        EtaPipe,
-        SpeedPipe,
-        FileSizePipe,
-        MasterCheckboxComponent,
-        SlaveCheckboxComponent,
+    FormsModule,
+    KeyValuePipe,
+    AsyncPipe,
+    FontAwesomeModule,
+    NgbModule,
+    NgSelectModule,
+    EtaPipe,
+    SpeedPipe,
+    FileSizePipe,
+    MasterCheckboxComponent,
+    SlaveCheckboxComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.sass',
@@ -48,11 +48,13 @@ export class App implements AfterViewInit, OnInit {
   autoStart: boolean;
   playlistStrictMode!: boolean;
   playlistItemLimit!: number;
+  splitByChapters: boolean;
+  chapterTemplate: string;
   addInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   customDirs$!: Observable<string[]>;
-  showBatchPanel = false; 
+  showBatchPanel = false;
   batchImportModalOpen = false;
   batchImportText = '';
   batchImportStatus = '';
@@ -103,6 +105,8 @@ export class App implements AfterViewInit, OnInit {
     this.setQualities()
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
+    this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
+    this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '%(section_number)02d - %(section_title)s.%(ext)s';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -127,7 +131,7 @@ export class App implements AfterViewInit, OnInit {
 
     window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
       if (this.activeTheme && this.activeTheme.id === 'auto') {
-         this.setTheme(this.activeTheme);
+        this.setTheme(this.activeTheme);
       }
     });
   }
@@ -154,9 +158,9 @@ export class App implements AfterViewInit, OnInit {
 
   // workaround to allow fetching of Map values in the order they were inserted
   //  https://github.com/angular/angular/issues/31420
-    
-   
-      
+
+
+
   asIsOrder() {
     return 1;
   }
@@ -179,12 +183,12 @@ export class App implements AfterViewInit, OnInit {
   }
 
   isAudioType() {
-    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav' || this.format == 'flac';
+    return this.quality == 'audio' || this.format == 'mp3' || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav' || this.format == 'flac';
   }
 
-  getMatchingCustomDir() : Observable<string[]> {
+  getMatchingCustomDir(): Observable<string[]> {
     return this.downloads.customDirsChanged.asObservable().pipe(
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       map((output: any) => {
         // Keep logic consistent with app/ytdl.py
         if (this.isAudioType()) {
@@ -201,20 +205,20 @@ export class App implements AfterViewInit, OnInit {
 
   getYtdlOptionsUpdateTime() {
     this.downloads.ytdlOptionsChanged.subscribe({
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      next: (data:any) => {
-        if (data['success']){
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      next: (data: any) => {
+        if (data['success']) {
           const date = new Date(data['update_time'] * 1000);
-          this.ytDlpOptionsUpdateTime=date.toLocaleString();
-        }else{
-          alert("Error reload yt-dlp options: "+data['msg']);
+          this.ytDlpOptionsUpdateTime = date.toLocaleString();
+        } else {
+          alert("Error reload yt-dlp options: " + data['msg']);
         }
       }
     });
   }
   getConfiguration() {
     this.downloads.configurationChanged.subscribe({
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
       next: (config: any) => {
         this.playlistStrictMode = config['DEFAULT_OPTION_PLAYLIST_STRICT_MODE'];
         const playlistItemLimit = config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'];
@@ -260,6 +264,14 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: 3650 });
   }
 
+  splitByChaptersChanged() {
+    this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: 3650 });
+  }
+
+  chapterTemplateChanged() {
+    this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -277,10 +289,10 @@ export class App implements AfterViewInit, OnInit {
       this.qualities = format.qualities
       const exists = this.qualities.find(el => el.id === this.quality)
       this.quality = exists ? this.quality : 'best'
+    }
   }
-}
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean, splitByChapters?: boolean, chapterTemplate?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
@@ -289,10 +301,12 @@ export class App implements AfterViewInit, OnInit {
     playlistStrictMode = playlistStrictMode ?? this.playlistStrictMode
     playlistItemLimit = playlistItemLimit ?? this.playlistItemLimit
     autoStart = autoStart ?? this.autoStart
+    splitByChapters = splitByChapters ?? this.splitByChapters
+    chapterTemplate = chapterTemplate ?? this.chapterTemplate
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistStrictMode=' + playlistStrictMode + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart, splitByChapters, chapterTemplate).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -307,7 +321,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_strict_mode, download.playlist_item_limit, true);
+    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_strict_mode, download.playlist_item_limit, true, download.split_by_chapters, download.chapter_template);
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -315,7 +329,7 @@ export class App implements AfterViewInit, OnInit {
     this.downloads.delById(where, [id]).subscribe();
   }
 
-  startSelectedDownloads(where: State){
+  startSelectedDownloads(where: State) {
     this.downloads.startByFilter(where, dl => !!dl.checked).subscribe();
   }
 
@@ -378,9 +392,28 @@ export class App implements AfterViewInit, OnInit {
     return parts.join(' | ');
   }
 
+  buildChapterDownloadLink(download: Download, chapterFilename: string) {
+    let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
+    if (download.quality == 'audio' || chapterFilename.endsWith('.mp3')) {
+      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
+    }
+
+    if (download.folder) {
+      baseDir += download.folder + '/';
+    }
+
+    return baseDir + encodeURIComponent(chapterFilename);
+  }
+
+  getChapterFileName(filepath: string) {
+    // Extract just the filename from the path
+    const parts = filepath.split('/');
+    return parts[parts.length - 1];
+  }
+
   isNumber(event: KeyboardEvent) {
     const charCode = +event.code || event.keyCode;
-    if (charCode > 31 && (charCode  < 48 || charCode > 57)) {
+    if (charCode > 31 && (charCode < 48 || charCode > 57)) {
       event.preventDefault();
     }
   }
@@ -434,7 +467,7 @@ export class App implements AfterViewInit, OnInit {
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistStrictMode, this.playlistItemLimit, this.autoStart)
+        this.playlistStrictMode, this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
@@ -546,11 +579,11 @@ export class App implements AfterViewInit, OnInit {
     this.queuedDownloads = Array.from(this.downloads.queue.values()).filter(d => d.status === 'pending').length;
     this.completedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'finished').length;
     this.failedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'error').length;
-    
+
     // Calculate total speed from downloading items
     const downloadingItems = Array.from(this.downloads.queue.values())
       .filter(d => d.status === 'downloading');
-    
+
     this.totalSpeed = downloadingItems.reduce((total, item) => total + (item.speed || 0), 0);
   }
 }

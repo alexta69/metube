@@ -43,7 +43,7 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit):
+    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
@@ -59,6 +59,8 @@ class DownloadInfo:
         # Convert generators to lists to make entry pickleable
         self.entry = _convert_generators_to_lists(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
+        self.split_by_chapters = split_by_chapters
+        self.chapter_template = chapter_template
 
 class Download:
     manager = None
@@ -98,14 +100,27 @@ class Download:
                 )})
 
             def put_status_postprocessor(d):
+                log.debug(f"Postprocessor hook called: postprocessor={d.get('postprocessor')}, status={d.get('status')}")
+                
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
                     if '__finaldir' in d['info_dict']:
                         filename = os.path.join(d['info_dict']['__finaldir'], os.path.basename(d['info_dict']['filepath']))
                     else:
                         filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
+                
+                # Capture all chapter files when SplitChapters finishes
+                elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
+                    chapters = d.get('info_dict', {}).get('chapters', [])
+                    if chapters:
+                        for chapter in chapters:
+                            if isinstance(chapter, dict) and 'filepath' in chapter:
+                                log.info(f"Captured chapter file: {chapter['filepath']}")
+                                self.status_queue.put({'chapter_file': chapter['filepath']})
+                    else:
+                        log.warning("SplitChapters finished but no chapter files found in info_dict")
 
-            ret = yt_dlp.YoutubeDL(params={
+            ytdl_params = {
                 'quiet': not debug_logging,
                 'verbose': debug_logging,
                 'no_color': True,
@@ -117,7 +132,19 @@ class Download:
                 'progress_hooks': [put_status],
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
-            }).download([self.info.url])
+            }
+            
+            # Add chapter splitting options if enabled
+            if self.info.split_by_chapters:
+                ytdl_params['outtmpl']['chapter'] = self.info.chapter_template
+                if 'postprocessors' not in ytdl_params:
+                    ytdl_params['postprocessors'] = []
+                ytdl_params['postprocessors'].append({
+                    'key': 'FFmpegSplitChapters',
+                    'force_keyframes': False
+                })
+            
+            ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
@@ -181,6 +208,22 @@ class Download:
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
                 if self.info.format == 'thumbnail':
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
+
+            # Handle chapter files
+            log.debug(f"Update status for {self.info.title}: {status}") 
+            if 'chapter_file' in status:
+                chapter_file = status.get('chapter_file')
+                if not hasattr(self.info, 'chapter_files'):
+                    self.info.chapter_files = []
+                rel_path = os.path.relpath(chapter_file, self.download_dir)
+                file_size = os.path.getsize(chapter_file) if os.path.exists(chapter_file) else None
+                # Upsert: update if exists, otherwise append. Postprocessor hook called multiple times with chapters.
+                existing = next((cf for cf in self.info.chapter_files if cf['filename'] == rel_path), None)
+                if not existing:
+                    self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
+                # Skip the rest of status processing for chapter files
+                continue
+            
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
@@ -372,7 +415,7 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already):
+    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -388,7 +431,7 @@ class DownloadQueue:
 
         if etype.startswith('url'):
             log.debug('Processing as an url')
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
         elif etype == 'playlist':
             log.debug('Processing as a playlist')
             entries = entry['entries']
@@ -408,7 +451,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already))
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -416,13 +459,13 @@ class DownloadQueue:
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit)
+                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template)
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, already=None):
-        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=}')
+    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template='%(section_number)02d - %(section_title)s.%(ext)s', already=None):
+        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=}')
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -433,7 +476,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url, playlist_strict_mode)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, already)
+        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
 
     async def start_pending(self, ids):
         for id in ids:
