@@ -56,7 +56,7 @@ class Config:
         'PUBLIC_HOST_URL': 'download/',
         'PUBLIC_HOST_AUDIO_URL': 'audio_download/',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
-        'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
+        'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s',
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
         'DEFAULT_OPTION_PLAYLIST_STRICT_MODE' : 'false',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
@@ -261,7 +261,7 @@ async def add(request):
     if split_by_chapters is None:
         split_by_chapters = False
     if chapter_template is None:
-        chapter_template = '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s'
+        chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
 
     playlist_item_limit = int(playlist_item_limit)
 

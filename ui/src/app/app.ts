@@ -106,7 +106,8 @@ export class App implements AfterViewInit, OnInit {
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
-    this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s';
+    // Will be set from backend configuration, use empty string as placeholder
+    this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -225,6 +226,10 @@ export class App implements AfterViewInit, OnInit {
         if (playlistItemLimit !== '0') {
           this.playlistItemLimit = playlistItemLimit;
         }
+        // Set chapter template from backend config if not already set by cookie
+        if (!this.chapterTemplate) {
+          this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
+        }
       }
     });
   }
@@ -269,9 +274,9 @@ export class App implements AfterViewInit, OnInit {
   }
 
   chapterTemplateChanged() {
-    // Restore default if template is cleared
+    // Restore default if template is cleared - get from configuration
     if (!this.chapterTemplate || this.chapterTemplate.trim() === '') {
-      this.chapterTemplate = '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s';
+      this.chapterTemplate = this.downloads.configuration['OUTPUT_TEMPLATE_CHAPTER'];
     }
     this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
   }

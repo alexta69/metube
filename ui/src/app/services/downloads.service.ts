@@ -151,7 +151,7 @@ export class DownloadsService {
     const defaultPlaylistItemLimit = 0;
     const defaultAutoStart = true;
     const defaultSplitByChapters = false;
-    const defaultChapterTemplate = '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s';
+    const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
 
     return new Promise((resolve, reject) => {
       this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart, defaultSplitByChapters, defaultChapterTemplate)

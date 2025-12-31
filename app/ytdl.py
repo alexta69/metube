@@ -462,7 +462,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template='%(title)s - %(section_number)02d - %(section_title)s.%(ext)s', already=None):
+    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template=None, already=None):
         log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=}')
         already = set() if already is None else already
         if url in already:
