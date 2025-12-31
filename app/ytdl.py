@@ -100,8 +100,6 @@ class Download:
                 )})
 
             def put_status_postprocessor(d):
-                log.debug(f"Postprocessor hook called: postprocessor={d.get('postprocessor')}, status={d.get('status')}")
-                
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
                     if '__finaldir' in d['info_dict']:
                         filename = os.path.join(d['info_dict']['__finaldir'], os.path.basename(d['info_dict']['filepath']))
@@ -217,7 +215,7 @@ class Download:
                     self.info.chapter_files = []
                 rel_path = os.path.relpath(chapter_file, self.download_dir)
                 file_size = os.path.getsize(chapter_file) if os.path.exists(chapter_file) else None
-                # Upsert: update if exists, otherwise append. Postprocessor hook called multiple times with chapters.
+                #Postprocessor hook called multiple times with chapters. Only insert if not already present.
                 existing = next((cf for cf in self.info.chapter_files if cf['filename'] == rel_path), None)
                 if not existing:
                     self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
@@ -464,7 +462,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template='%(section_number)02d - %(section_title)s.%(ext)s', already=None):
+    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template='%(title)s - %(section_number)02d - %(section_title)s.%(ext)s', already=None):
         log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_strict_mode=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=}')
         already = set() if already is None else already
         if url in already:

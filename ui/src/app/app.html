@@ -6,34 +6,34 @@
     </a>
     <div class="download-metrics">
       @if (activeDownloads > 0) {
-      <div class="metric">
-        <fa-icon [icon]="faDownload" class="text-primary" />
-        <span>{{activeDownloads}} downloading</span>
-      </div>
+        <div class="metric">
+          <fa-icon [icon]="faDownload" class="text-primary" />
+          <span>{{activeDownloads}} downloading</span>
+        </div>
       }
       @if (queuedDownloads > 0) {
-      <div class="metric">
-        <fa-icon [icon]="faClock" class="text-warning" />
-        <span>{{queuedDownloads}} queued</span>
-      </div>
+        <div class="metric">
+          <fa-icon [icon]="faClock" class="text-warning" />
+          <span>{{queuedDownloads}} queued</span>
+        </div>
       }
       @if (completedDownloads > 0) {
-      <div class="metric">
-        <fa-icon [icon]="faCheck" class="text-success" />
-        <span>{{completedDownloads}} completed</span>
-      </div>
+        <div class="metric">
+          <fa-icon [icon]="faCheck" class="text-success" />
+          <span>{{completedDownloads}} completed</span>
+        </div>
       }
       @if (failedDownloads > 0) {
-      <div class="metric">
-        <fa-icon [icon]="faTimesCircle" class="text-danger" />
-        <span>{{failedDownloads}} failed</span>
-      </div>
+        <div class="metric">
+          <fa-icon [icon]="faTimesCircle" class="text-danger" />
+          <span>{{failedDownloads}} failed</span>
+        </div>
       }
       @if ((totalSpeed | speed) !== '') {
-      <div class="metric">
-        <fa-icon [icon]="faTachometerAlt" class="text-info" />
-        <span>{{totalSpeed | speed }}</span>
-      </div>
+        <div class="metric">
+          <fa-icon [icon]="faTachometerAlt" class="text-info" />
+          <span>{{totalSpeed | speed }}</span>
+        </div>
       }
     </div>
     <!--
@@ -62,20 +62,20 @@
         </button>
         <ul class="dropdown-menu dropdown-menu-end position-absolute" aria-labelledby="theme-select">
           @for (theme of themes; track theme) {
-          <li>
+            <li>
               <button type="button" class="dropdown-item d-flex align-items-center" 
               [class.active]="activeTheme === theme"
               (click)="themeChanged(theme)">
-              <span class="me-2 opacity-50">
-                <fa-icon [icon]="theme.icon" />
-              </span>
-              {{ theme.displayName }}
+                <span class="me-2 opacity-50">
+                  <fa-icon [icon]="theme.icon" />
+                </span>
+                {{ theme.displayName }}
                 <span class="ms-auto"
                 [class.d-none]="activeTheme !== theme">
                 <fa-icon [icon]="faCheck" />
-              </span>
-            </button>
-          </li>
+                </span>
+              </button>
+            </li>
           }
         </ul>
       </div>
@@ -103,7 +103,7 @@
               (click)="addDownload()"
               [disabled]="addInProgress || downloads.loading">
               @if (addInProgress) {
-              <span class="spinner-border spinner-border-sm" role="status" id="add-spinner"></span>
+                <span class="spinner-border spinner-border-sm" role="status" id="add-spinner"></span>
               }
               {{ addInProgress ? "Adding..." : "Download" }}
             </button>
@@ -122,7 +122,7 @@
               (change)="qualityChanged()"
               [disabled]="addInProgress || downloads.loading">
               @for (q of qualities; track q) {
-              <option [ngValue]="q.id">{{ q.text }}</option>
+                <option [ngValue]="q.id">{{ q.text }}</option>
               }
             </select>
           </div>
@@ -136,7 +136,7 @@
               (change)="formatChanged()"
               [disabled]="addInProgress || downloads.loading">
               @for (f of formats; track f) {
-              <option [ngValue]="f.id">{{ f.text }}</option>
+                <option [ngValue]="f.id">{{ f.text }}</option>
               }
             </select>
           </div>
@@ -188,9 +188,9 @@
                       [searchable]="true"
                       [closeOnSelect]="true"
                       ngbTooltip="Choose where to save downloads. Type to create a new folder." />
-                    }
+                  }
                   </div>
-
+           
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
@@ -298,7 +298,7 @@
   <!-- Batch Import Modal -->
   <div class="modal fade" tabindex="-1" role="dialog" 
   [class.show]="batchImportModalOpen"
-    [style.display]="batchImportModalOpen ? 'block' : 'none'">
+  [style.display]="batchImportModalOpen ? 'block' : 'none'">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -307,18 +307,18 @@
         </div>
         <div class="modal-body">
           <textarea [(ngModel)]="batchImportText" class="form-control" rows="6"
-            placeholder="Paste one video URL per line"></textarea>
+          placeholder="Paste one video URL per line"></textarea>
           <div class="mt-2">
             @if (batchImportStatus) {
-            <small>{{ batchImportStatus }}</small>
+              <small>{{ batchImportStatus }}</small>
             }
           </div>
         </div>
         <div class="modal-footer">
           @if (importInProgress) {
-          <button type="button" class="btn btn-danger me-auto" (click)="cancelBatchImport()">
-            Cancel Import
-          </button>
+            <button type="button" class="btn btn-danger me-auto" (click)="cancelBatchImport()">
+              Cancel Import
+            </button>
           }
           <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
           <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
@@ -331,9 +331,9 @@
 
 
   @if (downloads.loading) {
-  <div class="alert alert-info" role="alert">
-    Connecting to server...
-  </div>
+    <div class="alert alert-info" role="alert">
+      Connecting to server...
+    </div>
   }
   <div class="metube-section-header">Downloading</div>
   <div class="px-2 py-3 border-bottom">
@@ -355,29 +355,29 @@
       </thead>
       <tbody>
         @for (download of downloads.queue | keyvalue: asIsOrder; track download.value.id) {
-        <tr [class.disabled]='download.value.deleting'>
-          <td>
-            <app-slave-checkbox [id]="download.key" [master]="queueMasterCheckboxRef" [checkable]="download.value" />
-          </td>
-          <td title="{{ download.value.filename }}">
-            <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
-              <div>{{ download.value.title }} </div>
+          <tr [class.disabled]='download.value.deleting'>
+            <td>
+              <app-slave-checkbox [id]="download.key" [master]="queueMasterCheckboxRef" [checkable]="download.value" />
+            </td>
+            <td title="{{ download.value.filename }}">
+              <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
+                <div>{{ download.value.title }} </div>
                 <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'" [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'" type="success" 
                 [value]="download.value.status === 'preparing' ? 100 : download.value.percent" class="download-progressbar" />
-            </div>
-          </td>
-          <td>{{ download.value.speed | speed }}</td>
-          <td>{{ download.value.eta | eta }}</td>
-          <td>
-            <div class="d-flex">
-              @if (download.value.status === 'pending') {
+              </div>
+            </td>
+            <td>{{ download.value.speed | speed }}</td>
+            <td>{{ download.value.eta | eta }}</td>
+            <td>
+              <div class="d-flex">
+                @if (download.value.status === 'pending') {
                   <button type="button" class="btn btn-link" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
-              }
+                }
                 <button type="button" class="btn btn-link" (click)="delDownload('queue', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
                 <a href="{{download.value.url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt" /></a>
-            </div>
-          </td>
-        </tr>
+              </div>
+            </td>
+          </tr>
         }
       </tbody>
     </table>
@@ -405,55 +405,55 @@
       </thead>
       <tbody>
         @for (download of downloads.done | keyvalue: asIsOrder; track download.value.id) {
-        <tr [class.disabled]='download.value.deleting'>
-          <td>
-            <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckboxRef" [checkable]="download.value" />
-          </td>
-          <td>
-            <div style="display: inline-block; width: 1.5rem;">
-              @if (download.value.status === 'finished') {
-              <fa-icon [icon]="faCheckCircle" class="text-success" />
-              }
-              @if (download.value.status === 'error') {
-              <fa-icon [icon]="faTimesCircle" class="text-danger" />
-              }
-            </div>
-            <span ngbTooltip="{{buildResultItemTooltip(download.value)}}">@if (!!download.value.filename) {
-              <a href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a>
+          <tr [class.disabled]='download.value.deleting'>
+            <td>
+              <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckboxRef" [checkable]="download.value" />
+            </td>
+            <td>
+              <div style="display: inline-block; width: 1.5rem;">
+                @if (download.value.status === 'finished') {
+                  <fa-icon [icon]="faCheckCircle" class="text-success" />
+                }
+                @if (download.value.status === 'error') {
+                  <fa-icon [icon]="faTimesCircle" class="text-danger" />
+                }
+              </div>
+              <span ngbTooltip="{{buildResultItemTooltip(download.value)}}">@if (!!download.value.filename) {
+                <a href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a>
               } @else {
-              {{download.value.title}}
-              @if (download.value.msg) {
-              <span><br>{{download.value.msg}}</span>
-              }
-              @if (download.value.error) {
-              <span><br>Error: {{download.value.error}}</span>
-              }
+                {{download.value.title}}
+                @if (download.value.msg) {
+                  <span><br>{{download.value.msg}}</span>
+                }
+                @if (download.value.error) {
+                  <span><br>Error: {{download.value.error}}</span>
+                }
               }</span>
-          </td>
-          <td>
-            @if (download.value.size) {
-            <span>{{ download.value.size | fileSize }}</span>
-            }
-          </td>
-          <td>
-            <div class="d-flex">
-              @if (download.value.status === 'error') {
+            </td>
+            <td>
+              @if (download.value.size) {
+                <span>{{ download.value.size | fileSize }}</span>
+              }
+            </td>
+            <td>
+              <div class="d-flex">
+                @if (download.value.status === 'error') {
                   <button type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value)"><fa-icon [icon]="faRedoAlt" /></button>
-              }
-              @if (download.value.filename) {
+                }
+                @if (download.value.filename) {
                   <a href="{{buildDownloadLink(download.value)}}" download class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
-              }
-              <a href="{{download.value.url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt" /></a>
-              <button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt" /></button>              
-            </div>
-          </td>
-        </tr>
+                }
+                <a href="{{download.value.url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt" /></a>
+                <button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
+              </div>
+            </td>
+          </tr>
         @if (download.value.chapter_files && download.value.chapter_files.length > 0) {
-        @for (chapterFile of download.value.chapter_files; track chapterFile.filename) {
-        <tr [class.disabled]='download.value.deleting'>
-          <td></td>
-          <td>
-            <div style="padding-left: 2rem;">
+          @for (chapterFile of download.value.chapter_files; track chapterFile.filename) {
+            <tr [class.disabled]='download.value.deleting'>
+              <td></td>
+              <td>
+                <div style="padding-left: 2rem;">
               <fa-icon [icon]="faCheckCircle" class="text-success me-2" />
               <a href="{{buildChapterDownloadLink(download.value, chapterFile.filename)}}" target="_blank">{{
                 getChapterFileName(chapterFile.filename) }}</a>
@@ -472,6 +472,8 @@
           </td>
         </tr>
         }
+      }
+    }
       </tbody>
     </table>
   </div>
@@ -480,31 +482,31 @@
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
   <div class="container text-center">
     @if (ytDlpVersion && metubeVersion) {
-    <div class="footer-content">
-      <div class="version-item">
-        <span class="version-label">yt-dlp</span>
-        <span class="version-value">{{ytDlpVersion}}</span>
+      <div class="footer-content">
+        <div class="version-item">
+          <span class="version-label">yt-dlp</span>
+          <span class="version-value">{{ytDlpVersion}}</span>
+        </div>
+        <div class="version-separator"></div>
+        <div class="version-item">
+          <span class="version-label">MeTube</span>
+          <span class="version-value">{{metubeVersion}}</span>
+        </div>
+        <div class="version-separator"></div>
+        @if (ytDlpOptionsUpdateTime) {
+          <div class="version-item">
+            <span class="version-label">yt-dlp-options</span>
+            <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
+          </div>
+        }
+        @if (ytDlpOptionsUpdateTime) {
+          <div class="version-separator"></div>
+        }
+        <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
+          <fa-icon [icon]="faGithub" />
+          <span>GitHub</span>
+        </a>
       </div>
-      <div class="version-separator"></div>
-      <div class="version-item">
-        <span class="version-label">MeTube</span>
-        <span class="version-value">{{metubeVersion}}</span>
-      </div>
-      <div class="version-separator"></div>
-      @if (ytDlpOptionsUpdateTime) {
-      <div class="version-item">
-        <span class="version-label">yt-dlp-options</span>
-        <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
-      </div>
-      }
-      @if (ytDlpOptionsUpdateTime) {
-      <div class="version-separator"></div>
-      }
-      <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
-        <fa-icon [icon]="faGithub" />
-        <span>GitHub</span>
-      </a>
-    </div>
     }
   </div>
 </footer>

@@ -261,7 +261,7 @@ async def add(request):
     if split_by_chapters is None:
         split_by_chapters = False
     if chapter_template is None:
-        chapter_template = '%(section_number)02d - %(section_title)s.%(ext)s'
+        chapter_template = '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s'
 
     playlist_item_limit = int(playlist_item_limit)
 
