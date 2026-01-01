@@ -48,6 +48,8 @@ export class App implements AfterViewInit, OnInit {
   autoStart: boolean;
   playlistStrictMode!: boolean;
   playlistItemLimit!: number;
+  splitByChapters: boolean;
+  chapterTemplate: string;
   addInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
@@ -103,6 +105,9 @@ export class App implements AfterViewInit, OnInit {
     this.setQualities()
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
+    this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
+    // Will be set from backend configuration, use empty string as placeholder
+    this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -221,6 +226,10 @@ export class App implements AfterViewInit, OnInit {
         if (playlistItemLimit !== '0') {
           this.playlistItemLimit = playlistItemLimit;
         }
+        // Set chapter template from backend config if not already set by cookie
+        if (!this.chapterTemplate) {
+          this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
+        }
       }
     });
   }
@@ -260,6 +269,18 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: 3650 });
   }
 
+  splitByChaptersChanged() {
+    this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: 3650 });
+  }
+
+  chapterTemplateChanged() {
+    // Restore default if template is cleared - get from configuration
+    if (!this.chapterTemplate || this.chapterTemplate.trim() === '') {
+      this.chapterTemplate = this.downloads.configuration['OUTPUT_TEMPLATE_CHAPTER'];
+    }
+    this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -280,7 +301,7 @@ export class App implements AfterViewInit, OnInit {
   }
 }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean, splitByChapters?: boolean, chapterTemplate?: string) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
@@ -289,10 +310,18 @@ export class App implements AfterViewInit, OnInit {
     playlistStrictMode = playlistStrictMode ?? this.playlistStrictMode
     playlistItemLimit = playlistItemLimit ?? this.playlistItemLimit
     autoStart = autoStart ?? this.autoStart
+    splitByChapters = splitByChapters ?? this.splitByChapters
+    chapterTemplate = chapterTemplate ?? this.chapterTemplate
 
-    console.debug('Downloading: url='+url+' quality='+quality+' format='+format+' folder='+folder+' customNamePrefix='+customNamePrefix+' playlistStrictMode='+playlistStrictMode+' playlistItemLimit='+playlistItemLimit+' autoStart='+autoStart);
+    // Validate chapter template if chapter splitting is enabled
+    if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
+      alert('Chapter template must include %(section_number)');
+      return;
+    }
+
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistStrictMode=' + playlistStrictMode + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart, splitByChapters, chapterTemplate).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -307,7 +336,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_strict_mode, download.playlist_item_limit, true);
+    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_strict_mode, download.playlist_item_limit, true, download.split_by_chapters, download.chapter_template);
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -378,6 +407,25 @@ export class App implements AfterViewInit, OnInit {
     return parts.join(' | ');
   }
 
+  buildChapterDownloadLink(download: Download, chapterFilename: string) {
+    let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
+    if (download.quality == 'audio' || chapterFilename.endsWith('.mp3')) {
+      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
+    }
+
+    if (download.folder) {
+      baseDir += download.folder + '/';
+    }
+
+    return baseDir + encodeURIComponent(chapterFilename);
+  }
+
+  getChapterFileName(filepath: string) {
+    // Extract just the filename from the path
+    const parts = filepath.split('/');
+    return parts[parts.length - 1];
+  }
+
   isNumber(event: KeyboardEvent) {
     const charCode = +event.code || event.keyCode;
     if (charCode > 31 && (charCode  < 48 || charCode > 57)) {
@@ -434,7 +482,7 @@ export class App implements AfterViewInit, OnInit {
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistStrictMode, this.playlistItemLimit, this.autoStart)
+        this.playlistStrictMode, this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {

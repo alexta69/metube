@@ -231,6 +231,29 @@
                     <label class="form-check-label" for="checkbox-strict-mode">Strict Playlist Mode</label>
                   </div>
                 </div>
+                <div class="col-12">
+                  <div class="row g-2 align-items-center">
+                    <div class="col-auto">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
+                          name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
+                          [disabled]="addInProgress || downloads.loading"
+                          ngbTooltip="Split video into separate files by chapters">
+                        <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
+                      </div>
+                    </div>
+                    @if (splitByChapters) {
+                    <div class="col">
+                      <div class="input-group">
+                        <span class="input-group-text">Template</span>
+                        <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
+                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || downloads.loading"
+                          ngbTooltip="Output template for chapter files">
+                      </div>
+                    </div>
+                    }
+                  </div>
+                </div>
               </div>
 
               <!-- Advanced Actions -->
@@ -425,7 +448,32 @@
               </div>
             </td>
           </tr>
+        @if (download.value.chapter_files && download.value.chapter_files.length > 0) {
+          @for (chapterFile of download.value.chapter_files; track chapterFile.filename) {
+            <tr [class.disabled]='download.value.deleting'>
+              <td></td>
+              <td>
+                <div style="padding-left: 2rem;">
+              <fa-icon [icon]="faCheckCircle" class="text-success me-2" />
+              <a href="{{buildChapterDownloadLink(download.value, chapterFile.filename)}}" target="_blank">{{
+                getChapterFileName(chapterFile.filename) }}</a>
+            </div>
+          </td>
+          <td>
+            @if (chapterFile.size) {
+            <span>{{ chapterFile.size | fileSize }}</span>
+            }
+          </td>
+          <td>
+            <div class="d-flex">
+              <a href="{{buildChapterDownloadLink(download.value, chapterFile.filename)}}" download
+                class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
+            </div>
+          </td>
+        </tr>
         }
+      }
+    }
       </tbody>
     </table>
   </div>

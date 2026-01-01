@@ -9,6 +9,8 @@ export interface Download {
   custom_name_prefix: string;
   playlist_strict_mode: boolean;
   playlist_item_limit: number;
+  split_by_chapters?: boolean;
+  chapter_template?: string;
   status: string;
   msg: string;
   percent: number;
@@ -19,4 +21,5 @@ export interface Download {
   size?: number;
   error?: string;
   deleting?: boolean;
+  chapter_files?: Array<{ filename: string, size: number }>;
 }

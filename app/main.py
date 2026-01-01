@@ -56,7 +56,7 @@ class Config:
         'PUBLIC_HOST_URL': 'download/',
         'PUBLIC_HOST_AUDIO_URL': 'audio_download/',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
-        'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)s %(section_title)s.%(ext)s',
+        'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s',
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
         'DEFAULT_OPTION_PLAYLIST_STRICT_MODE' : 'false',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
@@ -247,6 +247,8 @@ async def add(request):
     playlist_strict_mode = post.get('playlist_strict_mode')
     playlist_item_limit = post.get('playlist_item_limit')
     auto_start = post.get('auto_start')
+    split_by_chapters = post.get('split_by_chapters')
+    chapter_template = post.get('chapter_template')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -256,10 +258,14 @@ async def add(request):
         playlist_strict_mode = config.DEFAULT_OPTION_PLAYLIST_STRICT_MODE
     if playlist_item_limit is None:
         playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
+    if split_by_chapters is None:
+        split_by_chapters = False
+    if chapter_template is None:
+        chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
 
     playlist_item_limit = int(playlist_item_limit)
 
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start)
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')
