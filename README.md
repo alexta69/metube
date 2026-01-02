@@ -270,8 +270,9 @@ MeTube development relies on code contributions by the community. The program as
 Make sure you have Node.js 22+ and Python 3.13 installed.
 
 ```bash
-cd metube/ui
 # install Angular and build the UI
+cd ui
+curl -fsSL https://get.pnpm.io/install.sh | sh -
 pnpm install
 pnpm run build
 # install python dependencies
