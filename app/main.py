@@ -60,6 +60,8 @@ class Config:
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
         'DEFAULT_OPTION_PLAYLIST_STRICT_MODE' : 'false',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
+        'RETRY_FAILED_DOWNLOADS': 'false',
+        'MAX_RETRY_ATTEMPTS': '3',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
         'ROBOTS_TXT': '',
@@ -76,7 +78,7 @@ class Config:
         'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'RETRY_FAILED_DOWNLOADS', 'HTTPS', 'ENABLE_ACCESSLOG')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -249,6 +251,8 @@ async def add(request):
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
     chapter_template = post.get('chapter_template')
+    retry_failed = post.get('retry_failed')
+    max_retry_attempts = post.get('max_retry_attempts')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -262,10 +266,15 @@ async def add(request):
         split_by_chapters = False
     if chapter_template is None:
         chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
+    if retry_failed is None:
+        retry_failed = config.RETRY_FAILED_DOWNLOADS
+    if max_retry_attempts is None:
+        max_retry_attempts = config.MAX_RETRY_ATTEMPTS
 
     playlist_item_limit = int(playlist_item_limit)
+    max_retry_attempts = int(max_retry_attempts)
 
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template)
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, retry_failed, max_retry_attempts)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

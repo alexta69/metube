@@ -232,6 +232,36 @@
                   </div>
                 </div>
                 <div class="col-12">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input"
+                      type="checkbox"
+                      role="switch"
+                      id="checkbox-retry-failed"
+                      name="enableRetryFailed"
+                      [(ngModel)]="enableRetryFailed"
+                      (change)="retryFailedChanged()"
+                      [disabled]="addInProgress || downloads.loading"
+                      ngbTooltip="Automatically retry failed downloads">
+                    <label class="form-check-label" for="checkbox-retry-failed">Retry Failed Downloads</label>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Max Retry Attempts</span>
+                    <input type="number"
+                      min="1"
+                      max="10"
+                      class="form-control"
+                      placeholder="3"
+                      name="maxRetryAttempts"
+                      (keydown)="isNumber($event)"
+                      [(ngModel)]="maxRetryAttempts"
+                      (change)="maxRetryAttemptsChanged()"
+                      [disabled]="addInProgress || downloads.loading || !enableRetryFailed"
+                      ngbTooltip="Maximum number of times to retry a failed download (1-10)">
+                  </div>
+                </div>
+                <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
                       <div class="form-check form-switch">
