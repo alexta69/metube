@@ -111,7 +111,13 @@ export class App implements AfterViewInit, OnInit {
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.enableRetryFailed = this.cookieService.get('metube_retry_failed') === 'true';
-    this.maxRetryAttempts = parseInt(this.cookieService.get('metube_max_retry_attempts') || '3', 10);
+    const maxRetryCookie = this.cookieService.get('metube_max_retry_attempts');
+    const parsedMaxRetry = parseInt(maxRetryCookie, 10);
+    if (isNaN(parsedMaxRetry) || parsedMaxRetry < 1 || parsedMaxRetry > 10) {
+      this.maxRetryAttempts = 3;
+    } else {
+      this.maxRetryAttempts = parsedMaxRetry;
+    }
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
