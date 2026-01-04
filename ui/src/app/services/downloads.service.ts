@@ -152,8 +152,10 @@ export class DownloadsService {
     const defaultAutoStart = true;
     const defaultSplitByChapters = false;
     const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
-    const defaultRetryFailed = false;
-    const defaultMaxRetryAttempts = 3;
+    const configuredRetryFailed = this.configuration['DEFAULT_RETRY_FAILED'];
+    const defaultRetryFailed = typeof configuredRetryFailed === 'boolean' ? configuredRetryFailed : false;
+    const configuredMaxRetryAttempts = this.configuration['DEFAULT_MAX_RETRY_ATTEMPTS'];
+    const defaultMaxRetryAttempts = typeof configuredMaxRetryAttempts === 'number' ? configuredMaxRetryAttempts : 3;
 
     return new Promise((resolve, reject) => {
       this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistStrictMode, defaultPlaylistItemLimit, defaultAutoStart, defaultSplitByChapters, defaultChapterTemplate, defaultRetryFailed, defaultMaxRetryAttempts)
