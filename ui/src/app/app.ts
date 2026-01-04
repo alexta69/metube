@@ -296,12 +296,22 @@ export class App implements AfterViewInit, OnInit {
   }
 
   maxRetryAttemptsChanged() {
-    // Ensure value is between 1 and 10
-    if (this.maxRetryAttempts < 1) {
-      this.maxRetryAttempts = 1;
-    } else if (this.maxRetryAttempts > 10) {
-      this.maxRetryAttempts = 10;
+    // Ensure value is a valid integer between 1 and 10
+    let attempts = Number(this.maxRetryAttempts);
+
+    if (!Number.isFinite(attempts)) {
+      attempts = 1;
     }
+
+    attempts = Math.round(attempts);
+
+    if (attempts < 1) {
+      attempts = 1;
+    } else if (attempts > 10) {
+      attempts = 10;
+    }
+
+    this.maxRetryAttempts = attempts;
     this.cookieService.set('metube_max_retry_attempts', this.maxRetryAttempts.toString(), { expires: 3650 });
   }
 
