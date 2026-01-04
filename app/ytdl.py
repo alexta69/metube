@@ -320,7 +320,8 @@ class DownloadQueue:
             async with self.seq_lock:
                 log.info("Starting sequential download.")
                 await download.start(self.notifier)
-                self._post_download_cleanup(download)
+            # lock released here
+            self._post_download_cleanup(download)
         elif self.config.DOWNLOAD_MODE == 'limited' and self.semaphore is not None:
             await self.__limited_concurrent_download(download)
         else:
@@ -368,25 +369,15 @@ class DownloadQueue:
                     download.info.percent = None
                     download.info.speed = None
                     download.info.eta = None
-                    asyncio.create_task(self.notifier.updated(download.info))
-                    # Create a new download with the same info
-                    dldirectory, _ = self.__calc_download_path(download.info.quality, download.info.format, download.info.folder)
-                    output = self.config.OUTPUT_TEMPLATE if len(download.info.custom_name_prefix) == 0 else f'{download.info.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
-                    output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER if not download.info.split_by_chapters else download.info.chapter_template
-                    entry = getattr(download.info, 'entry', None)
-                    if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
-                        if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
-                            output = self.config.OUTPUT_TEMPLATE_PLAYLIST
-                        for property, value in entry.items():
-                            if property.startswith("playlist"):
-                                output = output.replace(f"%({property})s", str(value))
-                    ytdl_options = dict(self.config.YTDL_OPTIONS)
-                    playlist_item_limit = getattr(download.info, 'playlist_item_limit', 0)
-                    if playlist_item_limit > 0:
-                        ytdl_options['playlistend'] = playlist_item_limit
-                    new_download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, download.info.quality, download.info.format, ytdl_options, download.info)
-                    self.queue.put(new_download)
-                    asyncio.create_task(self.__start_download(new_download))
+                    # Create a new download with the same info via helper
+                    new_download, err = self._create_download_object(download.info)
+                    if err is not None:
+                        log.error(f"Retry failed: cannot create download object: {err}")
+                        self.done.put(download)
+                        asyncio.create_task(self.notifier.completed(download.info))
+                    else:
+                        self.queue.put(new_download)
+                        asyncio.create_task(self.__start_download(new_download))
                 else:
                     # No more retries, mark as completed (failed)
                     self.done.put(download)
@@ -423,13 +414,17 @@ class DownloadQueue:
             dldirectory = base_directory
         return dldirectory, None
 
-    async def __add_download(self, dl, auto_start):
-        dldirectory, error_message = self.__calc_download_path(dl.quality, dl.format, dl.folder)
+    def _create_download_object(self, info):
+        """Create a Download object from a DownloadInfo-like object.
+
+        Returns (download, error_message). On success error_message is None.
+        """
+        dldirectory, error_message = self.__calc_download_path(info.quality, info.format, info.folder)
         if error_message is not None:
-            return error_message
-        output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
-        output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
-        entry = getattr(dl, 'entry', None)
+            return None, error_message
+        output = self.config.OUTPUT_TEMPLATE if len(info.custom_name_prefix) == 0 else f'{info.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
+        output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER if not info.split_by_chapters else info.chapter_template
+        entry = getattr(info, 'entry', None)
         if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
             if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
@@ -437,11 +432,16 @@ class DownloadQueue:
                 if property.startswith("playlist"):
                     output = output.replace(f"%({property})s", str(value))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
-        playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
+        playlist_item_limit = getattr(info, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
-            log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
-        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
+        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, info.quality, info.format, ytdl_options, info)
+        return download, None
+
+    async def __add_download(self, dl, auto_start):
+        download, error_message = self._create_download_object(dl)
+        if error_message is not None:
+            return error_message
         if auto_start is True:
             self.queue.put(download)
             asyncio.create_task(self.__start_download(download))
