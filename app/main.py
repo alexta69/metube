@@ -272,8 +272,15 @@ async def add(request):
         max_retry_attempts = config.MAX_RETRY_ATTEMPTS
 
     playlist_item_limit = int(playlist_item_limit)
-    max_retry_attempts = int(max_retry_attempts)
+    try:
+        max_retry_attempts = int(max_retry_attempts)
+    except (TypeError, ValueError):
+        log.error("Bad request: invalid 'max_retry_attempts' value (must be an integer)")
+        raise web.HTTPBadRequest()
 
+    if not 1 <= max_retry_attempts <= 10:
+        log.error("Bad request: 'max_retry_attempts' out of allowed range (1-10)")
+        raise web.HTTPBadRequest()
     status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, retry_failed, max_retry_attempts)
     return web.Response(text=serializer.encode(status))
 
