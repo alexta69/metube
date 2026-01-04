@@ -368,6 +368,7 @@ class DownloadQueue:
                     download.info.percent = None
                     download.info.speed = None
                     download.info.eta = None
+                    asyncio.create_task(self.notifier.updated(download.info))
                     # Create a new download with the same info
                     dldirectory, _ = self.__calc_download_path(download.info.quality, download.info.format, download.info.folder)
                     output = self.config.OUTPUT_TEMPLATE if len(download.info.custom_name_prefix) == 0 else f'{download.info.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
