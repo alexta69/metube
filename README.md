@@ -43,6 +43,13 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DEFAULT_OPTION_PLAYLIST_STRICT_MODE__: if `true`, the "Strict Playlist mode" switch will be enabled by default. In this mode the playlists will be downloaded only if the URL strictly points to a playlist. URLs to videos inside a playlist will be treated same as direct video URL. Defaults to `false` .
 * __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
 
+* __RETRY_FAILED_DOWNLOADS__: When set to `true`, MeTube will automatically retry failed downloads up to a configured number of attempts. This option is opt-in and defaults to `false`.
+  * When enabled, retries are performed per-download and shown in the UI as "Retrying (attempt X/Y)".
+  * The UI also exposes a toggle in Advanced Options to enable/disable retries and will persist the preference in a browser cookie.
+
+* __MAX_RETRY_ATTEMPTS__: The maximum number of automatic retry attempts for a failed download when `RETRY_FAILED_DOWNLOADS` is enabled. Must be an integer between `1` and `10`. Defaults to `3`.
+  * This value can be configured globally via environment variable or set per-download via the UI. The frontend enforces the 1–10 range; the backend validates the value as well.
+
 ### 📁 Storage & Directories
 
 * __DOWNLOAD_DIR__: Path to where the downloads will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
