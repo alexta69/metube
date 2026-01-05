@@ -1,4 +1,5 @@
 import os
+import shutil
 import yt_dlp
 from collections import OrderedDict
 import shelve
@@ -252,6 +253,15 @@ class PersistentQueue:
         )
         db_type = type_check.stdout.lower()
 
+        # create backup (<queue>.old)
+        try:
+            shutil.copy2(self.path, f"{self.path}.old")
+        except Exception as e:
+            # if we cannot backup then its not safe to attempt a repair
+            #  since it could be due to a filesystem error
+            log.debug(f"PersistentQueue:{self.identifier} backup failed, skipping repair")
+            return
+
         if "gnu dbm" in db_type:
             # perform gdbm repair
             log_prefix = f"PersistentQueue:{self.identifier} repair (dbm/file)"
@@ -262,9 +272,9 @@ class PersistentQueue:
                     input="recover verbose summary\n",
                     text=True,
                     capture_output=True,
-                    cwd=os.getcwd()
+                    timeout=60
                 )
-                log.debug(f"{log_prefix}{result.stdout}")
+                log.debug(f"{log_prefix} {result.stdout}")
                 if result.stderr:
                     log.debug(f"{log_prefix} failed: {result.stderr}")
             except FileNotFoundError:
@@ -275,15 +285,15 @@ class PersistentQueue:
             log.debug(f"{log_prefix} started")
             deleted = 0
             try:
-                with dbm.open((self.path), "w") as db:
+                with dbm.open(self.path, "w") as db:
                     for key in list(db.keys()):
-                        if key and all(b == 0x00 for b in key):
+                        if len(key) > 0 and all(b == 0x00 for b in key):
                             log.debug(f"{log_prefix} deleting key of length {len(key)} (all NUL bytes)")
                             del db[key]
                             deleted += 1
                 log.debug(f"{log_prefix} done - deleted {deleted} key(s)")
             except dbm.error:
-                log.debug(f"{log_prefix} failed: db type is dbm.gnu, but the module is not available")
+                log.debug(f"{log_prefix} failed: db type is dbm.gnu, but the module is not available (dbm.error; module support may be missing or the file may be corrupted)")
 
         elif "sqlite" in db_type:
             # perform sqlite3 recovery
@@ -291,14 +301,16 @@ class PersistentQueue:
             log.debug(f"{log_prefix} started")
             try:
                 result = subprocess.run(
-                    f"sqlite3 {self.path} '.recover' | sqlite3 {self.path}",
+                    f"sqlite3 {self.path} '.recover' | sqlite3 {self.path}.tmp",
                     capture_output=True,
                     text=True,
-                    shell=True
+                    shell=True,
+                    timeout=60
                 )
                 if result.stderr:
                     log.debug(f"{log_prefix} failed: {result.stderr}")
                 else:
+                    shutil.move(f"{self.path}.tmp", self.path)
                     log.debug(f"{log_prefix}{result.stdout or " was successful, no output"}")
             except FileNotFoundError:
                 log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
