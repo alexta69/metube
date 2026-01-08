@@ -1,4 +1,5 @@
 import os
+import shutil
 import yt_dlp
 from collections import OrderedDict
 import shelve
@@ -8,6 +9,8 @@ import multiprocessing
 import logging
 import re
 import types
+import dbm
+import subprocess
 
 import yt_dlp.networking.impersonate
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
@@ -234,13 +237,16 @@ class Download:
             await self.notifier.updated(self.info)
 
 class PersistentQueue:
-    def __init__(self, path):
+    def __init__(self, name, path):
+        self.identifier = name
         pdir = os.path.dirname(path)
         if not os.path.isdir(pdir):
             os.mkdir(pdir)
         with shelve.open(path, 'c'):
             pass
+
         self.path = path
+        self.repair()
         self.dict = OrderedDict()
 
     def load(self):
@@ -279,13 +285,84 @@ class PersistentQueue:
     def empty(self):
         return not bool(self.dict)
 
+    def repair(self):
+        # check DB format
+        type_check = subprocess.run(
+            ["file", self.path],
+            capture_output=True,
+            text=True
+        )
+        db_type = type_check.stdout.lower()
+
+        # create backup (<queue>.old)
+        try:
+            shutil.copy2(self.path, f"{self.path}.old")
+        except Exception as e:
+            # if we cannot backup then its not safe to attempt a repair
+            #  since it could be due to a filesystem error
+            log.debug(f"PersistentQueue:{self.identifier} backup failed, skipping repair")
+            return
+
+        if "gnu dbm" in db_type:
+            # perform gdbm repair
+            log_prefix = f"PersistentQueue:{self.identifier} repair (dbm/file)"
+            log.debug(f"{log_prefix} started")
+            try:
+                result = subprocess.run(
+                    ["gdbmtool", self.path],
+                    input="recover verbose summary\n",
+                    text=True,
+                    capture_output=True,
+                    timeout=60
+                )
+                log.debug(f"{log_prefix} {result.stdout}")
+                if result.stderr:
+                    log.debug(f"{log_prefix} failed: {result.stderr}")
+            except FileNotFoundError:
+                log.debug(f"{log_prefix} failed: 'gdbmtool' was not found")
+
+            # perform null key cleanup
+            log_prefix = f"PersistentQueue:{self.identifier} repair (null keys)"
+            log.debug(f"{log_prefix} started")
+            deleted = 0
+            try:
+                with dbm.open(self.path, "w") as db:
+                    for key in list(db.keys()):
+                        if len(key) > 0 and all(b == 0x00 for b in key):
+                            log.debug(f"{log_prefix} deleting key of length {len(key)} (all NUL bytes)")
+                            del db[key]
+                            deleted += 1
+                log.debug(f"{log_prefix} done - deleted {deleted} key(s)")
+            except dbm.error:
+                log.debug(f"{log_prefix} failed: db type is dbm.gnu, but the module is not available (dbm.error; module support may be missing or the file may be corrupted)")
+
+        elif "sqlite" in db_type:
+            # perform sqlite3 recovery
+            log_prefix = f"PersistentQueue:{self.identifier} repair (sqlite3/file)"
+            log.debug(f"{log_prefix} started")
+            try:
+                result = subprocess.run(
+                    f"sqlite3 {self.path} '.recover' | sqlite3 {self.path}.tmp",
+                    capture_output=True,
+                    text=True,
+                    shell=True,
+                    timeout=60
+                )
+                if result.stderr:
+                    log.debug(f"{log_prefix} failed: {result.stderr}")
+                else:
+                    shutil.move(f"{self.path}.tmp", self.path)
+                    log.debug(f"{log_prefix}{result.stdout or " was successful, no output"}")
+            except FileNotFoundError:
+                log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
+                
 class DownloadQueue:
     def __init__(self, config, notifier):
         self.config = config
         self.notifier = notifier
-        self.queue = PersistentQueue(self.config.STATE_DIR + '/queue')
-        self.done = PersistentQueue(self.config.STATE_DIR + '/completed')
-        self.pending = PersistentQueue(self.config.STATE_DIR + '/pending')
+        self.queue = PersistentQueue("queue", self.config.STATE_DIR + '/queue')
+        self.done = PersistentQueue("completed", self.config.STATE_DIR + '/completed')
+        self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
         self.semaphore = None
         # For sequential mode, use an asyncio lock to ensure one-at-a-time execution.
