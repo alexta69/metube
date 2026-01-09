@@ -58,7 +58,6 @@ class Config:
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s',
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
-        'DEFAULT_OPTION_PLAYLIST_STRICT_MODE' : 'false',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
@@ -76,7 +75,7 @@ class Config:
         'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'DEFAULT_OPTION_PLAYLIST_STRICT_MODE', 'HTTPS', 'ENABLE_ACCESSLOG')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -244,7 +243,6 @@ async def add(request):
     format = post.get('format')
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
-    playlist_strict_mode = post.get('playlist_strict_mode')
     playlist_item_limit = post.get('playlist_item_limit')
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
@@ -254,8 +252,6 @@ async def add(request):
         custom_name_prefix = ''
     if auto_start is None:
         auto_start = True
-    if playlist_strict_mode is None:
-        playlist_strict_mode = config.DEFAULT_OPTION_PLAYLIST_STRICT_MODE
     if playlist_item_limit is None:
         playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
     if split_by_chapters is None:
@@ -265,7 +261,7 @@ async def add(request):
 
     playlist_item_limit = int(playlist_item_limit)
 
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template)
+    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template)
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

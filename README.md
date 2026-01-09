@@ -40,7 +40,6 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __MAX_CONCURRENT_DOWNLOADS__: This flag is used only when `DOWNLOAD_MODE` is set to `limited`.  
     It specifies the maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`. 
 * __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
-* __DEFAULT_OPTION_PLAYLIST_STRICT_MODE__: if `true`, the "Strict Playlist mode" switch will be enabled by default. In this mode the playlists will be downloaded only if the URL strictly points to a playlist. URLs to videos inside a playlist will be treated same as direct video URL. Defaults to `false` .
 * __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
 
 ### 📁 Storage & Directories
