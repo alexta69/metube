@@ -69,7 +69,6 @@ class Config:
         'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
-        'DOWNLOAD_MODE': 'limited',
         'MAX_CONCURRENT_DOWNLOADS': 3,
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',

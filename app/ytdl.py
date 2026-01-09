@@ -364,13 +364,7 @@ class DownloadQueue:
         self.done = PersistentQueue("completed", self.config.STATE_DIR + '/completed')
         self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
-        self.semaphore = None
-        # For sequential mode, use an asyncio lock to ensure one-at-a-time execution.
-        if self.config.DOWNLOAD_MODE == 'sequential':
-            self.seq_lock = asyncio.Lock()
-        elif self.config.DOWNLOAD_MODE == 'limited':
-            self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
-        
+        self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
         self.done.load()
 
     async def __import_queue(self):
@@ -390,31 +384,12 @@ class DownloadQueue:
         if download.canceled:
             log.info(f"Download {download.info.title} was canceled, skipping start.")
             return
-        if self.config.DOWNLOAD_MODE == 'sequential':
-            async with self.seq_lock:
-                log.info("Starting sequential download.")
-                await download.start(self.notifier)
-                self._post_download_cleanup(download)
-        elif self.config.DOWNLOAD_MODE == 'limited' and self.semaphore is not None:
-            await self.__limited_concurrent_download(download)
-        else:
-            await self.__concurrent_download(download)
-
-    async def __concurrent_download(self, download):
-        log.info("Starting concurrent download without limits.")
-        asyncio.create_task(self._run_download(download))
-
-    async def __limited_concurrent_download(self, download):
-        log.info("Starting limited concurrent download.")
         async with self.semaphore:
-            await self._run_download(download)
-
-    async def _run_download(self, download):
-        if download.canceled:
-            log.info(f"Download {download.info.title} is canceled; skipping start.")
-            return
-        await download.start(self.notifier)
-        self._post_download_cleanup(download)
+            if download.canceled:
+                log.info(f"Download {download.info.title} was canceled, skipping start.")
+                return
+            await download.start(self.notifier)
+            self._post_download_cleanup(download)
 
     def _post_download_cleanup(self, download):
         if download.info.status != 'finished':
