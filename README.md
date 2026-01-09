@@ -66,6 +66,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 
 ### 🌐 Web Server & URLs
 
+* __HOST__: The host address the web server will bind to. Defaults to `0.0.0.0` (all interfaces).
+* __PORT__: The port number the web server will listen on. Defaults to `8081`.
 * __URL_PREFIX__: Base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
 * __PUBLIC_HOST_URL__: Base URL for the download links shown in the UI for completed files. By default, MeTube serves them under its own URL. If your download directory is accessible on another URL and you want the download links to be based there, use this variable to set it.
 * __PUBLIC_HOST_AUDIO_URL__: Same as PUBLIC_HOST_URL but for audio downloads.
