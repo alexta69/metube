@@ -50,6 +50,8 @@ export class App implements AfterViewInit, OnInit {
   playlistItemLimit!: number;
   splitByChapters: boolean;
   chapterTemplate: string;
+  enableRetryFailed: boolean;
+  maxRetryAttempts: number;
   addInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
@@ -108,6 +110,14 @@ export class App implements AfterViewInit, OnInit {
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
+    this.enableRetryFailed = this.cookieService.get('metube_retry_failed') === 'true';
+    const maxRetryCookie = this.cookieService.get('metube_max_retry_attempts');
+    const parsedMaxRetry = parseInt(maxRetryCookie, 10);
+    if (isNaN(parsedMaxRetry) || parsedMaxRetry < 1 || parsedMaxRetry > 10) {
+      this.maxRetryAttempts = 3;
+    } else {
+      this.maxRetryAttempts = parsedMaxRetry;
+    }
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -281,6 +291,30 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
   }
 
+  retryFailedChanged() {
+    this.cookieService.set('metube_retry_failed', this.enableRetryFailed ? 'true' : 'false', { expires: 3650 });
+  }
+
+  maxRetryAttemptsChanged() {
+    // Ensure value is a valid integer between 1 and 10
+    let attempts = Number(this.maxRetryAttempts);
+
+    if (!Number.isFinite(attempts)) {
+      attempts = 1;
+    }
+
+    attempts = Math.round(attempts);
+
+    if (attempts < 1) {
+      attempts = 1;
+    } else if (attempts > 10) {
+      attempts = 10;
+    }
+
+    this.maxRetryAttempts = attempts;
+    this.cookieService.set('metube_max_retry_attempts', this.maxRetryAttempts.toString(), { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -301,7 +335,7 @@ export class App implements AfterViewInit, OnInit {
   }
 }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean, splitByChapters?: boolean, chapterTemplate?: string) {
+  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistStrictMode?: boolean, playlistItemLimit?: number, autoStart?: boolean, splitByChapters?: boolean, chapterTemplate?: string, retryFailed?: boolean, maxRetryAttempts?: number) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
@@ -312,6 +346,8 @@ export class App implements AfterViewInit, OnInit {
     autoStart = autoStart ?? this.autoStart
     splitByChapters = splitByChapters ?? this.splitByChapters
     chapterTemplate = chapterTemplate ?? this.chapterTemplate
+    retryFailed = retryFailed ?? this.enableRetryFailed
+    maxRetryAttempts = maxRetryAttempts ?? this.maxRetryAttempts
 
     // Validate chapter template if chapter splitting is enabled
     if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
@@ -319,9 +355,9 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistStrictMode=' + playlistStrictMode + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistStrictMode=' + playlistStrictMode + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' retryFailed=' + retryFailed + ' maxRetryAttempts=' + maxRetryAttempts);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart, splitByChapters, chapterTemplate).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistStrictMode, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, retryFailed, maxRetryAttempts).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -482,7 +518,7 @@ export class App implements AfterViewInit, OnInit {
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistStrictMode, this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate)
+        this.playlistStrictMode, this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate, this.enableRetryFailed, this.maxRetryAttempts)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
