@@ -118,12 +118,15 @@ export class DownloadsService {
   }
 
   public delById(where: State, ids: string[]) {
-    ids.forEach(id => {
-      const obj = this[where].get(id)
-      if (obj) {
-        obj.deleting = true
+    const map = this[where];
+    if (map) {
+      for (const id of ids) {
+        const obj = map.get(id);
+        if (obj) {
+          obj.deleting = true;
+        }
       }
-  });
+    }
     return this.http.post('delete', {where: where, ids: ids});
   }
 
