@@ -38,6 +38,7 @@
     "@fortawesome/free-solid-svg-icons": "^7.1.0",
     "@ng-bootstrap/ng-bootstrap": "^20.0.0",
     "@ng-select/ng-select": "^21.1.0",
+    "@popperjs/core": "^2.11.8",
     "bootstrap": "^5.3.6",
     "ngx-cookie-service": "^21.1.0",
     "ngx-socket-io": "~4.9.3",
