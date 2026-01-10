@@ -26,7 +26,7 @@
     "@angular/animations": "^21.0.0",
     "@angular/common": "^21.0.0",
     "@angular/compiler": "^21.0.0",
-    "@angular/core": "^21.0.0",
+    "@angular/core": "^21.0.7",
     "@angular/forms": "^21.0.0",
     "@angular/platform-browser": "^21.0.0",
     "@angular/platform-browser-dynamic": "^21.0.0",
