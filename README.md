@@ -49,6 +49,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __TEMP_DIR__: Path where intermediary download files will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
   * Set this to an SSD or RAM filesystem (e.g., `tmpfs`) for better performance.
   * __Note__: Using a RAM filesystem may prevent downloads from being resumed.
+* __CHOWN_DOWNLOAD_DIR__: If `false`, ownership of __DOWNLOAD_DIR__ and its contents will not be set on container start. Does not have any effect if __DOWNLOAD_DIR__ does not exist already. Defaults to `true`.
 
 ### 📝 File Naming & yt-dlp
 
