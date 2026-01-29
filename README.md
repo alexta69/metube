@@ -49,6 +49,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __TEMP_DIR__: Path where intermediary download files will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
   * Set this to an SSD or RAM filesystem (e.g., `tmpfs`) for better performance.
   * __Note__: Using a RAM filesystem may prevent downloads from being resumed.
+* __CHOWN_DIRS__: If `false`, ownership of `DOWNLOAD_DIR`, `STATE_DIR`, and `TEMP_DIR` (and their contents) will not be set on container start. Ensure user under which MeTube runs has necessary access to these directories already. Defaults to `true`.
 
 ### 📝 File Naming & yt-dlp
 
