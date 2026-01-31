@@ -452,6 +452,12 @@ class DownloadQueue:
             for property, value in entry.items():
                 if property.startswith("playlist"):
                     output = output.replace(f"%({property})s", str(value))
+        if entry is not None and 'channel' in entry and entry['channel'] is not None:
+            if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
+                output = self.config.OUTPUT_TEMPLATE_CHANNEL
+            for property, value in entry.items():
+                if property.startswith("channel"):
+                    output = output.replace(f"%({property})s", str(value))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
@@ -502,6 +508,29 @@ class DownloadQueue:
                     if property in entry:
                         etr[f"playlist_{property}"] = entry[property]
                 results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
+            if any(res['status'] == 'error' for res in results):
+                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
+            return {'status': 'ok'}
+        elif etype == 'channel':
+            log.debug('Processing as a channel')
+            entries = entry['entries']
+            # Convert generator to list if needed (for len() and slicing operations)
+            if isinstance(entries, types.GeneratorType):
+                entries = list(entries)
+            log.info(f'channel detected with {len(entries)} entries')
+            channel_index_digits = len(str(len(entries)))
+            results = []
+            if playlist_item_limit > 0:
+                log.info(f'Channel item limit is set. Processing only first {playlist_item_limit} entries')
+                entries = entries[:playlist_item_limit]
+            for index, etr in enumerate(entries, start=1):
+                etr["_type"] = "video"
+                etr["channel"] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
+                etr["channel_index"] = '{{0:0{0:d}d}}'.format(channel_index_digits).format(index)
+                for property in ("id", "title", "uploader", "uploader_id", "channel", "channel_id"):
+                    if property in entry:
+                        etr[f"channel_{property}"] = entry[property]
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
