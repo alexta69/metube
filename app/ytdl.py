@@ -109,7 +109,7 @@ class Download:
                     else:
                         filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
-                
+
                 # Capture all chapter files when SplitChapters finishes
                 elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
                     chapters = d.get('info_dict', {}).get('chapters', [])
@@ -134,7 +134,7 @@ class Download:
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }
-            
+
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
                 ytdl_params['outtmpl']['chapter'] = self.info.chapter_template
@@ -144,7 +144,7 @@ class Download:
                     'key': 'FFmpegSplitChapters',
                     'force_keyframes': False
                 })
-            
+
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
@@ -211,7 +211,7 @@ class Download:
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
 
             # Handle chapter files
-            log.debug(f"Update status for {self.info.title}: {status}") 
+            log.debug(f"Update status for {self.info.title}: {status}")
             if 'chapter_file' in status:
                 chapter_file = status.get('chapter_file')
                 if not hasattr(self.info, 'chapter_files'):
@@ -224,7 +224,7 @@ class Download:
                     self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
                 # Skip the rest of status processing for chapter files
                 continue
-            
+
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
@@ -355,7 +355,7 @@ class PersistentQueue:
                     log.debug(f"{log_prefix}{result.stdout or " was successful, no output"}")
             except FileNotFoundError:
                 log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
-                
+
 class DownloadQueue:
     def __init__(self, config, notifier):
         self.config = config
@@ -471,6 +471,28 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
+    async def __process_playlist_or_channel_entry(self, etype, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
+        entries = entry['entries']
+        # Convert generator to list if needed (for len() and slicing operations)
+        if isinstance(entries, types.GeneratorType):
+            entries = list(entries)
+        log.info(f'{etype} detected with {len(entries)} entries')
+        index_digits = len(str(len(entries)))
+        results = []
+        if playlist_item_limit > 0:
+            log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
+            entries = entries[:playlist_item_limit]
+        for index, etr in enumerate(entries, start=1):
+            etr["_type"] = "video"
+            etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
+            etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
+            for property in ("id", "title", "uploader", "uploader_id"):
+                if property in entry:
+                    etr[f"{etype}_{property}"] = entry[property]
+            results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
+        if any(res['status'] == 'error' for res in results):
+            return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
+
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -486,54 +508,11 @@ class DownloadQueue:
         etype = entry.get('_type') or 'video'
 
         if etype.startswith('url'):
-            log.debug('Processing as an url')
+            log.debug('Processing as a url')
             return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
-        elif etype == 'playlist':
-            log.debug('Processing as a playlist')
-            entries = entry['entries']
-            # Convert generator to list if needed (for len() and slicing operations)
-            if isinstance(entries, types.GeneratorType):
-                entries = list(entries)
-            log.info(f'playlist detected with {len(entries)} entries')
-            playlist_index_digits = len(str(len(entries)))
-            results = []
-            if playlist_item_limit > 0:
-                log.info(f'Playlist item limit is set. Processing only first {playlist_item_limit} entries')
-                entries = entries[:playlist_item_limit]
-            for index, etr in enumerate(entries, start=1):
-                etr["_type"] = "video"
-                etr["playlist"] = entry["id"]
-                etr["playlist_index"] = '{{0:0{0:d}d}}'.format(playlist_index_digits).format(index)
-                for property in ("id", "title", "uploader", "uploader_id"):
-                    if property in entry:
-                        etr[f"playlist_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
-            if any(res['status'] == 'error' for res in results):
-                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
-            return {'status': 'ok'}
-        elif etype == 'channel':
-            log.debug('Processing as a channel')
-            entries = entry['entries']
-            # Convert generator to list if needed (for len() and slicing operations)
-            if isinstance(entries, types.GeneratorType):
-                entries = list(entries)
-            log.info(f'channel detected with {len(entries)} entries')
-            channel_index_digits = len(str(len(entries)))
-            results = []
-            if playlist_item_limit > 0:
-                log.info(f'Channel item limit is set. Processing only first {playlist_item_limit} entries')
-                entries = entries[:playlist_item_limit]
-            for index, etr in enumerate(entries, start=1):
-                etr["_type"] = "video"
-                etr["channel"] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
-                etr["channel_index"] = '{{0:0{0:d}d}}'.format(channel_index_digits).format(index)
-                for property in ("id", "title", "uploader", "uploader_id", "channel", "channel_id"):
-                    if property in entry:
-                        etr[f"channel_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_strict_mode, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
-            if any(res['status'] == 'error' for res in results):
-                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
-            return {'status': 'ok'}
+        elif etype == 'playlist' or etype == 'channel':
+            log.debug(f'Processing as a {etype}')
+            return await self.__process_playlist_or_channel_entry(etype, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
         elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
