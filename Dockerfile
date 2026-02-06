@@ -69,8 +69,8 @@ RUN BGUTIL_TAG="$(curl -Ls -o /dev/null -w '%{url_effective}' https://github.com
 COPY app ./app
 COPY --from=builder /metube/dist/metube ./ui/dist/metube
 
-ENV UID=1000
-ENV GID=1000
+ENV PUID=1000
+ENV PGID=1000
 ENV UMASK=022
 
 ENV DOWNLOAD_DIR /downloads

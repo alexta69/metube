@@ -73,8 +73,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 
 ### 🏠 Basic Setup
 
-* __UID__: User under which MeTube will run. Defaults to `1000`.
-* __GID__: Group under which MeTube will run. Defaults to `1000`.
+* __PUID__: User under which MeTube will run. Defaults to `1000` (legacy `UID` also supported).
+* __PGID__: Group under which MeTube will run. Defaults to `1000` (legacy `GID` also supported).
 * __UMASK__: Umask value used by MeTube. Defaults to `022`.
 * __DEFAULT_THEME__: Default theme to use for the UI, can be set to `light`, `dark`, or `auto`. Defaults to `auto`.
 * __LOGLEVEL__: Log level, can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, or `NONE`. Defaults to `INFO`. 
