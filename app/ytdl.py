@@ -11,12 +11,45 @@ import re
 import types
 import dbm
 import subprocess
+from typing import Any
 
 import yt_dlp.networking.impersonate
+from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
 
 log = logging.getLogger('ytdl')
+
+
+def _outtmpl_substitute_field(template: str, field: str, value: Any) -> str:
+    """Substitute a single field in an output template, applying any format specifiers to the value."""
+    conversion_types = f"[{re.escape(STR_FORMAT_TYPES)}]"
+    pattern = re.compile(STR_FORMAT_RE_TMPL.format(re.escape(field), conversion_types))
+
+    def replacement(match: re.Match) -> str:
+        if match.group("has_key") is None:
+            return match.group(0)
+
+        prefix = match.group("prefix") or ""
+        format_spec = match.group("format")
+
+        if not format_spec:
+            return f"{prefix}{value}"
+
+        conversion_type = format_spec[-1]
+        try:
+            if conversion_type in "diouxX":
+                coerced_value = int(value)
+            elif conversion_type in "eEfFgG":
+                coerced_value = float(value)
+            else:
+                coerced_value = value
+
+            return f"{prefix}{('%' + format_spec) % coerced_value}"
+        except Exception:
+            return f"{prefix}{value}"
+
+    return pattern.sub(replacement, template)
 
 def _convert_generators_to_lists(obj):
     """Recursively convert generators to lists in a dictionary to make it pickleable."""
@@ -109,7 +142,7 @@ class Download:
                     else:
                         filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
-                
+
                 # Capture all chapter files when SplitChapters finishes
                 elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
                     chapters = d.get('info_dict', {}).get('chapters', [])
@@ -134,7 +167,7 @@ class Download:
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }
-            
+
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
                 ytdl_params['outtmpl']['chapter'] = self.info.chapter_template
@@ -144,7 +177,7 @@ class Download:
                     'key': 'FFmpegSplitChapters',
                     'force_keyframes': False
                 })
-            
+
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
@@ -211,7 +244,7 @@ class Download:
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
 
             # Handle chapter files
-            log.debug(f"Update status for {self.info.title}: {status}") 
+            log.debug(f"Update status for {self.info.title}: {status}")
             if 'chapter_file' in status:
                 chapter_file = status.get('chapter_file')
                 if not hasattr(self.info, 'chapter_files'):
@@ -224,7 +257,7 @@ class Download:
                     self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
                 # Skip the rest of status processing for chapter files
                 continue
-            
+
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'downloaded_bytes' in status:
@@ -355,7 +388,7 @@ class PersistentQueue:
                     log.debug(f"{log_prefix}{result.stdout or " was successful, no output"}")
             except FileNotFoundError:
                 log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
-                
+
 class DownloadQueue:
     def __init__(self, config, notifier):
         self.config = config
@@ -426,7 +459,7 @@ class DownloadQueue:
         base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR
         if folder:
             if not self.config.CUSTOM_DIRS:
-                return None, {'status': 'error', 'msg': f'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
+                return None, {'status': 'error', 'msg': 'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
             dldirectory = os.path.realpath(os.path.join(base_directory, folder))
             real_base_directory = os.path.realpath(base_directory)
             if not dldirectory.startswith(real_base_directory):
@@ -451,7 +484,7 @@ class DownloadQueue:
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
             for property, value in entry.items():
                 if property.startswith("playlist"):
-                    output = output.replace(f"%({property})s", str(value))
+                    output = _outtmpl_substitute_field(output, property, value)
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
