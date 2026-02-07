@@ -471,28 +471,6 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
-    async def __process_playlist_or_channel_entry(self, etype, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
-        entries = entry['entries']
-        # Convert generator to list if needed (for len() and slicing operations)
-        if isinstance(entries, types.GeneratorType):
-            entries = list(entries)
-        log.info(f'{etype} detected with {len(entries)} entries')
-        index_digits = len(str(len(entries)))
-        results = []
-        if playlist_item_limit > 0:
-            log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
-            entries = entries[:playlist_item_limit]
-        for index, etr in enumerate(entries, start=1):
-            etr["_type"] = "video"
-            etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
-            etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
-            for property in ("id", "title", "uploader", "uploader_id"):
-                if property in entry:
-                    etr[f"{etype}_{property}"] = entry[property]
-            results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
-        if any(res['status'] == 'error' for res in results):
-            return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
-
     async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -512,7 +490,27 @@ class DownloadQueue:
             return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
-            return await self.__process_playlist_or_channel_entry(etype, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
+            entries = entry['entries']
+            # Convert generator to list if needed (for len() and slicing operations)
+            if isinstance(entries, types.GeneratorType):
+                entries = list(entries)
+            log.info(f'{etype} detected with {len(entries)} entries')
+            index_digits = len(str(len(entries)))
+            results = []
+            if playlist_item_limit > 0:
+                log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
+                entries = entries[:playlist_item_limit]
+            for index, etr in enumerate(entries, start=1):
+                etr["_type"] = "video"
+                etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
+                etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
+                for property in ("id", "title", "uploader", "uploader_id"):
+                    if property in entry:
+                        etr[f"{etype}_{property}"] = entry[property]
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
+            if any(res['status'] == 'error' for res in results):
+                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
+            return {'status': 'ok'}
         elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
