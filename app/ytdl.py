@@ -446,18 +446,20 @@ class DownloadQueue:
         output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
         output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
         entry = getattr(dl, 'entry', None)
-        if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
-            if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
-                output = self.config.OUTPUT_TEMPLATE_PLAYLIST
-            for property, value in entry.items():
-                if property.startswith("playlist"):
-                    output = output.replace(f"%({property})s", str(value))
-        if entry is not None and 'channel' in entry and entry['channel'] is not None:
-            if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
-                output = self.config.OUTPUT_TEMPLATE_CHANNEL
-            for property, value in entry.items():
-                if property.startswith("channel"):
-                    output = output.replace(f"%({property})s", str(value))
+        # Only use playlist/channel templates if CUSTOM_DIRS is enabled
+        if self.config.CUSTOM_DIRS:
+            if entry is not None and 'playlist' in entry and entry['playlist'] is not None:
+                if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
+                    output = self.config.OUTPUT_TEMPLATE_PLAYLIST
+                for property, value in entry.items():
+                    if property.startswith("playlist"):
+                        output = output.replace(f"%({property})s", str(value))
+            if entry is not None and 'channel' in entry and entry['channel'] is not None:
+                if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
+                    output = self.config.OUTPUT_TEMPLATE_CHANNEL
+                for property, value in entry.items():
+                    if property.startswith("channel"):
+                        output = output.replace(f"%({property})s", str(value))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
