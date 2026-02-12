@@ -491,7 +491,7 @@ class DownloadQueue:
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
             for property, value in entry.items():
                 if property.startswith("playlist"):
-                    output = output.replace(f"%({property})s", str(value))
+                    output = _outtmpl_substitute_field(output, property, value)
         if entry is not None and entry.get('channel_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
