@@ -144,10 +144,7 @@ class Download:
 
             def put_status_postprocessor(d):
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
-                    if '__finaldir' in d['info_dict']:
-                        filename = os.path.join(d['info_dict']['__finaldir'], os.path.basename(d['info_dict']['filepath']))
-                    else:
-                        filename = d['info_dict']['filepath']
+                    filename = d['info_dict']['filepath']
                     self.status_queue.put({'status': 'finished', 'filename': filename})
 
                 # Capture all chapter files when SplitChapters finishes
@@ -203,8 +200,14 @@ class Download:
         self.notifier = notifier
         self.info.status = 'preparing'
         await self.notifier.updated(self.info)
-        asyncio.create_task(self.update_status())
-        return await self.loop.run_in_executor(None, self.proc.join)
+        self.status_task = asyncio.create_task(self.update_status())
+        await self.loop.run_in_executor(None, self.proc.join)
+        # Signal update_status to stop and wait for it to finish
+        # so that all status updates (including MoveFiles with correct
+        # file size) are processed before _post_download_cleanup runs.
+        if self.status_queue is not None:
+            self.status_queue.put(None)
+        await self.status_task
 
     def cancel(self):
         log.info(f"Cancelling download: {self.info.title}")
@@ -221,8 +224,6 @@ class Download:
         log.info(f"Closing download process for: {self.info.title}")
         if self.started():
             self.proc.close()
-            if self.status_queue is not None:
-                self.status_queue.put(None)
 
     def running(self):
         try:
