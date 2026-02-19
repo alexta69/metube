@@ -105,11 +105,11 @@ wheels = [
 
 [[package]]
 name = "astroid"
-version = "4.0.3"
+version = "4.0.4"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/a1/ca/c17d0f83016532a1ad87d1de96837164c99d47a3b6bbba28bd597c25b37a/astroid-4.0.3.tar.gz", hash = "sha256:08d1de40d251cc3dc4a7a12726721d475ac189e4e583d596ece7422bc176bda3", size = 406224, upload-time = "2026-01-03T22:14:26.096Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/07/63/0adf26577da5eff6eb7a177876c1cfa213856be9926a000f65c4add9692b/astroid-4.0.4.tar.gz", hash = "sha256:986fed8bcf79fb82c78b18a53352a0b287a73817d6dbcfba3162da36667c49a0", size = 406358, upload-time = "2026-02-07T23:35:07.509Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/ce/66/686ac4fc6ef48f5bacde625adac698f41d5316a9753c2b20bb0931c9d4e2/astroid-4.0.3-py3-none-any.whl", hash = "sha256:864a0a34af1bd70e1049ba1e61cee843a7252c826d97825fcee9b2fcbd9e1b14", size = 276443, upload-time = "2026-01-03T22:14:24.412Z" },
+    { url = "https://files.pythonhosted.org/packages/b0/cf/1c5f42b110e57bc5502eb80dbc3b03d256926062519224835ef08134f1f9/astroid-4.0.4-py3-none-any.whl", hash = "sha256:52f39653876c7dec3e3afd4c2696920e05c83832b9737afc21928f2d2eb7a753", size = 276445, upload-time = "2026-02-07T23:35:05.344Z" },
 ]
 
 [[package]]
@@ -303,15 +303,15 @@ wheels = [
 
 [[package]]
 name = "deno"
-version = "2.6.8"
+version = "2.6.10"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/c2/5c/ba3171b42741d1ede4517f73b2a13f07a1828b5a616b086111a01821b0ce/deno-2.6.8.tar.gz", hash = "sha256:dd9e432c67f3d2f1a110d898612dccd7efc51a9486f8466a5fc482b8212d8e19", size = 8129, upload-time = "2026-02-02T18:06:29.122Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1c/a8/74db2941f56186028b6e91c6116a3e52c8459dfa28a5f990f578be2b69eb/deno-2.6.10.tar.gz", hash = "sha256:41c12a75197da6d9db20120eee7585c27766af0ac62c817c085c93dfc4081428", size = 8128, upload-time = "2026-02-17T16:09:30.841Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/56/9a/43c7bb102fe58b1318abe00b557c3dfa2f9a9d79f0cd3d9028b6bf8b9637/deno-2.6.8-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:078ef3d2a30bcaba91e246f730baddebf1e0e5249adfbfa1b0e169118a41faa5", size = 44303226, upload-time = "2026-02-02T18:06:13.277Z" },
-    { url = "https://files.pythonhosted.org/packages/6b/65/fc7c99a0f60fe617eb5a533e37a1cd777f81c03b06b6766d0f52c92e94a8/deno-2.6.8-py3-none-macosx_11_0_arm64.whl", hash = "sha256:0c18549037ef7bc856cf3889df424f43810a0b830c0ffc799d8d951a4da5a033", size = 41472003, upload-time = "2026-02-02T18:06:16.735Z" },
-    { url = "https://files.pythonhosted.org/packages/da/4b/617ba0f2e8523c2145e612f4ef610afa231186ba1a860ce2c92c382c3e46/deno-2.6.8-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:332e33ca62bd416cea002a1e50af1c2843d84771e015bfffecdc0d44342eb0eb", size = 45335676, upload-time = "2026-02-02T18:06:19.975Z" },
-    { url = "https://files.pythonhosted.org/packages/c4/18/5b0af1fb4f52775b58fae4b6a7f0e12f45cf1435e63a0f6af1a8a87d3595/deno-2.6.8-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:2c31bda6da38f9130ef796a9298642b2ca5525420033c74c8b6bbac9d1ab35b0", size = 47240835, upload-time = "2026-02-02T18:06:22.715Z" },
-    { url = "https://files.pythonhosted.org/packages/a6/e8/defc9de7c0991bfb3c6d3e2a6a5d344fd0022ebe114743af483ff718609b/deno-2.6.8-py3-none-win_amd64.whl", hash = "sha256:dc7d517d8cd0cf43d55e3c8dbd2bbd911dc875cfc116982d882c9aa22f48863f", size = 46136023, upload-time = "2026-02-02T18:06:26.665Z" },
+    { url = "https://files.pythonhosted.org/packages/15/2f/030638bfabbd63df9562e3900b791d6c07e5a30346d359cf45a5e1fc4097/deno-2.6.10-py3-none-macosx_10_12_x86_64.whl", hash = "sha256:c381b068b6f58ca1c19a0cf062c8489ee1c7fe430d3ebc48db944f5c80beb2c2", size = 45118320, upload-time = "2026-02-17T16:09:16.536Z" },
+    { url = "https://files.pythonhosted.org/packages/08/dc/0f71ff9dd513c8cc094dc76640f80088a27ea9a3b1fc2decd60a8a27148a/deno-2.6.10-py3-none-macosx_11_0_arm64.whl", hash = "sha256:f2da72aa734463600a5a16efd786a4aecd22ddcd6ea907f56fca15f9eb3ca794", size = 42060974, upload-time = "2026-02-17T16:09:19.655Z" },
+    { url = "https://files.pythonhosted.org/packages/33/f7/3774540e14111026251aef134bf3de3ae1c0591866f05ce5debc97248127/deno-2.6.10-py3-none-manylinux_2_27_aarch64.whl", hash = "sha256:b98d6fc98a9cbc10219f6c6d6f2a6e10d1954416bbcd4371d317fc9c20050576", size = 45789105, upload-time = "2026-02-17T16:09:22.413Z" },
+    { url = "https://files.pythonhosted.org/packages/21/80/a2b5827f4715f0bcb5a550728ac98a32258f31e2a6f1c63803a078a425b0/deno-2.6.10-py3-none-manylinux_2_27_x86_64.whl", hash = "sha256:d1600f4ee7b4a9699b7057841bdb5d7b7eac3fb073df072540064166841c2f4c", size = 47737107, upload-time = "2026-02-17T16:09:25.339Z" },
+    { url = "https://files.pythonhosted.org/packages/93/60/75fbdc63d97f381182be1eeebe4bd1630d9819d05ae7c20143f700856a3a/deno-2.6.10-py3-none-win_amd64.whl", hash = "sha256:dc0b6b7a3e558b159c6e599eab6556766c96fe1d75d59383ce291ebf0083fcfd", size = 47088397, upload-time = "2026-02-17T16:09:28.571Z" },
 ]
 
 [[package]]
@@ -555,11 +555,11 @@ wheels = [
 
 [[package]]
 name = "platformdirs"
-version = "4.5.1"
+version = "4.9.2"
 source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/cf/86/0248f086a84f01b37aaec0fa567b397df1a119f73c16f6c7a9aac73ea309/platformdirs-4.5.1.tar.gz", hash = "sha256:61d5cdcc6065745cdd94f0f878977f8de9437be93de97c1c12f853c9c0cdcbda", size = 21715, upload-time = "2025-12-05T13:52:58.638Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/1b/04/fea538adf7dbbd6d186f551d595961e564a3b6715bdf276b477460858672/platformdirs-4.9.2.tar.gz", hash = "sha256:9a33809944b9db043ad67ca0db94b14bf452cc6aeaac46a88ea55b26e2e9d291", size = 28394, upload-time = "2026-02-16T03:56:10.574Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/cb/28/3bfe2fa5a7b9c46fe7e13c97bda14c895fb10fa2ebf1d0abb90e0cea7ee1/platformdirs-4.5.1-py3-none-any.whl", hash = "sha256:d03afa3963c806a9bed9d5125c8f4cb2fdaf74a55ab60e5d59b3fde758104d31", size = 18731, upload-time = "2025-12-05T13:52:56.823Z" },
+    { url = "https://files.pythonhosted.org/packages/48/31/05e764397056194206169869b50cf2fee4dbbbc71b344705b9c0d878d4d8/platformdirs-4.9.2-py3-none-any.whl", hash = "sha256:9170634f126f8efdae22fb58ae8a0eaa86f38365bc57897a6c4f781d1f5875bd", size = 21168, upload-time = "2026-02-16T03:56:08.891Z" },
 ]
 
 [[package]]
@@ -690,27 +690,27 @@ wheels = [
 
 [[package]]
 name = "python-engineio"
-version = "4.13.0"
+version = "4.13.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "simple-websocket" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/42/5a/349caac055e03ef9e56ed29fa304846063b1771ee54ab8132bf98b29491e/python_engineio-4.13.0.tar.gz", hash = "sha256:f9c51a8754d2742ba832c24b46ed425fdd3064356914edd5a1e8ffde76ab7709", size = 92194, upload-time = "2025-12-24T22:38:05.111Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/34/12/bdef9dbeedbe2cdeba2a2056ad27b1fb081557d34b69a97f574843462cae/python_engineio-4.13.1.tar.gz", hash = "sha256:0a853fcef52f5b345425d8c2b921ac85023a04dfcf75d7b74696c61e940fd066", size = 92348, upload-time = "2026-02-06T23:38:06.12Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/50/74/c655a6eda0fd188d490c14142a0f0380655ac7099604e1fbf8fa1a97f0a1/python_engineio-4.13.0-py3-none-any.whl", hash = "sha256:57b94eac094fa07b050c6da59f48b12250ab1cd920765f4849963e3d89ad9de3", size = 59676, upload-time = "2025-12-24T22:38:03.56Z" },
+    { url = "https://files.pythonhosted.org/packages/aa/54/0cce26da03a981f949bb8449c9778537f75f5917c172e1d2992ff25cb57d/python_engineio-4.13.1-py3-none-any.whl", hash = "sha256:f32ad10589859c11053ad7d9bb3c9695cdf862113bfb0d20bc4d890198287399", size = 59847, upload-time = "2026-02-06T23:38:04.861Z" },
 ]
 
 [[package]]
 name = "python-socketio"
-version = "5.16.0"
+version = "5.16.1"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
     { name = "bidict" },
     { name = "python-engineio" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/b8/55/5d8af5884283b58e4405580bcd84af1d898c457173c708736e065f10ca4a/python_socketio-5.16.0.tar.gz", hash = "sha256:f79403c7f1ba8b84460aa8fe4c671414c8145b21a501b46b676f3740286356fd", size = 127120, upload-time = "2025-12-24T23:51:48.826Z" }
+sdist = { url = "https://files.pythonhosted.org/packages/59/81/cf8284f45e32efa18d3848ed82cdd4dcc1b657b082458fbe01ad3e1f2f8d/python_socketio-5.16.1.tar.gz", hash = "sha256:f863f98eacce81ceea2e742f6388e10ca3cdd0764be21d30d5196470edf5ea89", size = 128508, upload-time = "2026-02-06T23:42:07Z" }
 wheels = [
-    { url = "https://files.pythonhosted.org/packages/28/d2/2ccc2b69a187b80fda3152745670cfba936704f296a9fa54c6c8ac694d12/python_socketio-5.16.0-py3-none-any.whl", hash = "sha256:d95802961e15c7bd54ecf884c6e7644f81be8460f0a02ee66b473df58088ee8a", size = 79607, upload-time = "2025-12-24T23:51:47.2Z" },
+    { url = "https://files.pythonhosted.org/packages/07/c7/deb8c5e604404dbf10a3808a858946ca3547692ff6316b698945bb72177e/python_socketio-5.16.1-py3-none-any.whl", hash = "sha256:a3eb1702e92aa2f2b5d3ba00261b61f062cce51f1cfb6900bf3ab4d1934d2d35", size = 82054, upload-time = "2026-02-06T23:42:05.772Z" },
 ]
 
 [[package]]
