@@ -250,6 +250,8 @@ async def add(request):
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
+    if custom_name_prefix and ('..' in custom_name_prefix or custom_name_prefix.startswith('/') or custom_name_prefix.startswith('\\')):
+        raise web.HTTPBadRequest(reason='custom_name_prefix must not contain ".." or start with a path separator')
     if auto_start is None:
         auto_start = True
     if playlist_item_limit is None:
@@ -258,6 +260,8 @@ async def add(request):
         split_by_chapters = False
     if chapter_template is None:
         chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
+    if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
+        raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')
 
     playlist_item_limit = int(playlist_item_limit)
 
