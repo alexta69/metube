@@ -100,7 +100,7 @@ class DownloadInfo:
         playlist_item_limit,
         split_by_chapters,
         chapter_template,
-        subtitle_format="ass",
+        subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
     ):
@@ -139,7 +139,7 @@ class Download:
             format,
             quality,
             ytdl_opts,
-            subtitle_format=getattr(info, 'subtitle_format', 'ass'),
+            subtitle_format=getattr(info, 'subtitle_format', 'srt'),
             subtitle_language=getattr(info, 'subtitle_language', 'en'),
             subtitle_mode=getattr(info, 'subtitle_mode', 'prefer_manual'),
         )
@@ -701,7 +701,7 @@ class DownloadQueue:
         auto_start=True,
         split_by_chapters=False,
         chapter_template=None,
-        subtitle_format="ass",
+        subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
         already=None,

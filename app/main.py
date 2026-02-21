@@ -264,7 +264,7 @@ async def add(request):
     if chapter_template is None:
         chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
     if subtitle_format is None:
-        subtitle_format = 'ass'
+        subtitle_format = 'srt'
     if subtitle_language is None:
         subtitle_language = 'en'
     if subtitle_mode is None:

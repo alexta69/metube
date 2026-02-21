@@ -180,7 +180,7 @@ export class DownloadsService {
     const defaultAutoStart = true;
     const defaultSplitByChapters = false;
     const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
-    const defaultSubtitleFormat = 'ass';
+    const defaultSubtitleFormat = 'srt';
     const defaultSubtitleLanguage = 'en';
     const defaultSubtitleMode = 'prefer_manual';
 

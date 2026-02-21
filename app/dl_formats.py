@@ -70,7 +70,7 @@ def get_opts(
     format: str,
     quality: str,
     ytdl_opts: dict,
-    subtitle_format: str = "ass",
+    subtitle_format: str = "srt",
     subtitle_language: str = "en",
     subtitle_mode: str = "prefer_manual",
 ) -> dict:
@@ -124,7 +124,7 @@ def get_opts(
         mode = _normalize_caption_mode(subtitle_mode)
         language = _normalize_subtitle_language(subtitle_language)
         opts["skip_download"] = True
-        opts["subtitlesformat"] = subtitle_format or "ass"
+        opts["subtitlesformat"] = subtitle_format or "srt"
         if mode == "manual_only":
             opts["writesubtitles"] = True
             opts["writeautomaticsub"] = False

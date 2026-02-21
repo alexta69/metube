@@ -101,10 +101,9 @@ export class App implements AfterViewInit, OnInit {
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
   subtitleFormats = [
-    { id: 'ass', text: 'ASS' },
-    { id: 'vtt', text: 'VTT' },
     { id: 'srt', text: 'SRT' },
-    { id: 'ttml', text: 'TTML' },
+    { id: 'vtt', text: 'VTT' },
+    { id: 'ttml', text: 'TTML' }
   ];
   subtitleLanguages = [
     { id: 'en', text: 'English' },
@@ -135,9 +134,13 @@ export class App implements AfterViewInit, OnInit {
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
-    this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'ass';
+    this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'srt';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
+    const allowedSubtitleFormats = new Set(this.subtitleFormats.map(fmt => fmt.id));
+    if (!allowedSubtitleFormats.has(this.subtitleFormat)) {
+      this.subtitleFormat = 'srt';
+    }
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
