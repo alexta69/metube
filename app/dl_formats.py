@@ -26,6 +26,10 @@ def get_format(format: str, quality: str) -> str:
         # Quality is irrelevant in this case since we skip the download
         return "bestaudio/best"
 
+    if format == "captions":
+        # Quality is irrelevant in this case since we skip the download
+        return "bestaudio/best"
+
     if format in AUDIO_FORMATS:
         # Audio quality needs to be set post-download, set in opts
         return f"bestaudio[ext={format}]/bestaudio/best"
@@ -97,6 +101,13 @@ def get_opts(format: str, quality: str, ytdl_opts: dict) -> dict:
         postprocessors.append(
             {"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"}
         )
+
+    if format == "captions":
+        opts["skip_download"] = True
+        opts["writesubtitles"] = True
+        opts["writeautomaticsub"] = True
+        opts["subtitleslangs"] = ["en"]
+        opts["subtitlesformat"] = "vtt"
 
     opts["postprocessors"] = postprocessors + (
         opts["postprocessors"] if "postprocessors" in opts else []

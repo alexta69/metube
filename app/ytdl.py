@@ -160,6 +160,14 @@ class Download:
                     else:
                         filename = filepath
                     self.status_queue.put({'status': 'finished', 'filename': filename})
+                    # For captions-only downloads, yt-dlp may still report a media-like
+                    # filepath in MoveFiles. Capture subtitle outputs explicitly so the
+                    # UI can link to real caption files.
+                    if self.info.format == 'captions':
+                        requested_subtitles = d.get('info_dict', {}).get('requested_subtitles', {}) or {}
+                        for subtitle in requested_subtitles.values():
+                            if isinstance(subtitle, dict) and subtitle.get('filepath'):
+                                self.status_queue.put({'subtitle_file': subtitle['filepath']})
 
                 # Capture all chapter files when SplitChapters finishes
                 elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
@@ -260,10 +268,14 @@ class Download:
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
                 fileName = status.get('filename')
-                self.info.filename = os.path.relpath(fileName, self.download_dir)
-                self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
-                if self.info.format == 'thumbnail':
-                    self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
+                rel_name = os.path.relpath(fileName, self.download_dir)
+                # For captions mode, ignore media-like placeholders and let subtitle_file
+                # statuses define the final file shown in the UI.
+                if not (self.info.format == 'captions' and not rel_name.endswith(('.vtt', '.srt', '.ass', '.ttml'))):
+                    self.info.filename = rel_name
+                    self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
+                    if self.info.format == 'thumbnail':
+                        self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
 
             # Handle chapter files
             log.debug(f"Update status for {self.info.title}: {status}")
@@ -278,6 +290,21 @@ class Download:
                 if not existing:
                     self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
                 # Skip the rest of status processing for chapter files
+                continue
+
+            if 'subtitle_file' in status:
+                subtitle_file = status.get('subtitle_file')
+                if not hasattr(self.info, 'subtitle_files'):
+                    self.info.subtitle_files = []
+                rel_path = os.path.relpath(subtitle_file, self.download_dir)
+                file_size = os.path.getsize(subtitle_file) if os.path.exists(subtitle_file) else None
+                existing = next((sf for sf in self.info.subtitle_files if sf['filename'] == rel_path), None)
+                if not existing:
+                    self.info.subtitle_files.append({'filename': rel_path, 'size': file_size})
+                # Prefer first subtitle file as the primary result link in captions mode.
+                if self.info.format == 'captions' and (not getattr(self.info, 'filename', None)):
+                    self.info.filename = rel_path
+                    self.info.size = file_size
                 continue
 
             self.info.status = status['status']
