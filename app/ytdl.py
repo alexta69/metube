@@ -337,11 +337,15 @@ class Download:
                 rel_name = os.path.relpath(fileName, self.download_dir)
                 # For captions mode, ignore media-like placeholders and let subtitle_file
                 # statuses define the final file shown in the UI.
-                if not (self.info.format == 'captions' and not rel_name.endswith(('.vtt', '.srt', '.ttml', '.txt'))):
-                    self.info.filename = rel_name
-                    self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
-                    if self.info.format == 'thumbnail':
-                        self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
+                if self.info.format == 'captions':
+                    requested_subtitle_format = str(getattr(self.info, 'subtitle_format', '')).lower()
+                    allowed_caption_exts = ('.txt',) if requested_subtitle_format == 'txt' else ('.vtt', '.srt', '.sbv', '.scc', '.ttml', '.dfxp')
+                    if not rel_name.lower().endswith(allowed_caption_exts):
+                        continue
+                self.info.filename = rel_name
+                self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
+                if self.info.format == 'thumbnail':
+                    self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
 
             # Handle chapter files
             log.debug(f"Update status for {self.info.title}: {status}")
@@ -383,7 +387,10 @@ class Download:
                 if not existing:
                     self.info.subtitle_files.append({'filename': rel_path, 'size': file_size})
                 # Prefer first subtitle file as the primary result link in captions mode.
-                if self.info.format == 'captions' and (not getattr(self.info, 'filename', None)):
+                if self.info.format == 'captions' and (
+                    not getattr(self.info, 'filename', None) or
+                    str(getattr(self.info, 'subtitle_format', '')).lower() == 'txt'
+                ):
                     self.info.filename = rel_path
                     self.info.size = file_size
                 continue
