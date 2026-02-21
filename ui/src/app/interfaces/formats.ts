@@ -75,7 +75,7 @@ export const Formats: Format[] = [
   },
   {
     id: 'captions',
-    text: 'Captions (EN, VTT)',
+    text: 'Captions',
     qualities: [{ id: 'best', text: 'Best' }],
   },
 ];

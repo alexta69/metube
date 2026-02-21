@@ -49,6 +49,9 @@ export class App implements AfterViewInit, OnInit {
   playlistItemLimit!: number;
   splitByChapters: boolean;
   chapterTemplate: string;
+  subtitleFormat: string;
+  subtitleLanguage: string;
+  subtitleMode: string;
   addInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
@@ -97,6 +100,31 @@ export class App implements AfterViewInit, OnInit {
   faGithub = faGithub;
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
+  subtitleFormats = [
+    { id: 'ass', text: 'ASS' },
+    { id: 'vtt', text: 'VTT' },
+    { id: 'srt', text: 'SRT' },
+    { id: 'ttml', text: 'TTML' },
+  ];
+  subtitleLanguages = [
+    { id: 'en', text: 'English' },
+    { id: 'es', text: 'Spanish' },
+    { id: 'fr', text: 'French' },
+    { id: 'de', text: 'German' },
+    { id: 'it', text: 'Italian' },
+    { id: 'pt', text: 'Portuguese' },
+    { id: 'ru', text: 'Russian' },
+    { id: 'uk', text: 'Ukrainian' },
+    { id: 'ja', text: 'Japanese' },
+    { id: 'ko', text: 'Korean' },
+    { id: 'zh-Hans', text: 'Chinese (Simplified)' },
+  ];
+  subtitleModes = [
+    { id: 'prefer_manual', text: 'Prefer Manual' },
+    { id: 'prefer_auto', text: 'Prefer Auto' },
+    { id: 'manual_only', text: 'Manual Only' },
+    { id: 'auto_only', text: 'Auto Only' },
+  ];
 
   constructor() {
     this.format = this.cookieService.get('metube_format') || 'any';
@@ -107,6 +135,9 @@ export class App implements AfterViewInit, OnInit {
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
+    this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'ass';
+    this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
+    this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -279,6 +310,18 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
   }
 
+  subtitleFormatChanged() {
+    this.cookieService.set('metube_subtitle_format', this.subtitleFormat, { expires: 3650 });
+  }
+
+  subtitleLanguageChanged() {
+    this.cookieService.set('metube_subtitle_language', this.subtitleLanguage, { expires: 3650 });
+  }
+
+  subtitleModeChanged() {
+    this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -299,7 +342,20 @@ export class App implements AfterViewInit, OnInit {
   }
 }
 
-  addDownload(url?: string, quality?: string, format?: string, folder?: string, customNamePrefix?: string, playlistItemLimit?: number, autoStart?: boolean, splitByChapters?: boolean, chapterTemplate?: string) {
+  addDownload(
+    url?: string,
+    quality?: string,
+    format?: string,
+    folder?: string,
+    customNamePrefix?: string,
+    playlistItemLimit?: number,
+    autoStart?: boolean,
+    splitByChapters?: boolean,
+    chapterTemplate?: string,
+    subtitleFormat?: string,
+    subtitleLanguage?: string,
+    subtitleMode?: string,
+  ) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
     format = format ?? this.format
@@ -309,6 +365,9 @@ export class App implements AfterViewInit, OnInit {
     autoStart = autoStart ?? this.autoStart
     splitByChapters = splitByChapters ?? this.splitByChapters
     chapterTemplate = chapterTemplate ?? this.chapterTemplate
+    subtitleFormat = subtitleFormat ?? this.subtitleFormat
+    subtitleLanguage = subtitleLanguage ?? this.subtitleLanguage
+    subtitleMode = subtitleMode ?? this.subtitleMode
 
     // Validate chapter template if chapter splitting is enabled
     if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
@@ -316,9 +375,9 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
     this.addInProgress = true;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
       if (status.status === 'error') {
         alert(`Error adding URL: ${status.msg}`);
       } else {
@@ -333,7 +392,20 @@ export class App implements AfterViewInit, OnInit {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload(download.url, download.quality, download.format, download.folder, download.custom_name_prefix, download.playlist_item_limit, true, download.split_by_chapters, download.chapter_template);
+    this.addDownload(
+      download.url,
+      download.quality,
+      download.format,
+      download.folder,
+      download.custom_name_prefix,
+      download.playlist_item_limit,
+      true,
+      download.split_by_chapters,
+      download.chapter_template,
+      download.subtitle_format,
+      download.subtitle_language,
+      download.subtitle_mode,
+    );
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -479,7 +551,8 @@ export class App implements AfterViewInit, OnInit {
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate)
+        this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
+        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
