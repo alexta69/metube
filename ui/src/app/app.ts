@@ -102,6 +102,7 @@ export class App implements AfterViewInit, OnInit {
   faTachometerAlt = faTachometerAlt;
   subtitleFormats = [
     { id: 'srt', text: 'SRT' },
+    { id: 'txt', text: 'TXT (Text only)' },
     { id: 'vtt', text: 'VTT' },
     { id: 'ttml', text: 'TTML' }
   ];

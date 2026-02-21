@@ -232,6 +232,9 @@
                       }
                     </select>
                   </div>
+                  @if (subtitleFormat === 'txt') {
+                    <div class="form-text">TXT is generated from SRT by stripping timestamps and cue numbers.</div>
+                  }
                 </div>
                 <div class="col-md-4">
                   <div class="input-group">
