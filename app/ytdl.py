@@ -255,7 +255,7 @@ class Download:
             # Add timestamp-based download range if a start timestamp was extracted from the URL
             if getattr(self.info, 'start_timestamp', None) is not None:
                 log.info(f"Applying download range: start at {self.info.start_timestamp}s")
-                ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(None, [(self.info.start_timestamp, None)])
+                ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(None, [(self.info.start_timestamp, float('inf'))])
                 ytdl_params['force_keyframes_at_cuts'] = True
 
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
