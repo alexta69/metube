@@ -18,6 +18,7 @@ import yt_dlp.networking.impersonate
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
+from urllib.parse import urlparse, parse_qs, urlencode, urlunparse
 
 log = logging.getLogger('ytdl')
 
@@ -69,6 +70,60 @@ def _convert_generators_to_lists(obj):
     else:
         return obj
 
+def _parse_time_value(value):
+    """Parse a timestamp value like '885', '14m45s', '1h2m3s' into seconds.
+    Returns None if the value cannot be parsed."""
+    if not value:
+        return None
+
+    # Try plain integer (seconds)
+    try:
+        seconds = int(value)
+        return seconds if seconds > 0 else None
+    except ValueError:
+        pass
+
+    # Try HMS format: 1h2m3s, 14m45s, 30s, 2h, etc.
+    match = re.match(r'^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)s?)?$', value, re.IGNORECASE)
+    if match and any(match.groups()):
+        hours = int(match.group(1) or 0)
+        minutes = int(match.group(2) or 0)
+        seconds = int(match.group(3) or 0)
+        total = hours * 3600 + minutes * 60 + seconds
+        return total if total > 0 else None
+
+    return None
+
+
+def parse_timestamp_from_url(url):
+    """Extract a 't' query parameter from a URL and return (cleaned_url, start_seconds).
+    If no valid timestamp is found, returns (url, None) with the URL unchanged."""
+    try:
+        parsed = urlparse(url)
+        params = parse_qs(parsed.query)
+    except Exception:
+        return url, None
+
+    t_values = params.get('t')
+    if not t_values:
+        return url, None
+
+    start_seconds = _parse_time_value(t_values[0])
+    if start_seconds is None:
+        return url, None
+
+    # Rebuild the URL without the 't' parameter
+    filtered_params = {k: v for k, v in params.items() if k != 't'}
+    new_query = urlencode(filtered_params, doseq=True)
+    cleaned_url = urlunparse((
+        parsed.scheme, parsed.netloc, parsed.path,
+        parsed.params, new_query, parsed.fragment
+    ))
+
+    log.info(f'Extracted start timestamp {start_seconds}s from URL, cleaned URL: {cleaned_url}')
+    return cleaned_url, start_seconds
+
+
 class DownloadQueueNotifier:
     async def added(self, dl):
         raise NotImplementedError
@@ -86,7 +141,7 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template):
+    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template, start_timestamp=None):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
@@ -104,6 +159,7 @@ class DownloadInfo:
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.chapter_template = chapter_template
+        self.start_timestamp = start_timestamp
 
 class Download:
     manager = None
@@ -195,6 +251,12 @@ class Download:
                     'key': 'FFmpegSplitChapters',
                     'force_keyframes': False
                 })
+
+            # Add timestamp-based download range if a start timestamp was extracted from the URL
+            if getattr(self.info, 'start_timestamp', None) is not None:
+                log.info(f"Applying download range: start at {self.info.start_timestamp}s")
+                ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(None, [(self.info.start_timestamp, float('inf'))])
+                ytdl_params['force_keyframes_at_cuts'] = True
 
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
@@ -526,7 +588,7 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
+    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already, start_timestamp=None):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -542,7 +604,7 @@ class DownloadQueue:
 
         if etype.startswith('url'):
             log.debug('Processing as a url')
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
+            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already, start_timestamp)
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
             entries = entry['entries']
@@ -562,7 +624,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"{etype}_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
+                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already, None))
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -570,13 +632,16 @@ class DownloadQueue:
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template)
+                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template, start_timestamp)
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template=None, already=None):
-        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=}')
+    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template=None, already=None, start_timestamp=None):
+        # Extract timestamp from URL on first call (when start_timestamp hasn't been set by a prior call)
+        if start_timestamp is None:
+            url, start_timestamp = parse_timestamp_from_url(url)
+        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} {start_timestamp=}')
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -587,7 +652,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
+        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already, start_timestamp)
 
     async def start_pending(self, ids):
         for id in ids:
