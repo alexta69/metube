@@ -163,6 +163,7 @@ class DownloadInfo:
         self.subtitle_format = subtitle_format
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
+        self.subtitle_files = []
 
 class Download:
     manager = None
@@ -379,8 +380,6 @@ class Download:
                             except OSError as exc:
                                 log.debug(f"Could not remove temporary SRT file {subtitle_file}: {exc}")
 
-                if not hasattr(self.info, 'subtitle_files'):
-                    self.info.subtitle_files = []
                 rel_path = os.path.relpath(subtitle_output_file, self.download_dir)
                 file_size = os.path.getsize(subtitle_output_file) if os.path.exists(subtitle_output_file) else None
                 existing = next((sf for sf in self.info.subtitle_files if sf['filename'] == rel_path), None)

@@ -108,16 +108,48 @@ export class App implements AfterViewInit, OnInit {
   ];
   subtitleLanguages = [
     { id: 'en', text: 'English' },
+    { id: 'ar', text: 'Arabic' },
+    { id: 'bn', text: 'Bengali' },
+    { id: 'bg', text: 'Bulgarian' },
+    { id: 'ca', text: 'Catalan' },
+    { id: 'cs', text: 'Czech' },
+    { id: 'da', text: 'Danish' },
+    { id: 'nl', text: 'Dutch' },
     { id: 'es', text: 'Spanish' },
+    { id: 'et', text: 'Estonian' },
+    { id: 'fi', text: 'Finnish' },
     { id: 'fr', text: 'French' },
     { id: 'de', text: 'German' },
+    { id: 'el', text: 'Greek' },
+    { id: 'he', text: 'Hebrew' },
+    { id: 'hi', text: 'Hindi' },
+    { id: 'hu', text: 'Hungarian' },
+    { id: 'id', text: 'Indonesian' },
     { id: 'it', text: 'Italian' },
+    { id: 'lt', text: 'Lithuanian' },
+    { id: 'lv', text: 'Latvian' },
+    { id: 'ms', text: 'Malay' },
+    { id: 'no', text: 'Norwegian' },
+    { id: 'pl', text: 'Polish' },
     { id: 'pt', text: 'Portuguese' },
+    { id: 'pt-BR', text: 'Portuguese (Brazil)' },
+    { id: 'ro', text: 'Romanian' },
     { id: 'ru', text: 'Russian' },
+    { id: 'sk', text: 'Slovak' },
+    { id: 'sl', text: 'Slovenian' },
+    { id: 'sr', text: 'Serbian' },
+    { id: 'sv', text: 'Swedish' },
+    { id: 'ta', text: 'Tamil' },
+    { id: 'te', text: 'Telugu' },
+    { id: 'th', text: 'Thai' },
+    { id: 'tr', text: 'Turkish' },
     { id: 'uk', text: 'Ukrainian' },
+    { id: 'ur', text: 'Urdu' },
+    { id: 'vi', text: 'Vietnamese' },
     { id: 'ja', text: 'Japanese' },
     { id: 'ko', text: 'Korean' },
     { id: 'zh-Hans', text: 'Chinese (Simplified)' },
+    { id: 'zh-Hant', text: 'Chinese (Traditional)' },
   ];
   subtitleModes = [
     { id: 'prefer_manual', text: 'Prefer Manual' },
@@ -139,8 +171,12 @@ export class App implements AfterViewInit, OnInit {
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
     const allowedSubtitleFormats = new Set(this.subtitleFormats.map(fmt => fmt.id));
+    const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
     if (!allowedSubtitleFormats.has(this.subtitleFormat)) {
       this.subtitleFormat = 'srt';
+    }
+    if (!allowedSubtitleModes.has(this.subtitleMode)) {
+      this.subtitleMode = 'prefer_manual';
     }
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);

@@ -156,6 +156,9 @@ app = web.Application()
 sio = socketio.AsyncServer(cors_allowed_origins='*')
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
+VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
+VALID_SUBTITLE_MODES = {'auto_only', 'manual_only', 'prefer_manual', 'prefer_auto'}
+SUBTITLE_LANGUAGE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,34}$')
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):
@@ -269,11 +272,17 @@ async def add(request):
         subtitle_language = 'en'
     if subtitle_mode is None:
         subtitle_mode = 'prefer_manual'
+    subtitle_format = str(subtitle_format).strip().lower()
+    subtitle_language = str(subtitle_language).strip()
+    subtitle_mode = str(subtitle_mode).strip()
     if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
         raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')
-    valid_subtitle_modes = {'auto_only', 'manual_only', 'prefer_manual', 'prefer_auto'}
-    if subtitle_mode not in valid_subtitle_modes:
-        raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(valid_subtitle_modes)}')
+    if subtitle_format not in VALID_SUBTITLE_FORMATS:
+        raise web.HTTPBadRequest(reason=f'subtitle_format must be one of {sorted(VALID_SUBTITLE_FORMATS)}')
+    if not SUBTITLE_LANGUAGE_RE.fullmatch(subtitle_language):
+        raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
+    if subtitle_mode not in VALID_SUBTITLE_MODES:
+        raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
 
     playlist_item_limit = int(playlist_item_limit)
 
