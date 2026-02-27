@@ -218,6 +218,60 @@
                       ngbTooltip="Maximum number of items to download from a playlist or channel (0 = no limit)">
                   </div>
                 </div>
+                @if (format === 'captions') {
+                  <div class="col-md-4">
+                    <div class="input-group">
+                      <span class="input-group-text">Subtitles</span>
+                      <select class="form-select"
+                        name="subtitleFormat"
+                        [(ngModel)]="subtitleFormat"
+                        (change)="subtitleFormatChanged()"
+                        [disabled]="addInProgress || downloads.loading"
+                        ngbTooltip="Subtitle output format for captions mode">
+                        @for (fmt of subtitleFormats; track fmt.id) {
+                          <option [ngValue]="fmt.id">{{ fmt.text }}</option>
+                        }
+                      </select>
+                    </div>
+                    @if (subtitleFormat === 'txt') {
+                      <div class="form-text">TXT is generated from SRT by stripping timestamps and cue numbers.</div>
+                    }
+                  </div>
+                  <div class="col-md-4">
+                    <div class="input-group">
+                      <span class="input-group-text">Language</span>
+                      <input class="form-control"
+                        type="text"
+                        list="subtitleLanguageOptions"
+                        name="subtitleLanguage"
+                        [(ngModel)]="subtitleLanguage"
+                        (change)="subtitleLanguageChanged()"
+                        [disabled]="addInProgress || downloads.loading"
+                        placeholder="e.g. en, es, zh-Hans"
+                        ngbTooltip="Subtitle language (you can type any language code)">
+                      <datalist id="subtitleLanguageOptions">
+                        @for (lang of subtitleLanguages; track lang.id) {
+                          <option [value]="lang.id">{{ lang.text }}</option>
+                        }
+                      </datalist>
+                    </div>
+                  </div>
+                  <div class="col-md-4">
+                    <div class="input-group">
+                      <span class="input-group-text">Subtitle Source</span>
+                      <select class="form-select"
+                        name="subtitleMode"
+                        [(ngModel)]="subtitleMode"
+                        (change)="subtitleModeChanged()"
+                        [disabled]="addInProgress || downloads.loading"
+                        ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
+                        @for (mode of subtitleModes; track mode.id) {
+                          <option [ngValue]="mode.id">{{ mode.text }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+                }
                 <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">

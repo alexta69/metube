@@ -156,6 +156,9 @@ app = web.Application()
 sio = socketio.AsyncServer(cors_allowed_origins='*')
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
+VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
+VALID_SUBTITLE_MODES = {'auto_only', 'manual_only', 'prefer_manual', 'prefer_auto'}
+SUBTITLE_LANGUAGE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,34}$')
 
 class Notifier(DownloadQueueNotifier):
     async def added(self, dl):
@@ -247,6 +250,9 @@ async def add(request):
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
     chapter_template = post.get('chapter_template')
+    subtitle_format = post.get('subtitle_format')
+    subtitle_language = post.get('subtitle_language')
+    subtitle_mode = post.get('subtitle_mode')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -260,12 +266,40 @@ async def add(request):
         split_by_chapters = False
     if chapter_template is None:
         chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
+    if subtitle_format is None:
+        subtitle_format = 'srt'
+    if subtitle_language is None:
+        subtitle_language = 'en'
+    if subtitle_mode is None:
+        subtitle_mode = 'prefer_manual'
+    subtitle_format = str(subtitle_format).strip().lower()
+    subtitle_language = str(subtitle_language).strip()
+    subtitle_mode = str(subtitle_mode).strip()
     if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
         raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')
+    if subtitle_format not in VALID_SUBTITLE_FORMATS:
+        raise web.HTTPBadRequest(reason=f'subtitle_format must be one of {sorted(VALID_SUBTITLE_FORMATS)}')
+    if not SUBTITLE_LANGUAGE_RE.fullmatch(subtitle_language):
+        raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
+    if subtitle_mode not in VALID_SUBTITLE_MODES:
+        raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
 
     playlist_item_limit = int(playlist_item_limit)
 
-    status = await dqueue.add(url, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template)
+    status = await dqueue.add(
+        url,
+        quality,
+        format,
+        folder,
+        custom_name_prefix,
+        playlist_item_limit,
+        auto_start,
+        split_by_chapters,
+        chapter_template,
+        subtitle_format,
+        subtitle_language,
+        subtitle_mode,
+    )
     return web.Response(text=serializer.encode(status))
 
 @routes.post(config.URL_PREFIX + 'delete')

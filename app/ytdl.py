@@ -69,6 +69,45 @@ def _convert_generators_to_lists(obj):
     else:
         return obj
 
+
+def _convert_srt_to_txt_file(subtitle_path: str):
+    """Convert an SRT subtitle file into plain text by stripping cue numbers/timestamps."""
+    txt_path = os.path.splitext(subtitle_path)[0] + ".txt"
+    try:
+        with open(subtitle_path, "r", encoding="utf-8", errors="replace") as infile:
+            content = infile.read()
+
+        # Normalize newlines so cue splitting is consistent across platforms.
+        content = content.replace("\r\n", "\n").replace("\r", "\n")
+        cues = []
+        for block in re.split(r"\n{2,}", content):
+            lines = [line.strip() for line in block.split("\n") if line.strip()]
+            if not lines:
+                continue
+            if re.fullmatch(r"\d+", lines[0]):
+                lines = lines[1:]
+            if lines and "-->" in lines[0]:
+                lines = lines[1:]
+
+            text_lines = []
+            for line in lines:
+                if "-->" in line:
+                    continue
+                clean_line = re.sub(r"<[^>]+>", "", line).strip()
+                if clean_line:
+                    text_lines.append(clean_line)
+            if text_lines:
+                cues.append(" ".join(text_lines))
+
+        with open(txt_path, "w", encoding="utf-8") as outfile:
+            if cues:
+                outfile.write("\n".join(cues))
+                outfile.write("\n")
+        return txt_path
+    except OSError as exc:
+        log.warning(f"Failed to convert subtitle file {subtitle_path} to txt: {exc}")
+        return None
+
 class DownloadQueueNotifier:
     async def added(self, dl):
         raise NotImplementedError
@@ -86,7 +125,24 @@ class DownloadQueueNotifier:
         raise NotImplementedError
 
 class DownloadInfo:
-    def __init__(self, id, title, url, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template):
+    def __init__(
+        self,
+        id,
+        title,
+        url,
+        quality,
+        format,
+        folder,
+        custom_name_prefix,
+        error,
+        entry,
+        playlist_item_limit,
+        split_by_chapters,
+        chapter_template,
+        subtitle_format="srt",
+        subtitle_language="en",
+        subtitle_mode="prefer_manual",
+    ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
@@ -104,6 +160,10 @@ class DownloadInfo:
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.chapter_template = chapter_template
+        self.subtitle_format = subtitle_format
+        self.subtitle_language = subtitle_language
+        self.subtitle_mode = subtitle_mode
+        self.subtitle_files = []
 
 class Download:
     manager = None
@@ -113,11 +173,18 @@ class Download:
         self.temp_dir = temp_dir
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
+        self.info = info
         self.format = get_format(format, quality)
-        self.ytdl_opts = get_opts(format, quality, ytdl_opts)
+        self.ytdl_opts = get_opts(
+            format,
+            quality,
+            ytdl_opts,
+            subtitle_format=getattr(info, 'subtitle_format', 'srt'),
+            subtitle_language=getattr(info, 'subtitle_language', 'en'),
+            subtitle_mode=getattr(info, 'subtitle_mode', 'prefer_manual'),
+        )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
-        self.info = info
         self.canceled = False
         self.tmpfilename = None
         self.status_queue = None
@@ -160,6 +227,14 @@ class Download:
                     else:
                         filename = filepath
                     self.status_queue.put({'status': 'finished', 'filename': filename})
+                    # For captions-only downloads, yt-dlp may still report a media-like
+                    # filepath in MoveFiles. Capture subtitle outputs explicitly so the
+                    # UI can link to real caption files.
+                    if self.info.format == 'captions':
+                        requested_subtitles = d.get('info_dict', {}).get('requested_subtitles', {}) or {}
+                        for subtitle in requested_subtitles.values():
+                            if isinstance(subtitle, dict) and subtitle.get('filepath'):
+                                self.status_queue.put({'subtitle_file': subtitle['filepath']})
 
                 # Capture all chapter files when SplitChapters finishes
                 elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
@@ -260,7 +335,15 @@ class Download:
             self.tmpfilename = status.get('tmpfilename')
             if 'filename' in status:
                 fileName = status.get('filename')
-                self.info.filename = os.path.relpath(fileName, self.download_dir)
+                rel_name = os.path.relpath(fileName, self.download_dir)
+                # For captions mode, ignore media-like placeholders and let subtitle_file
+                # statuses define the final file shown in the UI.
+                if self.info.format == 'captions':
+                    requested_subtitle_format = str(getattr(self.info, 'subtitle_format', '')).lower()
+                    allowed_caption_exts = ('.txt',) if requested_subtitle_format == 'txt' else ('.vtt', '.srt', '.sbv', '.scc', '.ttml', '.dfxp')
+                    if not rel_name.lower().endswith(allowed_caption_exts):
+                        continue
+                self.info.filename = rel_name
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
                 if self.info.format == 'thumbnail':
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
@@ -278,6 +361,37 @@ class Download:
                 if not existing:
                     self.info.chapter_files.append({'filename': rel_path, 'size': file_size})
                 # Skip the rest of status processing for chapter files
+                continue
+
+            if 'subtitle_file' in status:
+                subtitle_file = status.get('subtitle_file')
+                if not subtitle_file:
+                    continue
+                subtitle_output_file = subtitle_file
+
+                # txt mode is derived from SRT by stripping cue metadata.
+                if self.info.format == 'captions' and str(getattr(self.info, 'subtitle_format', '')).lower() == 'txt':
+                    converted_txt = _convert_srt_to_txt_file(subtitle_file)
+                    if converted_txt:
+                        subtitle_output_file = converted_txt
+                        if converted_txt != subtitle_file:
+                            try:
+                                os.remove(subtitle_file)
+                            except OSError as exc:
+                                log.debug(f"Could not remove temporary SRT file {subtitle_file}: {exc}")
+
+                rel_path = os.path.relpath(subtitle_output_file, self.download_dir)
+                file_size = os.path.getsize(subtitle_output_file) if os.path.exists(subtitle_output_file) else None
+                existing = next((sf for sf in self.info.subtitle_files if sf['filename'] == rel_path), None)
+                if not existing:
+                    self.info.subtitle_files.append({'filename': rel_path, 'size': file_size})
+                # Prefer first subtitle file as the primary result link in captions mode.
+                if self.info.format == 'captions' and (
+                    not getattr(self.info, 'filename', None) or
+                    str(getattr(self.info, 'subtitle_format', '')).lower() == 'txt'
+                ):
+                    self.info.filename = rel_path
+                    self.info.size = file_size
                 continue
 
             self.info.status = status['status']
@@ -526,7 +640,22 @@ class DownloadQueue:
             self.pending.put(download)
         await self.notifier.added(dl)
 
-    async def __add_entry(self, entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already):
+    async def __add_entry(
+        self,
+        entry,
+        quality,
+        format,
+        folder,
+        custom_name_prefix,
+        playlist_item_limit,
+        auto_start,
+        split_by_chapters,
+        chapter_template,
+        subtitle_format,
+        subtitle_language,
+        subtitle_mode,
+        already,
+    ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -542,7 +671,21 @@ class DownloadQueue:
 
         if etype.startswith('url'):
             log.debug('Processing as a url')
-            return await self.add(entry['url'], quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
+            return await self.add(
+                entry['url'],
+                quality,
+                format,
+                folder,
+                custom_name_prefix,
+                playlist_item_limit,
+                auto_start,
+                split_by_chapters,
+                chapter_template,
+                subtitle_format,
+                subtitle_language,
+                subtitle_mode,
+                already,
+            )
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
             entries = entry['entries']
@@ -562,7 +705,23 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"{etype}_{property}"] = entry[property]
-                results.append(await self.__add_entry(etr, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already))
+                results.append(
+                    await self.__add_entry(
+                        etr,
+                        quality,
+                        format,
+                        folder,
+                        custom_name_prefix,
+                        playlist_item_limit,
+                        auto_start,
+                        split_by_chapters,
+                        chapter_template,
+                        subtitle_format,
+                        subtitle_language,
+                        subtitle_mode,
+                        already,
+                    )
+                )
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
@@ -570,13 +729,48 @@ class DownloadQueue:
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if not self.queue.exists(key):
-                dl = DownloadInfo(entry['id'], entry.get('title') or entry['id'], key, quality, format, folder, custom_name_prefix, error, entry, playlist_item_limit, split_by_chapters, chapter_template)
+                dl = DownloadInfo(
+                    entry['id'],
+                    entry.get('title') or entry['id'],
+                    key,
+                    quality,
+                    format,
+                    folder,
+                    custom_name_prefix,
+                    error,
+                    entry,
+                    playlist_item_limit,
+                    split_by_chapters,
+                    chapter_template,
+                    subtitle_format,
+                    subtitle_language,
+                    subtitle_mode,
+                )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def add(self, url, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start=True, split_by_chapters=False, chapter_template=None, already=None):
-        log.info(f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} {playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=}')
+    async def add(
+        self,
+        url,
+        quality,
+        format,
+        folder,
+        custom_name_prefix,
+        playlist_item_limit,
+        auto_start=True,
+        split_by_chapters=False,
+        chapter_template=None,
+        subtitle_format="srt",
+        subtitle_language="en",
+        subtitle_mode="prefer_manual",
+        already=None,
+    ):
+        log.info(
+            f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
+            f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
+            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=}'
+        )
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -587,7 +781,21 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(None, self.__extract_info, url)
         except yt_dlp.utils.YoutubeDLError as exc:
             return {'status': 'error', 'msg': str(exc)}
-        return await self.__add_entry(entry, quality, format, folder, custom_name_prefix, playlist_item_limit, auto_start, split_by_chapters, chapter_template, already)
+        return await self.__add_entry(
+            entry,
+            quality,
+            format,
+            folder,
+            custom_name_prefix,
+            playlist_item_limit,
+            auto_start,
+            split_by_chapters,
+            chapter_template,
+            subtitle_format,
+            subtitle_language,
+            subtitle_mode,
+            already,
+        )
 
     async def start_pending(self, ids):
         for id in ids:

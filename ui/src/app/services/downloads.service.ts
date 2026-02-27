@@ -107,8 +107,34 @@ export class DownloadsService {
     return of({status: 'error', msg: msg})
   }
 
-  public add(url: string, quality: string, format: string, folder: string, customNamePrefix: string, playlistItemLimit: number, autoStart: boolean, splitByChapters: boolean, chapterTemplate: string) {
-    return this.http.post<Status>('add', { url: url, quality: quality, format: format, folder: folder, custom_name_prefix: customNamePrefix, playlist_item_limit: playlistItemLimit, auto_start: autoStart, split_by_chapters: splitByChapters, chapter_template: chapterTemplate }).pipe(
+  public add(
+    url: string,
+    quality: string,
+    format: string,
+    folder: string,
+    customNamePrefix: string,
+    playlistItemLimit: number,
+    autoStart: boolean,
+    splitByChapters: boolean,
+    chapterTemplate: string,
+    subtitleFormat: string,
+    subtitleLanguage: string,
+    subtitleMode: string,
+  ) {
+    return this.http.post<Status>('add', {
+      url: url,
+      quality: quality,
+      format: format,
+      folder: folder,
+      custom_name_prefix: customNamePrefix,
+      playlist_item_limit: playlistItemLimit,
+      auto_start: autoStart,
+      split_by_chapters: splitByChapters,
+      chapter_template: chapterTemplate,
+      subtitle_format: subtitleFormat,
+      subtitle_language: subtitleLanguage,
+      subtitle_mode: subtitleMode
+    }).pipe(
       catchError(this.handleHTTPError)
     );
   }
@@ -154,9 +180,25 @@ export class DownloadsService {
     const defaultAutoStart = true;
     const defaultSplitByChapters = false;
     const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
+    const defaultSubtitleFormat = 'srt';
+    const defaultSubtitleLanguage = 'en';
+    const defaultSubtitleMode = 'prefer_manual';
 
     return new Promise((resolve, reject) => {
-      this.add(url, defaultQuality, defaultFormat, defaultFolder, defaultCustomNamePrefix, defaultPlaylistItemLimit, defaultAutoStart, defaultSplitByChapters, defaultChapterTemplate)
+      this.add(
+        url,
+        defaultQuality,
+        defaultFormat,
+        defaultFolder,
+        defaultCustomNamePrefix,
+        defaultPlaylistItemLimit,
+        defaultAutoStart,
+        defaultSplitByChapters,
+        defaultChapterTemplate,
+        defaultSubtitleFormat,
+        defaultSubtitleLanguage,
+        defaultSubtitleMode,
+      )
         .subscribe({
           next: (response) => resolve(response),
           error: (error) => reject(error)

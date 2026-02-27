@@ -73,4 +73,9 @@ export const Formats: Format[] = [
     text: 'Thumbnail',
     qualities: [{ id: 'best', text: 'Best' }],
   },
+  {
+    id: 'captions',
+    text: 'Captions',
+    qualities: [{ id: 'best', text: 'Best' }],
+  },
 ];
