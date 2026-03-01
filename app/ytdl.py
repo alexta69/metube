@@ -531,10 +531,15 @@ class DownloadQueue:
         self.notifier = notifier
         self.queue = PersistentQueue("queue", self.config.STATE_DIR + '/queue')
         self.done = PersistentQueue("completed", self.config.STATE_DIR + '/completed')
+        self._add_canceled = False
         self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
         self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
         self.done.load()
+
+    def cancel_add(self):
+        self._add_canceled = True
+        log.info('Playlist add operation canceled by user')
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
@@ -699,6 +704,9 @@ class DownloadQueue:
                 log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
                 entries = entries[:playlist_item_limit]
             for index, etr in enumerate(entries, start=1):
+                if self._add_canceled:
+                    log.info(f'Playlist add canceled after processing {len(already)} entries')
+                    return {'status': 'ok', 'msg': f'Canceled - added {len(already)} items before cancel'}
                 etr["_type"] = "video"
                 etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
@@ -771,6 +779,8 @@ class DownloadQueue:
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
             f'{subtitle_format=} {subtitle_language=} {subtitle_mode=}'
         )
+        if already is None:
+            self._add_canceled = False
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')

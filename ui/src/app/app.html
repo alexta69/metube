@@ -98,15 +98,17 @@
               name="addUrl"
               [(ngModel)]="addUrl"
               [disabled]="addInProgress || downloads.loading">
-            <button class="btn btn-primary btn-lg px-4"
-              type="submit"
-              (click)="addDownload()"
-              [disabled]="addInProgress || downloads.loading">
-              @if (addInProgress) {
-                <span class="spinner-border spinner-border-sm" role="status" id="add-spinner"></span>
-              }
-              {{ addInProgress ? "Adding..." : "Download" }}
-            </button>
+            @if (addInProgress) {
+              <button class="btn btn-danger btn-lg px-3" type="button" (click)="cancelAdding()">
+                <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
+              </button>
+            } @else {
+              <button class="btn btn-primary btn-lg px-4" type="submit"
+                (click)="addDownload()"
+                [disabled]="downloads.loading">
+                Download
+              </button>
+            }
           </div>
         </div>
       </div>
