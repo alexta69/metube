@@ -208,6 +208,10 @@ export class DownloadsService {
   public exportQueueUrls(): string[] {
     return Array.from(this.queue.values()).map(download => download.url);
   }
-  
-  
+
+  public cancelAdd() {
+    return this.http.post<any>('cancel-add', {}).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
 }
