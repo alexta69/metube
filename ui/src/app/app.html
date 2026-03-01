@@ -424,7 +424,14 @@
     </table>
   </div>
 
-  <div class="metube-section-header">Completed</div>
+  <div class="metube-section-header d-flex align-items-center">
+    Completed
+    <button type="button" class="btn btn-sm btn-outline-secondary ms-3"
+      (click)="toggleSortOrder()"
+      ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}">
+      <fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />
+    </button>
+  </div>
   <div class="px-2 py-3 border-bottom">
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
@@ -445,58 +452,58 @@
         </tr>
       </thead>
       <tbody>
-        @for (download of downloads.done | keyvalue: asIsOrder; track download.value.id) {
-          <tr [class.disabled]='download.value.deleting'>
+        @for (entry of sortedDone(); track entry[1].id) {
+          <tr [class.disabled]='entry[1].deleting'>
             <td>
-              <app-slave-checkbox [id]="download.key" [master]="doneMasterCheckboxRef" [checkable]="download.value" />
+              <app-slave-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />
             </td>
             <td>
               <div style="display: inline-block; width: 1.5rem;">
-                @if (download.value.status === 'finished') {
+                @if (entry[1].status === 'finished') {
                   <fa-icon [icon]="faCheckCircle" class="text-success" />
                 }
-                @if (download.value.status === 'error') {
+                @if (entry[1].status === 'error') {
                   <fa-icon [icon]="faTimesCircle" class="text-danger" />
                 }
               </div>
-              <span ngbTooltip="{{buildResultItemTooltip(download.value)}}">@if (!!download.value.filename) {
-                <a href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a>
+              <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
+                <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
               } @else {
-                {{download.value.title}}
-                @if (download.value.msg) {
-                  <span><br>{{download.value.msg}}</span>
+                {{entry[1].title}}
+                @if (entry[1].msg) {
+                  <span><br>{{entry[1].msg}}</span>
                 }
-                @if (download.value.error) {
-                  <span><br>Error: {{download.value.error}}</span>
+                @if (entry[1].error) {
+                  <span><br>Error: {{entry[1].error}}</span>
                 }
               }</span>
             </td>
             <td>
-              @if (download.value.size) {
-                <span>{{ download.value.size | fileSize }}</span>
+              @if (entry[1].size) {
+                <span>{{ entry[1].size | fileSize }}</span>
               }
             </td>
             <td>
               <div class="d-flex">
-                @if (download.value.status === 'error') {
-                  <button type="button" class="btn btn-link" (click)="retryDownload(download.key, download.value)"><fa-icon [icon]="faRedoAlt" /></button>
+                @if (entry[1].status === 'error') {
+                  <button type="button" class="btn btn-link" (click)="retryDownload(entry[0], entry[1])"><fa-icon [icon]="faRedoAlt" /></button>
                 }
-                @if (download.value.filename) {
-                  <a href="{{buildDownloadLink(download.value)}}" download class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
+                @if (entry[1].filename) {
+                  <a href="{{buildDownloadLink(entry[1])}}" download class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
                 }
-                <a href="{{download.value.url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt" /></a>
-                <button type="button" class="btn btn-link" (click)="delDownload('done', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
+                <a href="{{entry[1].url}}" target="_blank" class="btn btn-link"><fa-icon [icon]="faExternalLinkAlt" /></a>
+                <button type="button" class="btn btn-link" (click)="delDownload('done', entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
               </div>
             </td>
           </tr>
-        @if (download.value.chapter_files && download.value.chapter_files.length > 0) {
-          @for (chapterFile of download.value.chapter_files; track chapterFile.filename) {
-            <tr [class.disabled]='download.value.deleting'>
+        @if (entry[1].chapter_files && entry[1].chapter_files.length > 0) {
+          @for (chapterFile of entry[1].chapter_files; track chapterFile.filename) {
+            <tr [class.disabled]='entry[1].deleting'>
               <td></td>
               <td>
                 <div style="padding-left: 2rem;">
               <fa-icon [icon]="faCheckCircle" class="text-success me-2" />
-              <a href="{{buildChapterDownloadLink(download.value, chapterFile.filename)}}" target="_blank">{{
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" target="_blank">{{
                 getChapterFileName(chapterFile.filename) }}</a>
             </div>
           </td>
@@ -507,7 +514,7 @@
           </td>
           <td>
             <div class="d-flex">
-              <a href="{{buildChapterDownloadLink(download.value, chapterFile.filename)}}" download
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" download
                 class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
             </div>
           </td>
