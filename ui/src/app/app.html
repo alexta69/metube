@@ -456,20 +456,42 @@
                   <fa-icon [icon]="faCheckCircle" class="text-success" />
                 }
                 @if (download.value.status === 'error') {
-                  <fa-icon [icon]="faTimesCircle" class="text-danger" />
+                  <fa-icon [icon]="faTimesCircle" class="text-danger" style="cursor: pointer;" (click)="toggleErrorDetail(download.key)" />
                 }
               </div>
               <span ngbTooltip="{{buildResultItemTooltip(download.value)}}">@if (!!download.value.filename) {
                 <a href="{{buildDownloadLink(download.value)}}" target="_blank">{{ download.value.title }}</a>
               } @else {
-                {{download.value.title}}
-                @if (download.value.msg) {
-                  <span><br>{{download.value.msg}}</span>
-                }
-                @if (download.value.error) {
-                  <span><br>Error: {{download.value.error}}</span>
-                }
+                <span [style.cursor]="download.value.status === 'error' ? 'pointer' : 'default'"
+                  (click)="download.value.status === 'error' ? toggleErrorDetail(download.key) : null">
+                  {{download.value.title}}
+                  @if (download.value.status === 'error' && !isErrorExpanded(download.key)) {
+                    <small class="text-danger ms-2">
+                      <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
+                    </small>
+                  }
+                </span>
               }</span>
+              @if (download.value.status === 'error' && isErrorExpanded(download.key)) {
+                <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                      @if (download.value.msg) {
+                        <div class="mb-1"><strong>Message:</strong> {{download.value.msg}}</div>
+                      }
+                      @if (download.value.error) {
+                        <div class="mb-1"><strong>Error:</strong> {{download.value.error}}</div>
+                      }
+                      <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{download.value.url}}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
+                      (click)="copyErrorMessage(download.value); $event.stopPropagation()"
+                      ngbTooltip="Copy error details to clipboard">
+                      <fa-icon [icon]="faCopy" />
+                    </button>
+                  </div>
+                </div>
+              }
             </td>
             <td>
               @if (download.value.size) {
