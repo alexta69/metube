@@ -214,16 +214,7 @@ class Download:
                     filepath = d['info_dict']['filepath']
                     if '__finaldir' in d['info_dict']:
                         finaldir = d['info_dict']['__finaldir']
-                        # Compute relative path from temp dir to preserve
-                        # subdirectory structure from the output template.
-                        try:
-                            rel_path = os.path.relpath(filepath, self.temp_dir)
-                        except ValueError:
-                            rel_path = os.path.basename(filepath)
-                        if rel_path.startswith('..'):
-                            # filepath is not under temp_dir, fall back to basename
-                            rel_path = os.path.basename(filepath)
-                        filename = os.path.join(finaldir, rel_path)
+                        filename = os.path.join(finaldir, os.path.basename(filepath))
                     else:
                         filename = filepath
                     self.status_queue.put({'status': 'finished', 'filename': filename})
