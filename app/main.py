@@ -302,6 +302,11 @@ async def add(request):
     )
     return web.Response(text=serializer.encode(status))
 
+@routes.post(config.URL_PREFIX + 'cancel-add')
+async def cancel_add(request):
+    dqueue.cancel_add()
+    return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
+
 @routes.post(config.URL_PREFIX + 'delete')
 async def delete(request):
     post = await request.json()
@@ -433,6 +438,7 @@ async def add_cors(request):
     return web.Response(text=serializer.encode({"status": "ok"}))
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
 
 async def on_prepare(request, response):
     if 'Origin' in request.headers:

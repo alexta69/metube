@@ -433,6 +433,13 @@ export class App implements AfterViewInit, OnInit {
     });
   }
 
+  cancelAdding() {
+    this.downloads.cancelAdd().subscribe({
+      next: () => { this.addInProgress = false; },
+      error: () => { this.addInProgress = false; }
+    });
+  }
+
   downloadItemByKey(id: string) {
     this.downloads.startById([id]).subscribe();
   }
