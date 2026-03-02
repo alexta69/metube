@@ -535,10 +535,10 @@ class DownloadQueue:
         self.active_downloads = set()
         self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
         self.done.load()
-        self._add_canceled = False
+        self._add_generation = 0
 
     def cancel_add(self):
-        self._add_canceled = True
+        self._add_generation += 1
         log.info('Playlist add operation canceled by user')
 
     async def __import_queue(self):
@@ -660,6 +660,7 @@ class DownloadQueue:
         subtitle_language,
         subtitle_mode,
         already,
+        _add_gen=None,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -690,6 +691,7 @@ class DownloadQueue:
                 subtitle_language,
                 subtitle_mode,
                 already,
+                _add_gen,
             )
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
@@ -704,7 +706,7 @@ class DownloadQueue:
                 log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
                 entries = entries[:playlist_item_limit]
             for index, etr in enumerate(entries, start=1):
-                if self._add_canceled:
+                if _add_gen is not None and self._add_generation != _add_gen:
                     log.info(f'Playlist add canceled after processing {len(already)} entries')
                     return {'status': 'ok', 'msg': f'Canceled - added {len(already)} items before cancel'}
                 etr["_type"] = "video"
@@ -728,6 +730,7 @@ class DownloadQueue:
                         subtitle_language,
                         subtitle_mode,
                         already,
+                        _add_gen,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -773,6 +776,7 @@ class DownloadQueue:
         subtitle_language="en",
         subtitle_mode="prefer_manual",
         already=None,
+        _add_gen=None,
     ):
         log.info(
             f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
@@ -780,7 +784,7 @@ class DownloadQueue:
             f'{subtitle_format=} {subtitle_language=} {subtitle_mode=}'
         )
         if already is None:
-            self._add_canceled = False
+            _add_gen = self._add_generation
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -805,6 +809,7 @@ class DownloadQueue:
             subtitle_language,
             subtitle_mode,
             already,
+            _add_gen,
         )
 
     async def start_pending(self, ids):

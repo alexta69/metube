@@ -53,6 +53,7 @@ export class App implements AfterViewInit, OnInit {
   subtitleLanguage: string;
   subtitleMode: string;
   addInProgress = false;
+  cancelRequested = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   customDirs$!: Observable<string[]>;
@@ -68,6 +69,8 @@ export class App implements AfterViewInit, OnInit {
   isAdvancedOpen = false;
   sortAscending = false;
   expandedErrors: Set<string> = new Set();
+  cachedSortedDone: [string, Download][] = [];
+  lastCopiedErrorId: string | null = null;
 
   // Download metrics
   activeDownloads = 0;
@@ -193,6 +196,7 @@ export class App implements AfterViewInit, OnInit {
     });
     this.downloads.doneChanged.subscribe(() => {
       this.updateMetrics();
+      this.rebuildSortedDone();
     });
     // Subscribe to real-time updates
     this.downloads.updated.subscribe(() => {
@@ -423,20 +427,24 @@ export class App implements AfterViewInit, OnInit {
 
     console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
     this.addInProgress = true;
+    this.cancelRequested = false;
     this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
-      if (status.status === 'error') {
+      if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
-      } else {
+      } else if (status.status !== 'error') {
         this.addUrl = '';
       }
       this.addInProgress = false;
+      this.cancelRequested = false;
     });
   }
 
   cancelAdding() {
+    this.cancelRequested = true;
     this.downloads.cancelAdd().subscribe({
-      next: () => { this.addInProgress = false; },
-      error: () => { this.addInProgress = false; }
+      error: (err) => {
+        console.error('Failed to cancel adding:', err?.message || err);
+      }
     });
   }
 
@@ -715,20 +723,18 @@ export class App implements AfterViewInit, OnInit {
   toggleSortOrder() {
     this.sortAscending = !this.sortAscending;
     this.cookieService.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false', { expires: 3650 });
+    this.rebuildSortedDone();
   }
 
-  sortedDone(): [string, Download][] {
+  private rebuildSortedDone() {
     const result: [string, Download][] = [];
     this.downloads.done.forEach((dl, key) => {
       result.push([key, dl]);
     });
-    result.sort((a, b) => {
-      const tsA = (a[1] as any).timestamp || 0;
-      const tsB = (b[1] as any).timestamp || 0;
-      const cmp = tsA < tsB ? -1 : tsA > tsB ? 1 : 0;
-      return this.sortAscending ? cmp : -cmp;
-    });
-    return result;
+    if (!this.sortAscending) {
+      result.reverse();
+    }
+    this.cachedSortedDone = result;
   }
 
   toggleErrorDetail(id: string) {
@@ -736,13 +742,40 @@ export class App implements AfterViewInit, OnInit {
     else this.expandedErrors.add(id);
   }
 
-  copyErrorMessage(download: Download) {
+  copyErrorMessage(id: string, download: Download) {
     const parts: string[] = [];
     if (download.title) parts.push(`Title: ${download.title}`);
     if (download.url) parts.push(`URL: ${download.url}`);
     if (download.msg) parts.push(`Message: ${download.msg}`);
     if (download.error) parts.push(`Error: ${download.error}`);
-    navigator.clipboard.writeText(parts.join('\n')).catch(() => {});
+    const text = parts.join('\n');
+    if (!text.trim()) return;
+    const done = () => {
+      this.lastCopiedErrorId = id;
+      setTimeout(() => { this.lastCopiedErrorId = null; }, 1500);
+    };
+    const fail = (err?: unknown) => {
+      console.error('Clipboard write failed:', err);
+      alert('Failed to copy to clipboard. Your browser may require HTTPS for clipboard access.');
+    };
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text).then(done).catch(fail);
+    } else {
+      try {
+        const ta = document.createElement('textarea');
+        ta.value = text;
+        ta.setAttribute('readonly', '');
+        ta.style.position = 'fixed';
+        ta.style.opacity = '0';
+        document.body.appendChild(ta);
+        ta.select();
+        document.execCommand('copy');
+        document.body.removeChild(ta);
+        done();
+      } catch (e) {
+        fail(e);
+      }
+    }
   }
 
   isErrorExpanded(id: string): boolean {

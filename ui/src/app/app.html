@@ -98,7 +98,12 @@
               name="addUrl"
               [(ngModel)]="addUrl"
               [disabled]="addInProgress || downloads.loading">
-            @if (addInProgress) {
+            @if (addInProgress && cancelRequested) {
+              <button class="btn btn-warning btn-lg px-3" type="button" disabled>
+                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+                Canceling...
+              </button>
+            } @else if (addInProgress) {
               <button class="btn btn-danger btn-lg px-3" type="button" (click)="cancelAdding()">
                 <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
               </button>
@@ -426,15 +431,9 @@
     </table>
   </div>
 
-  <div class="metube-section-header d-flex align-items-center">
-    Completed
-    <button type="button" class="btn btn-sm btn-outline-secondary ms-3"
-      (click)="toggleSortOrder()"
-      ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}">
-      <fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />
-    </button>
-  </div>
+  <div class="metube-section-header">Completed</div>
   <div class="px-2 py-3 border-bottom">
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()" ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest first' }}</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearCompleted (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneClearFailed (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
@@ -454,7 +453,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (entry of sortedDone(); track entry[1].id) {
+        @for (entry of cachedSortedDone; track entry[1].id) {
           <tr [class.disabled]='entry[1].deleting'>
             <td>
               <app-slave-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />
@@ -465,7 +464,12 @@
                   <fa-icon [icon]="faCheckCircle" class="text-success" />
                 }
                 @if (entry[1].status === 'error') {
-                  <fa-icon [icon]="faTimesCircle" class="text-danger" style="cursor: pointer;" (click)="toggleErrorDetail(entry[0])" />
+                  <button type="button" class="btn btn-link p-0"
+                    (click)="toggleErrorDetail(entry[0])"
+                    [attr.aria-label]="'Toggle error details for ' + entry[1].title"
+                    [attr.aria-expanded]="isErrorExpanded(entry[0])">
+                    <fa-icon [icon]="faTimesCircle" class="text-danger" />
+                  </button>
                 }
               </div>
               <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
@@ -494,9 +498,13 @@
                       <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{entry[1].url}}</div>
                     </div>
                     <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
-                      (click)="copyErrorMessage(entry[1]); $event.stopPropagation()"
+                      (click)="copyErrorMessage(entry[0], entry[1]); $event.stopPropagation()"
                       ngbTooltip="Copy error details to clipboard">
-                      <fa-icon [icon]="faCopy" />
+                      @if (lastCopiedErrorId === entry[0]) {
+                        <span class="text-success">Copied!</span>
+                      } @else {
+                        <fa-icon [icon]="faCopy" />
+                      }
                     </button>
                   </div>
                 </div>

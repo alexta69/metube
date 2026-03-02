@@ -209,7 +209,7 @@ export class DownloadsService {
     return Array.from(this.queue.values()).map(download => download.url);
   }
   public cancelAdd() {
-    return this.http.post<any>('cancel-add', {}).pipe(
+    return this.http.post<Status>('cancel-add', {}).pipe(
       catchError(this.handleHTTPError)
     );
   }
