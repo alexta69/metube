@@ -463,20 +463,42 @@
                   <fa-icon [icon]="faCheckCircle" class="text-success" />
                 }
                 @if (entry[1].status === 'error') {
-                  <fa-icon [icon]="faTimesCircle" class="text-danger" />
+                  <fa-icon [icon]="faTimesCircle" class="text-danger" style="cursor: pointer;" (click)="toggleErrorDetail(entry[0])" />
                 }
               </div>
               <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
                 <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
               } @else {
-                {{entry[1].title}}
-                @if (entry[1].msg) {
-                  <span><br>{{entry[1].msg}}</span>
-                }
-                @if (entry[1].error) {
-                  <span><br>Error: {{entry[1].error}}</span>
-                }
+                <span [style.cursor]="entry[1].status === 'error' ? 'pointer' : 'default'"
+                  (click)="entry[1].status === 'error' ? toggleErrorDetail(entry[0]) : null">
+                  {{entry[1].title}}
+                  @if (entry[1].status === 'error' && !isErrorExpanded(entry[0])) {
+                    <small class="text-danger ms-2">
+                      <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
+                    </small>
+                  }
+                </span>
               }</span>
+              @if (entry[1].status === 'error' && isErrorExpanded(entry[0])) {
+                <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                      @if (entry[1].msg) {
+                        <div class="mb-1"><strong>Message:</strong> {{entry[1].msg}}</div>
+                      }
+                      @if (entry[1].error) {
+                        <div class="mb-1"><strong>Error:</strong> {{entry[1].error}}</div>
+                      }
+                      <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{entry[1].url}}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
+                      (click)="copyErrorMessage(entry[1]); $event.stopPropagation()"
+                      ngbTooltip="Copy error details to clipboard">
+                      <fa-icon [icon]="faCopy" />
+                    </button>
+                  </div>
+                </div>
+              }
             </td>
             <td>
               @if (entry[1].size) {
