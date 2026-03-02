@@ -527,6 +527,7 @@ class DownloadQueue:
         self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
         self.done.load()
         self._add_generation = 0
+        self._canceled_urls = set()  # URLs canceled during current playlist add
 
     def cancel_add(self):
         self._add_generation += 1
@@ -730,6 +731,9 @@ class DownloadQueue:
         elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
+            if key in self._canceled_urls:
+                log.info(f'Skipping canceled URL: {entry.get("title") or key}')
+                return {'status': 'ok'}
             if not self.queue.exists(key):
                 dl = DownloadInfo(
                     entry['id'],
@@ -776,6 +780,7 @@ class DownloadQueue:
         )
         if already is None:
             _add_gen = self._add_generation
+            self._canceled_urls.clear()
         already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
@@ -816,6 +821,8 @@ class DownloadQueue:
 
     async def cancel(self, ids):
         for id in ids:
+            # Track URL so playlist add loop won't re-queue it
+            self._canceled_urls.add(id)
             if self.pending.exists(id):
                 self.pending.delete(id)
                 await self.notifier.canceled(id)
