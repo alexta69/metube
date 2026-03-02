@@ -6,7 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { DownloadsService } from './services/downloads.service';
@@ -66,6 +66,7 @@ export class App implements AfterViewInit, OnInit {
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
+  sortAscending = false;
 
   // Download metrics
   activeDownloads = 0;
@@ -100,6 +101,8 @@ export class App implements AfterViewInit, OnInit {
   faGithub = faGithub;
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
+  faSortAmountDown = faSortAmountDown;
+  faSortAmountUp = faSortAmountUp;
   subtitleFormats = [
     { id: 'srt', text: 'SRT' },
     { id: 'txt', text: 'TXT (Text only)' },
@@ -178,6 +181,7 @@ export class App implements AfterViewInit, OnInit {
     if (!allowedSubtitleModes.has(this.subtitleMode)) {
       this.subtitleMode = 'prefer_manual';
     }
+    this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
@@ -697,6 +701,25 @@ export class App implements AfterViewInit, OnInit {
 
   toggleAdvanced() {
     this.isAdvancedOpen = !this.isAdvancedOpen;
+  }
+
+  toggleSortOrder() {
+    this.sortAscending = !this.sortAscending;
+    this.cookieService.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false', { expires: 3650 });
+  }
+
+  sortedDone(): [string, Download][] {
+    const result: [string, Download][] = [];
+    this.downloads.done.forEach((dl, key) => {
+      result.push([key, dl]);
+    });
+    result.sort((a, b) => {
+      const tsA = (a[1] as any).timestamp || 0;
+      const tsB = (b[1] as any).timestamp || 0;
+      const cmp = tsA < tsB ? -1 : tsA > tsB ? 1 : 0;
+      return this.sortAscending ? cmp : -cmp;
+    });
+    return result;
   }
 
   private updateMetrics() {
