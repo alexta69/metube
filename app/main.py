@@ -254,6 +254,7 @@ async def add(request):
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
     custom_filename = post.get('custom_filename', '')
+    track_numbering = post.get('track_numbering', False)
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -301,6 +302,7 @@ async def add(request):
         subtitle_language,
         subtitle_mode,
         custom_filename=custom_filename,
+        track_numbering=track_numbering,
     )
     return web.Response(text=serializer.encode(status))
 

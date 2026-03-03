@@ -143,6 +143,7 @@ class DownloadInfo:
         subtitle_language="en",
         subtitle_mode="prefer_manual",
         custom_filename='',
+        track_numbering=False,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -166,6 +167,7 @@ class DownloadInfo:
         self.subtitle_mode = subtitle_mode
         self.subtitle_files = []
         self.custom_filename = custom_filename
+        self.track_numbering = track_numbering
 
 class Download:
     manager = None
@@ -620,6 +622,8 @@ class DownloadQueue:
             for property, value in entry.items():
                 if property.startswith("playlist"):
                     output = _outtmpl_substitute_field(output, property, value)
+        if getattr(dl, 'track_numbering', False):
+            output = f'%(playlist_index)s - {output}'
         if entry is not None and entry.get('channel_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
@@ -658,6 +662,7 @@ class DownloadQueue:
         subtitle_mode,
         already,
         custom_filename='',
+        track_numbering=False,
         _add_gen=None,
     ):
         if not entry:
@@ -690,6 +695,7 @@ class DownloadQueue:
                 subtitle_mode,
                 already,
                 custom_filename,
+                track_numbering,
                 _add_gen,
             )
         elif etype == 'playlist' or etype == 'channel':
@@ -730,6 +736,7 @@ class DownloadQueue:
                         subtitle_mode,
                         already,
                         custom_filename='',
+                        track_numbering=track_numbering,
                         _add_gen=_add_gen,
                     )
                 )
@@ -760,6 +767,7 @@ class DownloadQueue:
                     subtitle_language,
                     subtitle_mode,
                     custom_filename=custom_filename,
+                    track_numbering=track_numbering,
                 )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -781,12 +789,13 @@ class DownloadQueue:
         subtitle_mode="prefer_manual",
         already=None,
         custom_filename='',
+        track_numbering=False,
         _add_gen=None,
     ):
         log.info(
             f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=} {custom_filename=}'
+            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=} {custom_filename=} {track_numbering=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -816,6 +825,7 @@ class DownloadQueue:
             subtitle_mode,
             already,
             custom_filename,
+            track_numbering,
             _add_gen,
         )
 

@@ -220,6 +220,15 @@
                   </div>
                 </div>
                 <div class="col-md-6">
+                  <div class="form-check form-switch mt-2">
+                    <input class="form-check-input" type="checkbox" role="switch" id="checkbox-track-numbering"
+                      name="trackNumbering" [(ngModel)]="trackNumbering" (change)="trackNumberingChanged()"
+                      [disabled]="addInProgress || downloads.loading"
+                      ngbTooltip="Prepend playlist track number to filename">
+                    <label class="form-check-label" for="checkbox-track-numbering">Track Numbering</label>
+                  </div>
+                </div>
+                <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
                     <input type="number"

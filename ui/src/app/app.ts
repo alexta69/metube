@@ -46,6 +46,7 @@ export class App implements AfterViewInit, OnInit {
   folder!: string;
   customNamePrefix!: string;
   customFilename = '';
+  trackNumbering = false;
   autoStart: boolean;
   playlistItemLimit!: number;
   splitByChapters: boolean;
@@ -179,6 +180,7 @@ export class App implements AfterViewInit, OnInit {
     this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'srt';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
+    this.trackNumbering = this.cookieService.get('metube_track_numbering') === 'true';
     const allowedSubtitleFormats = new Set(this.subtitleFormats.map(fmt => fmt.id));
     const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
     if (!allowedSubtitleFormats.has(this.subtitleFormat)) {
@@ -373,6 +375,10 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: 3650 });
   }
 
+  trackNumberingChanged() {
+    this.cookieService.set('metube_track_numbering', this.trackNumbering ? 'true' : 'false', { expires: 3650 });
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -428,10 +434,10 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode + ' customFilename=' + customFilename);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode + ' customFilename=' + customFilename + ' trackNumbering=' + this.trackNumbering);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode, customFilename).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode, customFilename, this.trackNumbering).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
@@ -618,7 +624,7 @@ export class App implements AfterViewInit, OnInit {
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
         this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
-        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode, this.customFilename)
+        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode, this.customFilename, this.trackNumbering)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {

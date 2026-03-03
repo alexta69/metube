@@ -121,6 +121,7 @@ export class DownloadsService {
     subtitleLanguage: string,
     subtitleMode: string,
     customFilename: string = '',
+    trackNumbering: boolean = false,
   ) {
     return this.http.post<Status>('add', {
       url: url,
@@ -135,7 +136,8 @@ export class DownloadsService {
       subtitle_format: subtitleFormat,
       subtitle_language: subtitleLanguage,
       subtitle_mode: subtitleMode,
-      custom_filename: customFilename
+      custom_filename: customFilename,
+      track_numbering: trackNumbering
     }).pipe(
       catchError(this.handleHTTPError)
     );
@@ -186,6 +188,7 @@ export class DownloadsService {
     const defaultSubtitleLanguage = 'en';
     const defaultSubtitleMode = 'prefer_manual';
     const defaultCustomFilename = '';
+    const defaultTrackNumbering = false;
 
     return new Promise((resolve, reject) => {
       this.add(
@@ -202,6 +205,7 @@ export class DownloadsService {
         defaultSubtitleLanguage,
         defaultSubtitleMode,
         defaultCustomFilename,
+        defaultTrackNumbering,
       )
         .subscribe({
           next: (response) => resolve(response),

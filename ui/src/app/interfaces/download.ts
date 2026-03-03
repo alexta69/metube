@@ -14,6 +14,7 @@ export interface Download {
   subtitle_language?: string;
   subtitle_mode?: string;
   custom_filename?: string;
+  track_numbering?: boolean;
   status: string;
   msg: string;
   percent: number;
