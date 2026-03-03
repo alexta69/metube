@@ -345,7 +345,15 @@ async def history(request):
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
-    await sio.emit('configuration', serializer.encode(config), to=sid)
+    safe_config = {
+        k: getattr(config, k, None) for k in (
+            'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN',
+            'PUBLIC_HOST_URL', 'PUBLIC_HOST_AUDIO_URL', 'OUTPUT_TEMPLATE',
+            'OUTPUT_TEMPLATE_CHAPTER', 'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
+            'DOWNLOAD_DIRS_INDEXABLE', 'DEFAULT_THEME', 'URL_PREFIX',
+        ) if hasattr(config, k)
+    }
+    await sio.emit('configuration', serializer.encode(safe_config), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
     if config.YTDL_OPTIONS_FILE:
