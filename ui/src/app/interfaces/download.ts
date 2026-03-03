@@ -13,6 +13,7 @@ export interface Download {
   subtitle_format?: string;
   subtitle_language?: string;
   subtitle_mode?: string;
+  custom_filename?: string;
   status: string;
   msg: string;
   percent: number;

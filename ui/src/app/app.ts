@@ -45,6 +45,7 @@ export class App implements AfterViewInit, OnInit {
   format: string;
   folder!: string;
   customNamePrefix!: string;
+  customFilename = '';
   autoStart: boolean;
   playlistItemLimit!: number;
   splitByChapters: boolean;
@@ -405,6 +406,7 @@ export class App implements AfterViewInit, OnInit {
     subtitleFormat?: string,
     subtitleLanguage?: string,
     subtitleMode?: string,
+    customFilename?: string,
   ) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
@@ -418,6 +420,7 @@ export class App implements AfterViewInit, OnInit {
     subtitleFormat = subtitleFormat ?? this.subtitleFormat
     subtitleLanguage = subtitleLanguage ?? this.subtitleLanguage
     subtitleMode = subtitleMode ?? this.subtitleMode
+    customFilename = customFilename ?? this.customFilename
 
     // Validate chapter template if chapter splitting is enabled
     if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
@@ -425,14 +428,15 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode + ' customFilename=' + customFilename);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode, customFilename).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
         this.addUrl = '';
+        this.customFilename = '';
       }
       this.addInProgress = false;
       this.cancelRequested = false;
@@ -466,6 +470,7 @@ export class App implements AfterViewInit, OnInit {
       download.subtitle_format,
       download.subtitle_language,
       download.subtitle_mode,
+      download.custom_filename,
     );
     this.downloads.delById('done', [key]).subscribe();
   }
@@ -613,7 +618,7 @@ export class App implements AfterViewInit, OnInit {
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
         this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
-        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode)
+        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode, this.customFilename)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {

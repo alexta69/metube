@@ -142,6 +142,7 @@ class DownloadInfo:
         subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
+        custom_filename='',
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -164,6 +165,7 @@ class DownloadInfo:
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
         self.subtitle_files = []
+        self.custom_filename = custom_filename
 
 class Download:
     manager = None
@@ -624,6 +626,9 @@ class DownloadQueue:
             for property, value in entry.items():
                 if property.startswith("channel"):
                     output = _outtmpl_substitute_field(output, property, value)
+        # Custom filename override: replaces entire output template
+        if getattr(dl, 'custom_filename', ''):
+            output = f'{dl.custom_filename}.%(ext)s'
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
@@ -652,6 +657,7 @@ class DownloadQueue:
         subtitle_language,
         subtitle_mode,
         already,
+        custom_filename='',
         _add_gen=None,
     ):
         if not entry:
@@ -683,6 +689,7 @@ class DownloadQueue:
                 subtitle_language,
                 subtitle_mode,
                 already,
+                custom_filename,
                 _add_gen,
             )
         elif etype == 'playlist' or etype == 'channel':
@@ -722,7 +729,8 @@ class DownloadQueue:
                         subtitle_language,
                         subtitle_mode,
                         already,
-                        _add_gen,
+                        custom_filename='',
+                        _add_gen=_add_gen,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -751,6 +759,7 @@ class DownloadQueue:
                     subtitle_format,
                     subtitle_language,
                     subtitle_mode,
+                    custom_filename=custom_filename,
                 )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -771,12 +780,13 @@ class DownloadQueue:
         subtitle_language="en",
         subtitle_mode="prefer_manual",
         already=None,
+        custom_filename='',
         _add_gen=None,
     ):
         log.info(
             f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=}'
+            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=} {custom_filename=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -805,6 +815,7 @@ class DownloadQueue:
             subtitle_language,
             subtitle_mode,
             already,
+            custom_filename,
             _add_gen,
         )
 

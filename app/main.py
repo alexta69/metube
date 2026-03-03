@@ -253,6 +253,7 @@ async def add(request):
     subtitle_format = post.get('subtitle_format')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
+    custom_filename = post.get('custom_filename', '')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -299,6 +300,7 @@ async def add(request):
         subtitle_format,
         subtitle_language,
         subtitle_mode,
+        custom_filename=custom_filename,
     )
     return web.Response(text=serializer.encode(status))
 
