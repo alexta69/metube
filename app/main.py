@@ -331,6 +331,44 @@ async def start(request):
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
 
+@routes.post(config.URL_PREFIX + 'upload-cookies')
+async def upload_cookies(request):
+    reader = await request.multipart()
+    field = await reader.next()
+    if field is None or field.name != 'cookies':
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'No cookies file provided'}))
+    cookies_path = os.path.join(config.STATE_DIR, 'cookies.txt')
+    size = 0
+    with open(cookies_path, 'wb') as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 1_000_000:  # 1MB limit
+                os.remove(cookies_path)
+                return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'Cookie file too large (max 1MB)'}))
+            f.write(chunk)
+    # Tell yt-dlp to use the cookies file
+    config.YTDL_OPTIONS['cookiefile'] = cookies_path
+    log.info(f'Cookies file uploaded ({size} bytes)')
+    return web.Response(text=serializer.encode({'status': 'ok', 'msg': f'Cookies uploaded ({size} bytes)'}))
+
+@routes.post(config.URL_PREFIX + 'delete-cookies')
+async def delete_cookies(request):
+    cookies_path = os.path.join(config.STATE_DIR, 'cookies.txt')
+    if os.path.exists(cookies_path):
+        os.remove(cookies_path)
+    config.YTDL_OPTIONS.pop('cookiefile', None)
+    log.info('Cookies file deleted')
+    return web.Response(text=serializer.encode({'status': 'ok'}))
+
+@routes.get(config.URL_PREFIX + 'cookie-status')
+async def cookie_status(request):
+    cookies_path = os.path.join(config.STATE_DIR, 'cookies.txt')
+    exists = os.path.exists(cookies_path)
+    return web.Response(text=serializer.encode({'status': 'ok', 'has_cookies': exists}))
+
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):
     history = { 'done': [], 'queue': [], 'pending': []}
@@ -451,6 +489,8 @@ async def add_cors(request):
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 
 async def on_prepare(request, response):
     if 'Origin' in request.headers:
