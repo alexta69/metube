@@ -213,4 +213,24 @@ export class DownloadsService {
       catchError(this.handleHTTPError)
     );
   }
+
+  uploadCookies(file: File) {
+    const formData = new FormData();
+    formData.append('cookies', file);
+    return this.http.post<any>('upload-cookies', formData).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  deleteCookies() {
+    return this.http.post<any>('delete-cookies', {}).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  getCookieStatus() {
+    return this.http.get<any>('cookie-status').pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
 }

@@ -212,6 +212,24 @@
                   </div>
                 </div>
                 <div class="col-md-6">
+                  <div class="d-flex align-items-center mt-2">
+                    <label class="btn btn-sm btn-outline-secondary me-2 mb-0" for="cookie-upload"
+                      ngbTooltip="Upload a cookies.txt file for authenticated downloads">
+                      <fa-icon [icon]="faUpload" class="me-1" />Cookies
+                    </label>
+                    <input type="file" id="cookie-upload" class="d-none" accept=".txt"
+                      (change)="onCookieFileSelect($event)"
+                      [disabled]="cookieUploadInProgress || addInProgress">
+                    @if (hasCookies) {
+                      <span class="badge bg-success me-2">Active</span>
+                      <button type="button" class="btn btn-sm btn-outline-danger"
+                        (click)="deleteCookies()" ngbTooltip="Remove uploaded cookies">
+                        <fa-icon [icon]="faTrashAlt" />
+                      </button>
+                    }
+                  </div>
+                </div>
+                <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
                     <input type="number"

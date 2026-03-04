@@ -327,6 +327,43 @@ async def start(request):
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
 
+
+COOKIES_PATH = os.path.join(config.STATE_DIR, 'cookies.txt')
+
+@routes.post(config.URL_PREFIX + 'upload-cookies')
+async def upload_cookies(request):
+    reader = await request.multipart()
+    field = await reader.next()
+    if field is None or field.name != 'cookies':
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'No cookies file provided'}))
+    size = 0
+    with open(COOKIES_PATH, 'wb') as f:
+        while True:
+            chunk = await field.read_chunk()
+            if not chunk:
+                break
+            size += len(chunk)
+            if size > 1_000_000:  # 1MB limit
+                os.remove(COOKIES_PATH)
+                return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'Cookie file too large (max 1MB)'}))
+            f.write(chunk)
+    config.YTDL_OPTIONS['cookiefile'] = COOKIES_PATH
+    log.info(f'Cookies file uploaded ({size} bytes)')
+    return web.Response(text=serializer.encode({'status': 'ok', 'msg': f'Cookies uploaded ({size} bytes)'}))
+
+@routes.post(config.URL_PREFIX + 'delete-cookies')
+async def delete_cookies(request):
+    if os.path.exists(COOKIES_PATH):
+        os.remove(COOKIES_PATH)
+    config.YTDL_OPTIONS.pop('cookiefile', None)
+    log.info('Cookies file deleted')
+    return web.Response(text=serializer.encode({'status': 'ok'}))
+
+@routes.get(config.URL_PREFIX + 'cookie-status')
+async def cookie_status(request):
+    exists = os.path.exists(COOKIES_PATH)
+    return web.Response(text=serializer.encode({'status': 'ok', 'has_cookies': exists}))
+
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):
     history = { 'done': [], 'queue': [], 'pending': []}
@@ -439,6 +476,8 @@ async def add_cors(request):
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 
 async def on_prepare(request, response):
     if 'Origin' in request.headers:
@@ -465,6 +504,12 @@ def isAccessLogEnabled():
 if __name__ == '__main__':
     logging.getLogger().setLevel(parseLogLevel(config.LOGLEVEL) or logging.INFO)
     log.info(f"Listening on {config.HOST}:{config.PORT}")
+
+
+    # Auto-detect cookie file on startup
+    if os.path.exists(COOKIES_PATH):
+        config.YTDL_OPTIONS['cookiefile'] = COOKIES_PATH
+        log.info(f'Cookie file detected at {COOKIES_PATH}')
 
     if config.HTTPS:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)

@@ -6,7 +6,7 @@ import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { DownloadsService } from './services/downloads.service';
@@ -54,6 +54,8 @@ export class App implements AfterViewInit, OnInit {
   subtitleMode: string;
   addInProgress = false;
   cancelRequested = false;
+  hasCookies = false;
+  cookieUploadInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   customDirs$!: Observable<string[]>;
@@ -108,6 +110,7 @@ export class App implements AfterViewInit, OnInit {
   faSortAmountDown = faSortAmountDown;
   faSortAmountUp = faSortAmountUp;
   faChevronRight = faChevronRight;
+  faUpload = faUpload;
   subtitleFormats = [
     { id: 'srt', text: 'SRT' },
     { id: 'txt', text: 'TXT (Text only)' },
@@ -205,6 +208,9 @@ export class App implements AfterViewInit, OnInit {
   }
 
   ngOnInit() {
+    this.downloads.getCookieStatus().subscribe(data => {
+      this.hasCookies = data?.has_cookies || false;
+    });
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.customDirs$ = this.getMatchingCustomDir();
@@ -780,6 +786,30 @@ export class App implements AfterViewInit, OnInit {
 
   isErrorExpanded(id: string): boolean {
     return this.expandedErrors.has(id);
+  }
+
+  onCookieFileSelect(event: Event) {
+    const input = event.target as HTMLInputElement;
+    if (!input.files?.length) return;
+    this.cookieUploadInProgress = true;
+    this.downloads.uploadCookies(input.files[0]).subscribe({
+      next: () => {
+        this.hasCookies = true;
+        this.cookieUploadInProgress = false;
+        input.value = '';
+      },
+      error: () => {
+        this.cookieUploadInProgress = false;
+        input.value = '';
+      }
+    });
+  }
+
+  deleteCookies() {
+    this.downloads.deleteCookies().subscribe({
+      next: () => { this.hasCookies = false; },
+      error: () => {}
+    });
   }
 
   private updateMetrics() {
