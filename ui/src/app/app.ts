@@ -793,22 +793,66 @@ export class App implements AfterViewInit, OnInit {
     if (!input.files?.length) return;
     this.cookieUploadInProgress = true;
     this.downloads.uploadCookies(input.files[0]).subscribe({
-      next: () => {
-        this.hasCookies = true;
+      next: (response) => {
+        if (response?.status === 'ok') {
+          this.hasCookies = true;
+        } else {
+          this.refreshCookieStatus();
+          alert(`Error uploading cookies: ${this.formatErrorMessage(response?.msg)}`);
+        }
         this.cookieUploadInProgress = false;
         input.value = '';
       },
       error: () => {
+        this.refreshCookieStatus();
         this.cookieUploadInProgress = false;
         input.value = '';
+        alert('Error uploading cookies.');
       }
     });
   }
 
+  private formatErrorMessage(error: unknown): string {
+    if (typeof error === 'string') {
+      return error;
+    }
+    if (error && typeof error === 'object') {
+      const obj = error as Record<string, unknown>;
+      for (const key of ['msg', 'reason', 'error', 'detail']) {
+        const value = obj[key];
+        if (typeof value === 'string' && value.trim()) {
+          return value;
+        }
+      }
+      try {
+        return JSON.stringify(error);
+      } catch {
+        return 'Unknown error';
+      }
+    }
+    return 'Unknown error';
+  }
+
   deleteCookies() {
     this.downloads.deleteCookies().subscribe({
-      next: () => { this.hasCookies = false; },
-      error: () => {}
+      next: (response) => {
+        if (response?.status === 'ok') {
+          this.refreshCookieStatus();
+          return;
+        }
+        this.refreshCookieStatus();
+        alert(`Error deleting cookies: ${this.formatErrorMessage(response?.msg)}`);
+      },
+      error: () => {
+        this.refreshCookieStatus();
+        alert('Error deleting cookies.');
+      }
+    });
+  }
+
+  private refreshCookieStatus() {
+    this.downloads.getCookieStatus().subscribe(data => {
+      this.hasCookies = data?.has_cookies || false;
     });
   }
 

@@ -212,24 +212,6 @@
                   </div>
                 </div>
                 <div class="col-md-6">
-                  <div class="d-flex align-items-center mt-2">
-                    <label class="btn btn-sm btn-outline-secondary me-2 mb-0" for="cookie-upload"
-                      ngbTooltip="Upload a cookies.txt file for authenticated downloads">
-                      <fa-icon [icon]="faUpload" class="me-1" />Cookies
-                    </label>
-                    <input type="file" id="cookie-upload" class="d-none" accept=".txt"
-                      (change)="onCookieFileSelect($event)"
-                      [disabled]="cookieUploadInProgress || addInProgress">
-                    @if (hasCookies) {
-                      <span class="badge bg-success me-2">Active</span>
-                      <button type="button" class="btn btn-sm btn-outline-danger"
-                        (click)="deleteCookies()" ngbTooltip="Remove uploaded cookies">
-                        <fa-icon [icon]="faTrashAlt" />
-                      </button>
-                    }
-                  </div>
-                </div>
-                <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
                     <input type="number"
@@ -326,30 +308,71 @@
               <div class="row">
                 <div class="col-12">
                   <hr class="my-3">
-                  <div class="row g-2">
+                  <div class="row g-3">
                     <div class="col-md-4">
-                      <button type="button"
-                        class="btn btn-secondary w-100"
-                        (click)="openBatchImportModal()">
-                        <fa-icon [icon]="faFileImport" class="me-2" />
-                        Import URLs
-                      </button>
+                      <div class="action-group-label">Cookies</div>
+                      <input type="file" id="cookie-upload" class="d-none" accept=".txt"
+                        (change)="onCookieFileSelect($event)"
+                        [disabled]="cookieUploadInProgress || addInProgress">
+                      <div class="btn-group w-100" role="group">
+                        <label class="btn mb-0"
+                          [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
+                          [class.disabled]="cookieUploadInProgress || addInProgress"
+                          for="cookie-upload"
+                          ngbTooltip="Upload a cookies.txt file for authenticated downloads">
+                          @if (cookieUploadInProgress) {
+                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                          } @else {
+                            <fa-icon [icon]="faUpload" class="me-2" />
+                          }
+                          {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
+                        </label>
+                        @if (hasCookies) {
+                          <button type="button" class="btn btn-outline-danger"
+                            (click)="deleteCookies()"
+                            [disabled]="cookieUploadInProgress || addInProgress"
+                            ngbTooltip="Remove uploaded cookies">
+                            <fa-icon [icon]="faTrashAlt" />
+                          </button>
+                        }
+                      </div>
+                      <div class="cookie-status" [class.active]="hasCookies">
+                        @if (hasCookies) {
+                          <fa-icon [icon]="faCheckCircle" class="me-1" />
+                          Cookies active
+                        } @else {
+                          No cookies configured
+                        }
+                      </div>
                     </div>
-                    <div class="col-md-4">
-                      <button type="button"
-                        class="btn btn-secondary w-100"
-                        (click)="exportBatchUrls('all')">
-                        <fa-icon [icon]="faFileExport" class="me-2" />
-                        Export URLs
-                      </button>
-                    </div>
-                    <div class="col-md-4">
-                      <button type="button"
-                        class="btn btn-secondary w-100"
-                        (click)="copyBatchUrls('all')">
-                        <fa-icon [icon]="faCopy" class="me-2" />
-                        Copy URLs
-                      </button>
+                    <div class="col-md-8">
+                      <div class="action-group-label">Bulk Actions</div>
+                      <div class="row g-2">
+                        <div class="col-4">
+                          <button type="button"
+                            class="btn btn-secondary w-100"
+                            (click)="openBatchImportModal()">
+                            <fa-icon [icon]="faFileImport" class="me-2" />
+                            Import URLs
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button type="button"
+                            class="btn btn-secondary w-100"
+                            (click)="exportBatchUrls('all')">
+                            <fa-icon [icon]="faFileExport" class="me-2" />
+                            Export URLs
+                          </button>
+                        </div>
+                        <div class="col-4">
+                          <button type="button"
+                            class="btn btn-secondary w-100"
+                            (click)="copyBatchUrls('all')">
+                            <fa-icon [icon]="faCopy" class="me-2" />
+                            Copy URLs
+                          </button>
+                        </div>
+                      </div>
                     </div>
                   </div>
                 </div>

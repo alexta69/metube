@@ -209,3 +209,48 @@ main
 
     span
       white-space: nowrap
+
+.cookie-btn
+  flex: 1 1 auto
+  background-color: var(--bs-secondary-bg)
+  border-color: var(--bs-border-color)
+  color: var(--bs-emphasis-color)
+
+  &:hover
+    background-color: var(--bs-tertiary-bg)
+    border-color: var(--bs-secondary)
+    color: var(--bs-emphasis-color)
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.cookie-active-btn
+  flex: 1 1 auto
+  background-color: var(--bs-success-bg-subtle)
+  border-color: var(--bs-success-border-subtle)
+  color: var(--bs-success-text-emphasis)
+
+  &:hover
+    background-color: var(--bs-success-bg-subtle)
+    border-color: var(--bs-success)
+    color: var(--bs-success-text-emphasis)
+
+  &.disabled
+    opacity: 0.65
+    pointer-events: none
+
+.action-group-label
+  font-size: 0.7rem
+  text-transform: uppercase
+  letter-spacing: 0.05em
+  color: var(--bs-secondary-color)
+  margin-bottom: 0.4rem
+
+.cookie-status
+  font-size: 0.8rem
+  margin-top: 0.35rem
+  color: var(--bs-secondary-color)
+
+  &.active
+    color: var(--bs-success-text-emphasis)

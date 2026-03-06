@@ -97,9 +97,22 @@ class Config:
         if self.YTDL_OPTIONS_FILE and self.YTDL_OPTIONS_FILE.startswith('.'):
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
 
+        self._runtime_overrides = {}
+
         success,_ = self.load_ytdl_options()
         if not success:
             sys.exit(1)
+
+    def set_runtime_override(self, key, value):
+        self._runtime_overrides[key] = value
+        self.YTDL_OPTIONS[key] = value
+
+    def remove_runtime_override(self, key):
+        self._runtime_overrides.pop(key, None)
+        self.YTDL_OPTIONS.pop(key, None)
+
+    def _apply_runtime_overrides(self):
+        self.YTDL_OPTIONS.update(self._runtime_overrides)
 
     def load_ytdl_options(self) -> tuple[bool, str]:
         try:
@@ -111,6 +124,7 @@ class Config:
             return (False, msg)
 
         if not self.YTDL_OPTIONS_FILE:
+            self._apply_runtime_overrides()
             return (True, '')
 
         log.info(f'Loading yt-dlp custom options from "{self.YTDL_OPTIONS_FILE}"')
@@ -128,6 +142,7 @@ class Config:
             return (False, msg)
 
         self.YTDL_OPTIONS.update(opts)
+        self._apply_runtime_overrides()
         return (True, '')
 
 config = Config()
@@ -347,21 +362,43 @@ async def upload_cookies(request):
                 os.remove(COOKIES_PATH)
                 return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'Cookie file too large (max 1MB)'}))
             f.write(chunk)
-    config.YTDL_OPTIONS['cookiefile'] = COOKIES_PATH
+    config.set_runtime_override('cookiefile', COOKIES_PATH)
     log.info(f'Cookies file uploaded ({size} bytes)')
     return web.Response(text=serializer.encode({'status': 'ok', 'msg': f'Cookies uploaded ({size} bytes)'}))
 
 @routes.post(config.URL_PREFIX + 'delete-cookies')
 async def delete_cookies(request):
-    if os.path.exists(COOKIES_PATH):
-        os.remove(COOKIES_PATH)
-    config.YTDL_OPTIONS.pop('cookiefile', None)
+    has_uploaded_cookies = os.path.exists(COOKIES_PATH)
+    configured_cookiefile = config.YTDL_OPTIONS.get('cookiefile')
+    has_manual_cookiefile = isinstance(configured_cookiefile, str) and configured_cookiefile and configured_cookiefile != COOKIES_PATH
+
+    if not has_uploaded_cookies:
+        if has_manual_cookiefile:
+            return web.Response(
+                status=400,
+                text=serializer.encode({
+                    'status': 'error',
+                    'msg': 'Cookies are configured manually via YTDL_OPTIONS (cookiefile). Remove or change that setting manually; UI delete only removes uploaded cookies.'
+                })
+            )
+        return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'No uploaded cookies to delete'}))
+
+    os.remove(COOKIES_PATH)
+    config.remove_runtime_override('cookiefile')
+    success, msg = config.load_ytdl_options()
+    if not success:
+        log.error(f'Cookies file deleted, but failed to reload YTDL_OPTIONS: {msg}')
+        return web.Response(status=500, text=serializer.encode({'status': 'error', 'msg': f'Cookies file deleted, but failed to reload YTDL_OPTIONS: {msg}'}))
+
     log.info('Cookies file deleted')
     return web.Response(text=serializer.encode({'status': 'ok'}))
 
 @routes.get(config.URL_PREFIX + 'cookie-status')
 async def cookie_status(request):
-    exists = os.path.exists(COOKIES_PATH)
+    configured_cookiefile = config.YTDL_OPTIONS.get('cookiefile')
+    has_configured_cookies = isinstance(configured_cookiefile, str) and os.path.exists(configured_cookiefile)
+    has_uploaded_cookies = os.path.exists(COOKIES_PATH)
+    exists = has_uploaded_cookies or has_configured_cookies
     return web.Response(text=serializer.encode({'status': 'ok', 'has_cookies': exists}))
 
 @routes.get(config.URL_PREFIX + 'history')
@@ -508,7 +545,7 @@ if __name__ == '__main__':
 
     # Auto-detect cookie file on startup
     if os.path.exists(COOKIES_PATH):
-        config.YTDL_OPTIONS['cookiefile'] = COOKIES_PATH
+        config.set_runtime_override('cookiefile', COOKIES_PATH)
         log.info(f'Cookie file detected at {COOKIES_PATH}')
 
     if config.HTTPS:
