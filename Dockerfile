@@ -6,24 +6,6 @@ RUN corepack enable && corepack prepare pnpm --activate
 RUN CI=true pnpm install && pnpm run build
 
 
-FROM rust:1.93-slim AS bgutil-builder
-
-WORKDIR /src
-
-RUN apt-get update && \
-    apt-get install -y --no-install-recommends \
-      curl \
-      ca-certificates \
-      build-essential \
-      pkg-config \
-      libssl-dev \
-      python3 && \
-    BGUTIL_TAG="$(curl -Ls -o /dev/null -w '%{url_effective}' https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest | sed 's#.*/tag/##')" && \
-    curl -L "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/archive/refs/tags/${BGUTIL_TAG}.tar.gz" \
-      | tar -xz --strip-components=1 && \
-    cargo build --release
-
-
 FROM python:3.13-slim
 
 WORKDIR /app
@@ -57,9 +39,17 @@ RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /.cache && chmod 777 /.cache
 
-COPY --from=bgutil-builder /src/target/release/bgutil-pot /usr/local/bin/bgutil-pot
+ARG TARGETARCH
 
 RUN BGUTIL_TAG="$(curl -Ls -o /dev/null -w '%{url_effective}' https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest | sed 's#.*/tag/##')" && \
+    case "$TARGETARCH" in \
+      amd64) BGUTIL_ARCH="x86_64" ;; \
+      arm64) BGUTIL_ARCH="aarch64" ;; \
+      *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
+    esac && \
+    curl -L -o /usr/local/bin/bgutil-pot \
+      "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/download/${BGUTIL_TAG}/bgutil-pot-linux-${BGUTIL_ARCH}" && \
+    chmod +x /usr/local/bin/bgutil-pot && \
     PLUGIN_DIR="$(python3 -c 'import site; print(site.getsitepackages()[0])')" && \
     curl -L -o /tmp/bgutil-ytdlp-pot-provider-rs.zip \
       "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/download/${BGUTIL_TAG}/bgutil-ytdlp-pot-provider-rs.zip" && \
