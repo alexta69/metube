@@ -573,6 +573,20 @@ class DownloadQueue:
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
+                try:
+                    clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
+                except ValueError:
+                    log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
+                    clear_after = 0
+                if clear_after > 0:
+                    task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
+                    task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
+
+    async def __auto_clear_after_delay(self, url, delay_seconds):
+        await asyncio.sleep(delay_seconds)
+        if self.done.exists(url):
+            log.debug(f'Auto-clearing completed download: {url}')
+            await self.clear([url])
 
     def __extract_info(self, url):
         debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)

@@ -315,6 +315,10 @@ export class App implements AfterViewInit, OnInit {
         if (!this.chapterTemplate) {
           this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
         }
+        // Set default download folder from backend config if not already set
+        if (!this.folder && config['DEFAULT_DOWNLOAD_FOLDER']) {
+          this.folder = config['DEFAULT_DOWNLOAD_FOLDER'];
+        }
       }
     });
   }

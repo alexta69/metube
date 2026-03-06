@@ -60,6 +60,8 @@ class Config:
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHANNEL': '%(channel)s/%(title)s.%(ext)s',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
+        'DEFAULT_DOWNLOAD_FOLDER': '',
+        'CLEAR_COMPLETED_AFTER': '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
         'ROBOTS_TXT': '',
