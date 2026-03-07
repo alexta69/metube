@@ -29,6 +29,26 @@ def _compile_outtmpl_pattern(field: str) -> re.Pattern:
     return re.compile(STR_FORMAT_RE_TMPL.format(re.escape(field), conversion_types))
 
 
+# Characters that are invalid in Windows/NTFS path components. These are pre-
+# sanitised when substituting playlist/channel titles into output templates so
+# that downloads do not fail on NTFS-mounted volumes or Windows Docker hosts.
+_WINDOWS_INVALID_PATH_CHARS = re.compile(r'[\\:*?"<>|]')
+
+
+def _sanitize_path_component(value: Any) -> Any:
+    """Replace characters that are invalid in Windows path components with '_'.
+
+    Non-string values (int, float, None, …) are passed through unchanged so
+    that ``_outtmpl_substitute_field`` can still coerce them with format specs
+    (e.g. ``%(playlist_index)02d``).  Only string values are sanitised because
+    Windows-invalid characters are only a concern for human-readable strings
+    (titles, channel names, etc.) that may end up as directory names.
+    """
+    if not isinstance(value, str):
+        return value
+    return _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
+
+
 def _outtmpl_substitute_field(template: str, field: str, value: Any) -> str:
     """Substitute a single field in an output template, applying any format specifiers to the value."""
     pattern = _compile_outtmpl_pattern(field)
@@ -573,6 +593,20 @@ class DownloadQueue:
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
+                try:
+                    clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
+                except ValueError:
+                    log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
+                    clear_after = 0
+                if clear_after > 0:
+                    task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
+                    task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
+
+    async def __auto_clear_after_delay(self, url, delay_seconds):
+        await asyncio.sleep(delay_seconds)
+        if self.done.exists(url):
+            log.debug(f'Auto-clearing completed download: {url}')
+            await self.clear([url])
 
     def __extract_info(self, url):
         debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
@@ -617,13 +651,13 @@ class DownloadQueue:
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
             for property, value in entry.items():
                 if property.startswith("playlist"):
-                    output = _outtmpl_substitute_field(output, property, value)
+                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
         if entry is not None and entry.get('channel_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
             for property, value in entry.items():
                 if property.startswith("channel"):
-                    output = _outtmpl_substitute_field(output, property, value)
+                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
