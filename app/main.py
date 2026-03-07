@@ -57,8 +57,8 @@ class Config:
         'PUBLIC_HOST_AUDIO_URL': 'audio_download/',
         'OUTPUT_TEMPLATE': '%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHAPTER': '%(title)s - %(section_number)02d - %(section_title)s.%(ext)s',
-        'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
-        'OUTPUT_TEMPLATE_CHANNEL': '%(channel)s/%(title)s.%(ext)s',
+        'OUTPUT_TEMPLATE_PLAYLIST': '',
+        'OUTPUT_TEMPLATE_CHANNEL': '',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
         'CLEAR_COMPLETED_AFTER': '0',
         'YTDL_OPTIONS': '{}',
@@ -114,6 +114,25 @@ class Config:
 
     def _apply_runtime_overrides(self):
         self.YTDL_OPTIONS.update(self._runtime_overrides)
+
+    # Keys sent to the browser. Sensitive or server-only keys (YTDL_OPTIONS,
+    # paths, TLS config, etc.) are intentionally excluded.
+    _FRONTEND_KEYS = (
+        'CUSTOM_DIRS',
+        'CREATE_CUSTOM_DIRS',
+        'OUTPUT_TEMPLATE_CHAPTER',
+        'PUBLIC_HOST_URL',
+        'PUBLIC_HOST_AUDIO_URL',
+        'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
+    )
+
+    def frontend_safe(self) -> dict:
+        """Return only the config keys that are safe to expose to browser clients.
+
+        Sensitive or server-only keys (YTDL_OPTIONS, file-system paths, TLS
+        settings, etc.) are intentionally excluded.
+        """
+        return {k: getattr(self, k) for k in self._FRONTEND_KEYS}
 
     def load_ytdl_options(self) -> tuple[bool, str]:
         try:
@@ -420,7 +439,7 @@ async def history(request):
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
-    await sio.emit('configuration', serializer.encode(config), to=sid)
+    await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
     if config.YTDL_OPTIONS_FILE:
@@ -448,8 +467,12 @@ def get_custom_dirs():
             else:
                 return re.search(config.CUSTOM_DIRS_EXCLUDE_REGEX, d) is None
 
-        # Recursively lists all subdirectories of DOWNLOAD_DIR
+        # Recursively lists all subdirectories of DOWNLOAD_DIR.
+        # Always include '' (the base directory itself) even when the
+        # directory is empty or does not yet exist.
         dirs = list(filter(include_dir, map(convert, path.glob('**/'))))
+        if '' not in dirs:
+            dirs.insert(0, '')
 
         return dirs
 

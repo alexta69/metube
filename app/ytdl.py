@@ -29,6 +29,26 @@ def _compile_outtmpl_pattern(field: str) -> re.Pattern:
     return re.compile(STR_FORMAT_RE_TMPL.format(re.escape(field), conversion_types))
 
 
+# Characters that are invalid in Windows/NTFS path components. These are pre-
+# sanitised when substituting playlist/channel titles into output templates so
+# that downloads do not fail on NTFS-mounted volumes or Windows Docker hosts.
+_WINDOWS_INVALID_PATH_CHARS = re.compile(r'[\\:*?"<>|]')
+
+
+def _sanitize_path_component(value: Any) -> Any:
+    """Replace characters that are invalid in Windows path components with '_'.
+
+    Non-string values (int, float, None, …) are passed through unchanged so
+    that ``_outtmpl_substitute_field`` can still coerce them with format specs
+    (e.g. ``%(playlist_index)02d``).  Only string values are sanitised because
+    Windows-invalid characters are only a concern for human-readable strings
+    (titles, channel names, etc.) that may end up as directory names.
+    """
+    if not isinstance(value, str):
+        return value
+    return _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
+
+
 def _outtmpl_substitute_field(template: str, field: str, value: Any) -> str:
     """Substitute a single field in an output template, applying any format specifiers to the value."""
     pattern = _compile_outtmpl_pattern(field)
@@ -631,13 +651,13 @@ class DownloadQueue:
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
             for property, value in entry.items():
                 if property.startswith("playlist"):
-                    output = _outtmpl_substitute_field(output, property, value)
+                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
         if entry is not None and entry.get('channel_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
             for property, value in entry.items():
                 if property.startswith("channel"):
-                    output = _outtmpl_substitute_field(output, property, value)
+                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
