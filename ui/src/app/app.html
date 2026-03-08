@@ -490,6 +490,7 @@
           </th>
           <th scope="col">Video</th>
           <th scope="col">File Size</th>
+          <th scope="col">Downloaded</th>
           <th scope="col" style="width: 8rem;"></th>
         </tr>
       </thead>
@@ -556,6 +557,11 @@
                 <span>{{ entry[1].size | fileSize }}</span>
               }
             </td>
+            <td class="text-nowrap">
+              @if (entry[1].timestamp) {
+                <span>{{ entry[1].timestamp / 1000000 | date:'yyyy-MM-dd HH:mm' }}</span>
+              }
+            </td>
             <td>
               <div class="d-flex">
                 @if (entry[1].status === 'error') {
@@ -585,6 +591,7 @@
             <span>{{ chapterFile.size | fileSize }}</span>
             }
           </td>
+          <td></td>
           <td>
             <div class="d-flex">
               <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" download

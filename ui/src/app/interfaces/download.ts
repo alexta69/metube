@@ -20,6 +20,7 @@ export interface Download {
   eta: number;
   filename: string;
   checked: boolean;
+  timestamp?: number;
   size?: number;
   error?: string;
   deleting?: boolean;
