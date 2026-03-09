@@ -162,6 +162,7 @@ class DownloadInfo:
         subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
+        video_codec="auto",
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -184,6 +185,7 @@ class DownloadInfo:
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
         self.subtitle_files = []
+        self.video_codec = video_codec
 
 class Download:
     manager = None
@@ -194,7 +196,7 @@ class Download:
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
         self.info = info
-        self.format = get_format(format, quality)
+        self.format = get_format(format, quality, video_codec=getattr(info, 'video_codec', 'auto'))
         self.ytdl_opts = get_opts(
             format,
             quality,
@@ -202,6 +204,7 @@ class Download:
             subtitle_format=getattr(info, 'subtitle_format', 'srt'),
             subtitle_language=getattr(info, 'subtitle_language', 'en'),
             subtitle_mode=getattr(info, 'subtitle_mode', 'prefer_manual'),
+            video_codec=getattr(info, 'video_codec', 'auto'),
         )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
@@ -687,6 +690,7 @@ class DownloadQueue:
         subtitle_mode,
         already,
         _add_gen=None,
+        video_codec="auto",
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -718,6 +722,7 @@ class DownloadQueue:
                 subtitle_mode,
                 already,
                 _add_gen,
+                video_codec,
             )
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
@@ -757,6 +762,7 @@ class DownloadQueue:
                         subtitle_mode,
                         already,
                         _add_gen,
+                        video_codec,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -785,6 +791,7 @@ class DownloadQueue:
                     subtitle_format,
                     subtitle_language,
                     subtitle_mode,
+                    video_codec,
                 )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -806,11 +813,13 @@ class DownloadQueue:
         subtitle_mode="prefer_manual",
         already=None,
         _add_gen=None,
+        video_codec="auto",
     ):
         log.info(
             f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=}'
+            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=} '
+            f'{video_codec=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -840,6 +849,7 @@ class DownloadQueue:
             subtitle_mode,
             already,
             _add_gen,
+            video_codec,
         )
 
     async def start_pending(self, ids):

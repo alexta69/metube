@@ -77,7 +77,8 @@
               "buildTarget": "metube:build:production"
             },
              "development": {
-              "buildTarget": "metube:build:development"
+              "buildTarget": "metube:build:development",
+              "proxyConfig": "proxy.conf.json"
             }
           },
            "defaultConfiguration": "development"

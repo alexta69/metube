@@ -288,6 +288,7 @@ async def add(request):
     subtitle_format = post.get('subtitle_format')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
+    video_codec = post.get('video_codec')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -319,6 +320,12 @@ async def add(request):
     if subtitle_mode not in VALID_SUBTITLE_MODES:
         raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
 
+    if video_codec is None:
+        video_codec = 'auto'
+    video_codec = str(video_codec).strip().lower()
+    if video_codec not in ('auto', 'h264', 'h265', 'av1', 'vp9'):
+        raise web.HTTPBadRequest(reason="video_codec must be one of ['auto', 'h264', 'h265', 'av1', 'vp9']")
+
     playlist_item_limit = int(playlist_item_limit)
 
     status = await dqueue.add(
@@ -334,6 +341,7 @@ async def add(request):
         subtitle_format,
         subtitle_language,
         subtitle_mode,
+        video_codec=video_codec,
     )
     return web.Response(text=serializer.encode(status))
 

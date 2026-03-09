@@ -279,6 +279,23 @@
                     </div>
                   </div>
                 }
+                @if (isVideoType()) {
+                  <div class="col-md-4">
+                    <div class="input-group">
+                      <span class="input-group-text">Video Codec</span>
+                      <select class="form-select"
+                        name="videoCodec"
+                        [(ngModel)]="videoCodec"
+                        (change)="videoCodecChanged()"
+                        [disabled]="addInProgress || downloads.loading"
+                        ngbTooltip="Prefer a specific video codec. Falls back to best available if not found.">
+                        @for (vc of videoCodecs; track vc.id) {
+                          <option [ngValue]="vc.id">{{ vc.text }}</option>
+                        }
+                      </select>
+                    </div>
+                  </div>
+                }
                 <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
@@ -489,6 +506,8 @@
             <app-master-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
+          <th scope="col">Quality</th>
+          <th scope="col">Codec</th>
           <th scope="col">File Size</th>
           <th scope="col">Downloaded</th>
           <th scope="col" style="width: 8rem;"></th>
@@ -552,6 +571,12 @@
                 </div>
               }
             </td>
+            <td class="text-nowrap">
+              {{ formatQualityLabel(entry[1]) }}
+            </td>
+            <td class="text-nowrap">
+              {{ formatCodecLabel(entry[1]) }}
+            </td>
             <td>
               @if (entry[1].size) {
                 <span>{{ entry[1].size | fileSize }}</span>
@@ -586,6 +611,8 @@
                 getChapterFileName(chapterFile.filename) }}</a>
             </div>
           </td>
+          <td></td>
+          <td></td>
           <td>
             @if (chapterFile.size) {
             <span>{{ chapterFile.size | fileSize }}</span>

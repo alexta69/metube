@@ -3,6 +3,13 @@ import copy
 AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav", "flac")
 CAPTION_MODES = ("auto_only", "manual_only", "prefer_manual", "prefer_auto")
 
+CODEC_FILTER_MAP = {
+    'h264': "[vcodec~='^(h264|avc)']",
+    'h265': "[vcodec~='^(h265|hevc)']",
+    'av1':  "[vcodec~='^av0?1']",
+    'vp9':  "[vcodec~='^vp0?9']",
+}
+
 
 def _normalize_caption_mode(mode: str) -> str:
     mode = (mode or "").strip()
@@ -14,13 +21,14 @@ def _normalize_subtitle_language(language: str) -> str:
     return language or "en"
 
 
-def get_format(format: str, quality: str) -> str:
+def get_format(format: str, quality: str, video_codec: str = "auto") -> str:
     """
     Returns format for download
 
     Args:
       format (str): format selected
       quality (str): quality selected
+      video_codec (str): video codec filter (auto, h264, h265, av1, vp9)
 
     Raises:
       Exception: unknown quality, unknown format
@@ -52,6 +60,7 @@ def get_format(format: str, quality: str) -> str:
         vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format == "mp4" else ("", "")
         vres = f"[height<={quality}]" if quality not in ("best", "best_ios", "worst") else ""
         vcombo = vres + vfmt
+        codec_filter = CODEC_FILTER_MAP.get(video_codec, "")
 
         if quality == "best_ios":
             # iOS has strict requirements for video files, requiring h264 or h265
@@ -61,6 +70,10 @@ def get_format(format: str, quality: str) -> str:
             # convert if needed), and falls back to getting the best available MP4
             # file.
             return f"bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio[acodec=aac]/bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
+
+        if codec_filter:
+            # Try codec-filtered first, fall back to unfiltered
+            return f"bestvideo{codec_filter}{vcombo}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
         return f"bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
 
     raise Exception(f"Unkown format {format}")
@@ -73,6 +86,7 @@ def get_opts(
     subtitle_format: str = "srt",
     subtitle_language: str = "en",
     subtitle_mode: str = "prefer_manual",
+    video_codec: str = "auto",
 ) -> dict:
     """
     Returns extra download options

@@ -120,6 +120,7 @@ export class DownloadsService {
     subtitleFormat: string,
     subtitleLanguage: string,
     subtitleMode: string,
+    videoCodec: string,
   ) {
     return this.http.post<Status>('add', {
       url: url,
@@ -133,7 +134,8 @@ export class DownloadsService {
       chapter_template: chapterTemplate,
       subtitle_format: subtitleFormat,
       subtitle_language: subtitleLanguage,
-      subtitle_mode: subtitleMode
+      subtitle_mode: subtitleMode,
+      video_codec: videoCodec,
     }).pipe(
       catchError(this.handleHTTPError)
     );
@@ -183,6 +185,7 @@ export class DownloadsService {
     const defaultSubtitleFormat = 'srt';
     const defaultSubtitleLanguage = 'en';
     const defaultSubtitleMode = 'prefer_manual';
+    const defaultVideoCodec = 'auto';
 
     return new Promise((resolve, reject) => {
       this.add(
@@ -198,6 +201,7 @@ export class DownloadsService {
         defaultSubtitleFormat,
         defaultSubtitleLanguage,
         defaultSubtitleMode,
+        defaultVideoCodec,
       )
         .subscribe({
           next: (response) => resolve(response),

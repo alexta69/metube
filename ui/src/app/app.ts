@@ -53,6 +53,7 @@ export class App implements AfterViewInit, OnInit {
   subtitleFormat: string;
   subtitleLanguage: string;
   subtitleMode: string;
+  videoCodec: string;
   addInProgress = false;
   cancelRequested = false;
   hasCookies = false;
@@ -169,6 +170,13 @@ export class App implements AfterViewInit, OnInit {
     { id: 'manual_only', text: 'Manual Only' },
     { id: 'auto_only', text: 'Auto Only' },
   ];
+  videoCodecs = [
+    { id: 'auto', text: 'Auto' },
+    { id: 'h264', text: 'H.264' },
+    { id: 'h265', text: 'H.265 (HEVC)' },
+    { id: 'av1', text: 'AV1' },
+    { id: 'vp9', text: 'VP9' },
+  ];
 
   constructor() {
     this.format = this.cookieService.get('metube_format') || 'any';
@@ -182,6 +190,11 @@ export class App implements AfterViewInit, OnInit {
     this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'srt';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
+    this.videoCodec = this.cookieService.get('metube_video_codec') || 'auto';
+    const allowedVideoCodecs = new Set(this.videoCodecs.map(c => c.id));
+    if (!allowedVideoCodecs.has(this.videoCodec)) {
+      this.videoCodec = 'auto';
+    }
     const allowedSubtitleFormats = new Set(this.subtitleFormats.map(fmt => fmt.id));
     const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
     if (!allowedSubtitleFormats.has(this.subtitleFormat)) {
@@ -379,6 +392,28 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: 3650 });
   }
 
+  videoCodecChanged() {
+    this.cookieService.set('metube_video_codec', this.videoCodec, { expires: 3650 });
+  }
+
+  isVideoType() {
+    return (this.format === 'any' || this.format === 'mp4') && this.quality !== 'audio';
+  }
+
+  formatQualityLabel(download: Download): string {
+    const q = download.quality;
+    if (!q) return '';
+    if (/^\d+$/.test(q)) return `${q}p`;
+    if (q === 'best_ios') return 'Best (iOS)';
+    return q.charAt(0).toUpperCase() + q.slice(1);
+  }
+
+  formatCodecLabel(download: Download): string {
+    const codec = download.video_codec;
+    if (!codec || codec === 'auto') return 'Auto';
+    return this.videoCodecs.find(c => c.id === codec)?.text ?? codec;
+  }
+
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked == 0;
     this.queueDownloadSelected().nativeElement.disabled = checked == 0;
@@ -412,6 +447,7 @@ export class App implements AfterViewInit, OnInit {
     subtitleFormat?: string,
     subtitleLanguage?: string,
     subtitleMode?: string,
+    videoCodec?: string,
   ) {
     url = url ?? this.addUrl
     quality = quality ?? this.quality
@@ -425,6 +461,7 @@ export class App implements AfterViewInit, OnInit {
     subtitleFormat = subtitleFormat ?? this.subtitleFormat
     subtitleLanguage = subtitleLanguage ?? this.subtitleLanguage
     subtitleMode = subtitleMode ?? this.subtitleMode
+    videoCodec = videoCodec ?? this.videoCodec
 
     // Validate chapter template if chapter splitting is enabled
     if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
@@ -432,10 +469,10 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
+    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode + ' videoCodec=' + videoCodec);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
+    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode, videoCodec).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
@@ -473,6 +510,7 @@ export class App implements AfterViewInit, OnInit {
       download.subtitle_format,
       download.subtitle_language,
       download.subtitle_mode,
+      download.video_codec,
     );
     this.downloads.delById('done', [key]).subscribe();
   }
@@ -620,7 +658,7 @@ export class App implements AfterViewInit, OnInit {
       // Now pass the selected quality, format, folder, etc. to the add() method
       this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
         this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
-        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode)
+        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode, this.videoCodec)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {

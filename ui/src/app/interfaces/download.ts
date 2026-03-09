@@ -13,6 +13,7 @@ export interface Download {
   subtitle_format?: string;
   subtitle_language?: string;
   subtitle_mode?: string;
+  video_codec?: string;
   status: string;
   msg: string;
   percent: number;
