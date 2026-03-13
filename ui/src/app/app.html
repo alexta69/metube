@@ -104,7 +104,15 @@
                 Canceling...
               </button>
             } @else if (addInProgress) {
-              <button class="btn btn-danger btn-lg px-3" type="button" (click)="cancelAdding()">
+              <button class="btn btn-secondary btn-lg px-3 add-progress-btn" type="button" disabled>
+                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                Adding...
+              </button>
+              <button class="btn btn-outline-danger btn-lg px-3 add-cancel-btn"
+                type="button"
+                (click)="cancelAdding()"
+                aria-label="Cancel adding URL"
+                title="Cancel adding URL">
                 <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
               </button>
             } @else {
