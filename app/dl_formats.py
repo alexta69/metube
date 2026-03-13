@@ -21,91 +21,90 @@ def _normalize_subtitle_language(language: str) -> str:
     return language or "en"
 
 
-def get_format(format: str, quality: str, video_codec: str = "auto") -> str:
+def get_format(download_type: str, codec: str, format: str, quality: str) -> str:
     """
-    Returns format for download
+    Returns yt-dlp format selector.
 
     Args:
-      format (str): format selected
-      quality (str): quality selected
-      video_codec (str): video codec filter (auto, h264, h265, av1, vp9)
+      download_type (str): selected content type (video, audio, captions, thumbnail)
+      codec (str): selected video codec (auto, h264, h265, av1, vp9)
+      format (str): selected output format/profile for type
+      quality (str): selected quality
 
     Raises:
-      Exception: unknown quality, unknown format
+      Exception: unknown type/format
 
     Returns:
-      dl_format: Formatted download string
+      str: yt-dlp format selector
     """
-    format = format or "any"
+    download_type = (download_type or "video").strip().lower()
+    format = (format or "any").strip().lower()
+    codec = (codec or "auto").strip().lower()
+    quality = (quality or "best").strip().lower()
 
     if format.startswith("custom:"):
         return format[7:]
 
-    if format == "thumbnail":
-        # Quality is irrelevant in this case since we skip the download
+    if download_type == "thumbnail":
         return "bestaudio/best"
 
-    if format == "captions":
-        # Quality is irrelevant in this case since we skip the download
+    if download_type == "captions":
         return "bestaudio/best"
 
-    if format in AUDIO_FORMATS:
-        # Audio quality needs to be set post-download, set in opts
+    if download_type == "audio":
+        if format not in AUDIO_FORMATS:
+            raise Exception(f"Unknown audio format {format}")
         return f"bestaudio[ext={format}]/bestaudio/best"
 
-    if format in ("mp4", "any"):
-        if quality == "audio":
-            return "bestaudio/best"
-        # video {res} {vfmt} + audio {afmt} {res} {vfmt}
-        vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format == "mp4" else ("", "")
-        vres = f"[height<={quality}]" if quality not in ("best", "best_ios", "worst") else ""
+    if download_type == "video":
+        if format not in ("any", "mp4", "ios"):
+            raise Exception(f"Unknown video format {format}")
+        vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format in ("mp4", "ios") else ("", "")
+        vres = f"[height<={quality}]" if quality not in ("best", "worst") else ""
         vcombo = vres + vfmt
-        codec_filter = CODEC_FILTER_MAP.get(video_codec, "")
+        codec_filter = CODEC_FILTER_MAP.get(codec, "")
 
-        if quality == "best_ios":
-            # iOS has strict requirements for video files, requiring h264 or h265
-            # video codec and aac audio codec in MP4 container. This format string
-            # attempts to get the fully compatible formats first, then the h264/h265
-            # video codec with any M4A audio codec (because audio is faster to
-            # convert if needed), and falls back to getting the best available MP4
-            # file.
+        if format == "ios":
             return f"bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio[acodec=aac]/bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
 
         if codec_filter:
-            # Try codec-filtered first, fall back to unfiltered
             return f"bestvideo{codec_filter}{vcombo}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
         return f"bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
 
-    raise Exception(f"Unkown format {format}")
+    raise Exception(f"Unknown download_type {download_type}")
 
 
 def get_opts(
+    download_type: str,
+    codec: str,
     format: str,
     quality: str,
     ytdl_opts: dict,
-    subtitle_format: str = "srt",
     subtitle_language: str = "en",
     subtitle_mode: str = "prefer_manual",
-    video_codec: str = "auto",
 ) -> dict:
     """
-    Returns extra download options
-    Mostly postprocessing options
+    Returns extra yt-dlp options/postprocessors.
 
     Args:
-      format (str): format selected
-      quality (str): quality of format selected (needed for some formats)
+      download_type (str): selected content type
+      codec (str): selected codec (unused currently, kept for API consistency)
+      format (str): selected format/profile
+      quality (str): selected quality
       ytdl_opts (dict): current options selected
 
     Returns:
-      ytdl_opts: Extra options
+      dict: extended options
     """
+    del codec  # kept for parity with get_format signature
 
+    download_type = (download_type or "video").strip().lower()
+    format = (format or "any").strip().lower()
     opts = copy.deepcopy(ytdl_opts)
 
     postprocessors = []
 
-    if format in AUDIO_FORMATS:
+    if download_type == "audio":
         postprocessors.append(
             {
                 "key": "FFmpegExtractAudio",
@@ -114,7 +113,6 @@ def get_opts(
             }
         )
 
-        # Audio formats without thumbnail
         if format not in ("wav") and "writethumbnail" not in opts:
             opts["writethumbnail"] = True
             postprocessors.append(
@@ -127,19 +125,18 @@ def get_opts(
             postprocessors.append({"key": "FFmpegMetadata"})
             postprocessors.append({"key": "EmbedThumbnail"})
 
-    if format == "thumbnail":
+    if download_type == "thumbnail":
         opts["skip_download"] = True
         opts["writethumbnail"] = True
         postprocessors.append(
             {"key": "FFmpegThumbnailsConvertor", "format": "jpg", "when": "before_dl"}
         )
 
-    if format == "captions":
+    if download_type == "captions":
         mode = _normalize_caption_mode(subtitle_mode)
         language = _normalize_subtitle_language(subtitle_language)
         opts["skip_download"] = True
-        requested_subtitle_format = (subtitle_format or "srt").lower()
-        # txt is a derived, non-timed format produced from SRT after download.
+        requested_subtitle_format = (format or "srt").lower()
         if requested_subtitle_format == "txt":
             requested_subtitle_format = "srt"
         opts["subtitlesformat"] = requested_subtitle_format

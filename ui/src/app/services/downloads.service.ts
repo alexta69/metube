@@ -109,6 +109,8 @@ export class DownloadsService {
 
   public add(
     url: string,
+    downloadType: string,
+    codec: string,
     quality: string,
     format: string,
     folder: string,
@@ -117,13 +119,13 @@ export class DownloadsService {
     autoStart: boolean,
     splitByChapters: boolean,
     chapterTemplate: string,
-    subtitleFormat: string,
     subtitleLanguage: string,
     subtitleMode: string,
-    videoCodec: string,
   ) {
     return this.http.post<Status>('add', {
       url: url,
+      download_type: downloadType,
+      codec: codec,
       quality: quality,
       format: format,
       folder: folder,
@@ -132,10 +134,8 @@ export class DownloadsService {
       auto_start: autoStart,
       split_by_chapters: splitByChapters,
       chapter_template: chapterTemplate,
-      subtitle_format: subtitleFormat,
       subtitle_language: subtitleLanguage,
       subtitle_mode: subtitleMode,
-      video_codec: videoCodec,
     }).pipe(
       catchError(this.handleHTTPError)
     );
@@ -174,6 +174,8 @@ export class DownloadsService {
     status: string;
     msg?: string;
   }> {
+    const defaultDownloadType = 'video';
+    const defaultCodec = 'auto';
     const defaultQuality = 'best';
     const defaultFormat = 'mp4';
     const defaultFolder = ''; 
@@ -182,14 +184,14 @@ export class DownloadsService {
     const defaultAutoStart = true;
     const defaultSplitByChapters = false;
     const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
-    const defaultSubtitleFormat = 'srt';
     const defaultSubtitleLanguage = 'en';
     const defaultSubtitleMode = 'prefer_manual';
-    const defaultVideoCodec = 'auto';
 
     return new Promise((resolve, reject) => {
       this.add(
         url,
+        defaultDownloadType,
+        defaultCodec,
         defaultQuality,
         defaultFormat,
         defaultFolder,
@@ -198,10 +200,8 @@ export class DownloadsService {
         defaultAutoStart,
         defaultSplitByChapters,
         defaultChapterTemplate,
-        defaultSubtitleFormat,
         defaultSubtitleLanguage,
         defaultSubtitleMode,
-        defaultVideoCodec,
       )
         .subscribe({
           next: (response) => resolve(response),
@@ -221,19 +221,19 @@ export class DownloadsService {
   uploadCookies(file: File) {
     const formData = new FormData();
     formData.append('cookies', file);
-    return this.http.post<any>('upload-cookies', formData).pipe(
+    return this.http.post<{ status: string; msg?: string }>('upload-cookies', formData).pipe(
       catchError(this.handleHTTPError)
     );
   }
 
   deleteCookies() {
-    return this.http.post<any>('delete-cookies', {}).pipe(
+    return this.http.post<{ status: string; msg?: string }>('delete-cookies', {}).pipe(
       catchError(this.handleHTTPError)
     );
   }
 
   getCookieStatus() {
-    return this.http.get<any>('cookie-status').pipe(
+    return this.http.get<{ status: string; has_cookies: boolean }>('cookie-status').pipe(
       catchError(this.handleHTTPError)
     );
   }

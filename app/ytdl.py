@@ -151,6 +151,8 @@ class DownloadInfo:
         title,
         url,
         quality,
+        download_type,
+        codec,
         format,
         folder,
         custom_name_prefix,
@@ -159,15 +161,15 @@ class DownloadInfo:
         playlist_item_limit,
         split_by_chapters,
         chapter_template,
-        subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
-        video_codec="auto",
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
         self.quality = quality
+        self.download_type = download_type
+        self.codec = codec
         self.format = format
         self.folder = folder
         self.custom_name_prefix = custom_name_prefix
@@ -181,11 +183,48 @@ class DownloadInfo:
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.chapter_template = chapter_template
-        self.subtitle_format = subtitle_format
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
         self.subtitle_files = []
-        self.video_codec = video_codec
+
+    def __setstate__(self, state):
+        """BACKWARD COMPATIBILITY: migrate old DownloadInfo from persistent queue files."""
+        self.__dict__.update(state)
+        if 'download_type' not in state:
+            old_format = state.get('format', 'any')
+            old_video_codec = state.get('video_codec', 'auto')
+            old_quality = state.get('quality', 'best')
+            old_subtitle_format = state.get('subtitle_format', 'srt')
+
+            if old_format in AUDIO_FORMATS:
+                self.download_type = 'audio'
+                self.codec = 'auto'
+            elif old_format == 'thumbnail':
+                self.download_type = 'thumbnail'
+                self.codec = 'auto'
+                self.format = 'jpg'
+            elif old_format == 'captions':
+                self.download_type = 'captions'
+                self.codec = 'auto'
+                self.format = old_subtitle_format
+            else:
+                self.download_type = 'video'
+                self.codec = old_video_codec
+                if old_quality == 'best_ios':
+                    self.format = 'ios'
+                    self.quality = 'best'
+                elif old_quality == 'audio':
+                    self.download_type = 'audio'
+                    self.codec = 'auto'
+                    self.format = 'm4a'
+                    self.quality = 'best'
+            self.__dict__.pop('video_codec', None)
+            self.__dict__.pop('subtitle_format', None)
+
+        if not getattr(self, "codec", None):
+            self.codec = "auto"
+        if not hasattr(self, "subtitle_files"):
+            self.subtitle_files = []
 
 class Download:
     manager = None
@@ -196,15 +235,20 @@ class Download:
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
         self.info = info
-        self.format = get_format(format, quality, video_codec=getattr(info, 'video_codec', 'auto'))
+        self.format = get_format(
+            getattr(info, 'download_type', 'video'),
+            getattr(info, 'codec', 'auto'),
+            format,
+            quality,
+        )
         self.ytdl_opts = get_opts(
+            getattr(info, 'download_type', 'video'),
+            getattr(info, 'codec', 'auto'),
             format,
             quality,
             ytdl_opts,
-            subtitle_format=getattr(info, 'subtitle_format', 'srt'),
             subtitle_language=getattr(info, 'subtitle_language', 'en'),
             subtitle_mode=getattr(info, 'subtitle_mode', 'prefer_manual'),
-            video_codec=getattr(info, 'video_codec', 'auto'),
         )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
@@ -244,7 +288,7 @@ class Download:
                     # For captions-only downloads, yt-dlp may still report a media-like
                     # filepath in MoveFiles. Capture subtitle outputs explicitly so the
                     # UI can link to real caption files.
-                    if self.info.format == 'captions':
+                    if getattr(self.info, 'download_type', '') == 'captions':
                         requested_subtitles = d.get('info_dict', {}).get('requested_subtitles', {}) or {}
                         for subtitle in requested_subtitles.values():
                             if isinstance(subtitle, dict) and subtitle.get('filepath'):
@@ -352,14 +396,14 @@ class Download:
                 rel_name = os.path.relpath(fileName, self.download_dir)
                 # For captions mode, ignore media-like placeholders and let subtitle_file
                 # statuses define the final file shown in the UI.
-                if self.info.format == 'captions':
-                    requested_subtitle_format = str(getattr(self.info, 'subtitle_format', '')).lower()
+                if getattr(self.info, 'download_type', '') == 'captions':
+                    requested_subtitle_format = str(getattr(self.info, 'format', '')).lower()
                     allowed_caption_exts = ('.txt',) if requested_subtitle_format == 'txt' else ('.vtt', '.srt', '.sbv', '.scc', '.ttml', '.dfxp')
                     if not rel_name.lower().endswith(allowed_caption_exts):
                         continue
                 self.info.filename = rel_name
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
-                if self.info.format == 'thumbnail':
+                if getattr(self.info, 'download_type', '') == 'thumbnail':
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
 
             # Handle chapter files
@@ -384,7 +428,7 @@ class Download:
                 subtitle_output_file = subtitle_file
 
                 # txt mode is derived from SRT by stripping cue metadata.
-                if self.info.format == 'captions' and str(getattr(self.info, 'subtitle_format', '')).lower() == 'txt':
+                if getattr(self.info, 'download_type', '') == 'captions' and str(getattr(self.info, 'format', '')).lower() == 'txt':
                     converted_txt = _convert_srt_to_txt_file(subtitle_file)
                     if converted_txt:
                         subtitle_output_file = converted_txt
@@ -400,9 +444,9 @@ class Download:
                 if not existing:
                     self.info.subtitle_files.append({'filename': rel_path, 'size': file_size})
                 # Prefer first subtitle file as the primary result link in captions mode.
-                if self.info.format == 'captions' and (
+                if getattr(self.info, 'download_type', '') == 'captions' and (
                     not getattr(self.info, 'filename', None) or
-                    str(getattr(self.info, 'subtitle_format', '')).lower() == 'txt'
+                    str(getattr(self.info, 'format', '')).lower() == 'txt'
                 ):
                     self.info.filename = rel_path
                     self.info.size = file_size
@@ -434,7 +478,7 @@ class PersistentQueue:
 
     def load(self):
         for k, v in self.saved_items():
-            self.dict[k] = Download(None, None, None, None, None, None, {}, v)
+            self.dict[k] = Download(None, None, None, None, getattr(v, 'quality', 'best'), getattr(v, 'format', 'any'), {}, v)
 
     def exists(self, key):
         return key in self.dict
@@ -625,8 +669,8 @@ class DownloadQueue:
             **({'impersonate': yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.config.YTDL_OPTIONS['impersonate'])} if 'impersonate' in self.config.YTDL_OPTIONS else {}),
         }).extract_info(url, download=False)
 
-    def __calc_download_path(self, quality, format, folder):
-        base_directory = self.config.DOWNLOAD_DIR if (quality != 'audio' and format not in AUDIO_FORMATS) else self.config.AUDIO_DOWNLOAD_DIR
+    def __calc_download_path(self, download_type, folder):
+        base_directory = self.config.AUDIO_DOWNLOAD_DIR if download_type == 'audio' else self.config.DOWNLOAD_DIR
         if folder:
             if not self.config.CUSTOM_DIRS:
                 return None, {'status': 'error', 'msg': 'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
@@ -643,7 +687,7 @@ class DownloadQueue:
         return dldirectory, None
 
     async def __add_download(self, dl, auto_start):
-        dldirectory, error_message = self.__calc_download_path(dl.quality, dl.format, dl.folder)
+        dldirectory, error_message = self.__calc_download_path(dl.download_type, dl.folder)
         if error_message is not None:
             return error_message
         output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
@@ -677,20 +721,20 @@ class DownloadQueue:
     async def __add_entry(
         self,
         entry,
-        quality,
+        download_type,
+        codec,
         format,
+        quality,
         folder,
         custom_name_prefix,
         playlist_item_limit,
         auto_start,
         split_by_chapters,
         chapter_template,
-        subtitle_format,
         subtitle_language,
         subtitle_mode,
         already,
         _add_gen=None,
-        video_codec="auto",
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -709,20 +753,20 @@ class DownloadQueue:
             log.debug('Processing as a url')
             return await self.add(
                 entry['url'],
-                quality,
+                download_type,
+                codec,
                 format,
+                quality,
                 folder,
                 custom_name_prefix,
                 playlist_item_limit,
                 auto_start,
                 split_by_chapters,
                 chapter_template,
-                subtitle_format,
                 subtitle_language,
                 subtitle_mode,
                 already,
                 _add_gen,
-                video_codec,
             )
         elif etype == 'playlist' or etype == 'channel':
             log.debug(f'Processing as a {etype}')
@@ -749,20 +793,20 @@ class DownloadQueue:
                 results.append(
                     await self.__add_entry(
                         etr,
-                        quality,
+                        download_type,
+                        codec,
                         format,
+                        quality,
                         folder,
                         custom_name_prefix,
                         playlist_item_limit,
                         auto_start,
                         split_by_chapters,
                         chapter_template,
-                        subtitle_format,
                         subtitle_language,
                         subtitle_mode,
                         already,
                         _add_gen,
-                        video_codec,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -776,22 +820,22 @@ class DownloadQueue:
                 return {'status': 'ok'}
             if not self.queue.exists(key):
                 dl = DownloadInfo(
-                    entry['id'],
-                    entry.get('title') or entry['id'],
-                    key,
-                    quality,
-                    format,
-                    folder,
-                    custom_name_prefix,
-                    error,
-                    entry,
-                    playlist_item_limit,
-                    split_by_chapters,
-                    chapter_template,
-                    subtitle_format,
-                    subtitle_language,
-                    subtitle_mode,
-                    video_codec,
+                    id=entry['id'],
+                    title=entry.get('title') or entry['id'],
+                    url=key,
+                    quality=quality,
+                    download_type=download_type,
+                    codec=codec,
+                    format=format,
+                    folder=folder,
+                    custom_name_prefix=custom_name_prefix,
+                    error=error,
+                    entry=entry,
+                    playlist_item_limit=playlist_item_limit,
+                    split_by_chapters=split_by_chapters,
+                    chapter_template=chapter_template,
+                    subtitle_language=subtitle_language,
+                    subtitle_mode=subtitle_mode,
                 )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -800,26 +844,25 @@ class DownloadQueue:
     async def add(
         self,
         url,
-        quality,
+        download_type,
+        codec,
         format,
+        quality,
         folder,
         custom_name_prefix,
         playlist_item_limit,
         auto_start=True,
         split_by_chapters=False,
         chapter_template=None,
-        subtitle_format="srt",
         subtitle_language="en",
         subtitle_mode="prefer_manual",
         already=None,
         _add_gen=None,
-        video_codec="auto",
     ):
         log.info(
-            f'adding {url}: {quality=} {format=} {already=} {folder=} {custom_name_prefix=} '
+            f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_format=} {subtitle_language=} {subtitle_mode=} '
-            f'{video_codec=}'
+            f'{subtitle_language=} {subtitle_mode=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -836,20 +879,20 @@ class DownloadQueue:
             return {'status': 'error', 'msg': str(exc)}
         return await self.__add_entry(
             entry,
-            quality,
+            download_type,
+            codec,
             format,
+            quality,
             folder,
             custom_name_prefix,
             playlist_item_limit,
             auto_start,
             split_by_chapters,
             chapter_template,
-            subtitle_format,
             subtitle_language,
             subtitle_mode,
             already,
             _add_gen,
-            video_codec,
         )
 
     async def start_pending(self, ids):
@@ -889,7 +932,7 @@ class DownloadQueue:
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
                 try:
-                    dldirectory, _ = self.__calc_download_path(dl.info.quality, dl.info.format, dl.info.folder)
+                    dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
                     os.remove(os.path.join(dldirectory, dl.info.filename))
                 except Exception as e:
                     log.warn(f'deleting file for download {id} failed with error message {e!r}')

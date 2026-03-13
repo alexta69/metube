@@ -3,6 +3,8 @@ export interface Download {
   id: string;
   title: string;
   url: string;
+  download_type: string;
+  codec?: string;
   quality: string;
   format: string;
   folder: string;
@@ -10,10 +12,8 @@ export interface Download {
   playlist_item_limit: number;
   split_by_chapters?: boolean;
   chapter_template?: string;
-  subtitle_format?: string;
   subtitle_language?: string;
   subtitle_mode?: string;
-  video_codec?: string;
   status: string;
   msg: string;
   percent: number;
@@ -25,5 +25,5 @@ export interface Download {
   size?: number;
   error?: string;
   deleting?: boolean;
-  chapter_files?: Array<{ filename: string, size: number }>;
+  chapter_files?: { filename: string, size: number }[];
 }

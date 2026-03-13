@@ -6,12 +6,27 @@ import { FormsModule } from '@angular/forms';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faUpload } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { DownloadsService } from './services/downloads.service';
 import { Themes } from './theme';
-import { Download, Status, Theme , Quality, Format, Formats, State } from './interfaces';
+import {
+  Download,
+  Status,
+  Theme,
+  Quality,
+  Option,
+  AudioFormatOption,
+  DOWNLOAD_TYPES,
+  VIDEO_CODECS,
+  VIDEO_FORMATS,
+  VIDEO_QUALITIES,
+  AUDIO_FORMATS,
+  CAPTION_FORMATS,
+  THUMBNAIL_FORMATS,
+  State,
+} from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
 import { MasterCheckboxComponent , SlaveCheckboxComponent} from './components/';
 
@@ -40,8 +55,15 @@ export class App implements AfterViewInit, OnInit {
   private http = inject(HttpClient);
 
   addUrl!: string;
-  formats: Format[] = Formats;
+  downloadTypes: Option[] = DOWNLOAD_TYPES;
+  videoCodecs: Option[] = VIDEO_CODECS;
+  videoFormats: Option[] = VIDEO_FORMATS;
+  audioFormats: AudioFormatOption[] = AUDIO_FORMATS;
+  captionFormats: Option[] = CAPTION_FORMATS;
+  thumbnailFormats: Option[] = THUMBNAIL_FORMATS;
   qualities!: Quality[];
+  downloadType: string;
+  codec: string;
   quality: string;
   format: string;
   folder!: string;
@@ -50,10 +72,8 @@ export class App implements AfterViewInit, OnInit {
   playlistItemLimit!: number;
   splitByChapters: boolean;
   chapterTemplate: string;
-  subtitleFormat: string;
   subtitleLanguage: string;
   subtitleMode: string;
-  videoCodec: string;
   addInProgress = false;
   cancelRequested = false;
   hasCookies = false;
@@ -72,9 +92,18 @@ export class App implements AfterViewInit, OnInit {
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
   sortAscending = false;
-  expandedErrors: Set<string> = new Set();
+  expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
   lastCopiedErrorId: string | null = null;
+  private previousDownloadType = 'video';
+  private selectionsByType: Record<string, {
+    codec: string;
+    format: string;
+    quality: string;
+    subtitleLanguage: string;
+    subtitleMode: string;
+  }> = {};
+  private readonly selectionCookiePrefix = 'metube_selection_';
 
   // Download metrics
   activeDownloads = 0;
@@ -112,13 +141,8 @@ export class App implements AfterViewInit, OnInit {
   faSortAmountDown = faSortAmountDown;
   faSortAmountUp = faSortAmountUp;
   faChevronRight = faChevronRight;
+  faChevronDown = faChevronDown;
   faUpload = faUpload;
-  subtitleFormats = [
-    { id: 'srt', text: 'SRT' },
-    { id: 'txt', text: 'TXT (Text only)' },
-    { id: 'vtt', text: 'VTT' },
-    { id: 'ttml', text: 'TTML' }
-  ];
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -170,39 +194,35 @@ export class App implements AfterViewInit, OnInit {
     { id: 'manual_only', text: 'Manual Only' },
     { id: 'auto_only', text: 'Auto Only' },
   ];
-  videoCodecs = [
-    { id: 'auto', text: 'Auto' },
-    { id: 'h264', text: 'H.264' },
-    { id: 'h265', text: 'H.265 (HEVC)' },
-    { id: 'av1', text: 'AV1' },
-    { id: 'vp9', text: 'VP9' },
-  ];
-
   constructor() {
+    this.downloadType = this.cookieService.get('metube_download_type') || 'video';
+    this.codec = this.cookieService.get('metube_codec') || 'auto';
     this.format = this.cookieService.get('metube_format') || 'any';
-    // Needs to be set or qualities won't automatically be set
-    this.setQualities()
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
-    this.subtitleFormat = this.cookieService.get('metube_subtitle_format') || 'srt';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
-    this.videoCodec = this.cookieService.get('metube_video_codec') || 'auto';
+    const allowedDownloadTypes = new Set(this.downloadTypes.map(t => t.id));
     const allowedVideoCodecs = new Set(this.videoCodecs.map(c => c.id));
-    if (!allowedVideoCodecs.has(this.videoCodec)) {
-      this.videoCodec = 'auto';
+    if (!allowedDownloadTypes.has(this.downloadType)) {
+      this.downloadType = 'video';
     }
-    const allowedSubtitleFormats = new Set(this.subtitleFormats.map(fmt => fmt.id));
+    if (!allowedVideoCodecs.has(this.codec)) {
+      this.codec = 'auto';
+    }
     const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
-    if (!allowedSubtitleFormats.has(this.subtitleFormat)) {
-      this.subtitleFormat = 'srt';
-    }
     if (!allowedSubtitleModes.has(this.subtitleMode)) {
       this.subtitleMode = 'prefer_manual';
     }
+    this.loadSavedSelections();
+    this.restoreSelection(this.downloadType);
+    this.normalizeSelectionsForType();
+    this.setQualities();
+    this.previousDownloadType = this.downloadType;
+    this.saveSelection(this.downloadType);
     this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
 
     this.activeTheme = this.getPreferredTheme(this.cookieService);
@@ -223,7 +243,7 @@ export class App implements AfterViewInit, OnInit {
 
   ngOnInit() {
     this.downloads.getCookieStatus().subscribe(data => {
-      this.hasCookies = data?.has_cookies || false;
+      this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
     });
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
@@ -268,8 +288,25 @@ export class App implements AfterViewInit, OnInit {
 
   qualityChanged() {
     this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+    this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
+  }
+
+  downloadTypeChanged() {
+    this.saveSelection(this.previousDownloadType);
+    this.restoreSelection(this.downloadType);
+    this.cookieService.set('metube_download_type', this.downloadType, { expires: 3650 });
+    this.normalizeSelectionsForType(false);
+    this.setQualities();
+    this.saveSelection(this.downloadType);
+    this.previousDownloadType = this.downloadType;
+    this.downloads.customDirsChanged.next(this.downloads.customDirs);
+  }
+
+  codecChanged() {
+    this.cookieService.set('metube_codec', this.codec, { expires: 3650 });
+    this.saveSelection(this.downloadType);
   }
 
   showAdvanced() {
@@ -284,7 +321,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   isAudioType() {
-    return this.quality == 'audio' || this.format == 'mp3'  || this.format == 'm4a' || this.format == 'opus' || this.format == 'wav' || this.format == 'flac';
+    return this.downloadType === 'audio';
   }
 
   getMatchingCustomDir() : Observable<string[]> {
@@ -358,8 +395,8 @@ export class App implements AfterViewInit, OnInit {
 
   formatChanged() {
     this.cookieService.set('metube_format', this.format, { expires: 3650 });
-    // Updates to use qualities available
-    this.setQualities()
+    this.setQualities();
+    this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
@@ -380,36 +417,42 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
   }
 
-  subtitleFormatChanged() {
-    this.cookieService.set('metube_subtitle_format', this.subtitleFormat, { expires: 3650 });
-  }
-
   subtitleLanguageChanged() {
     this.cookieService.set('metube_subtitle_language', this.subtitleLanguage, { expires: 3650 });
+    this.saveSelection(this.downloadType);
   }
 
   subtitleModeChanged() {
     this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: 3650 });
-  }
-
-  videoCodecChanged() {
-    this.cookieService.set('metube_video_codec', this.videoCodec, { expires: 3650 });
+    this.saveSelection(this.downloadType);
   }
 
   isVideoType() {
-    return (this.format === 'any' || this.format === 'mp4') && this.quality !== 'audio';
+    return this.downloadType === 'video';
   }
 
   formatQualityLabel(download: Download): string {
+    if (download.download_type === 'captions' || download.download_type === 'thumbnail') {
+      return '-';
+    }
     const q = download.quality;
     if (!q) return '';
+    if (/^\d+$/.test(q) && download.download_type === 'audio') return `${q} kbps`;
     if (/^\d+$/.test(q)) return `${q}p`;
-    if (q === 'best_ios') return 'Best (iOS)';
     return q.charAt(0).toUpperCase() + q.slice(1);
   }
 
+  downloadTypeLabel(download: Download): string {
+    const type = download.download_type || 'video';
+    return type.charAt(0).toUpperCase() + type.slice(1);
+  }
+
   formatCodecLabel(download: Download): string {
-    const codec = download.video_codec;
+    if (download.download_type !== 'video') {
+      const format = (download.format || '').toUpperCase();
+      return format || '-';
+    }
+    const codec = download.codec;
     if (!codec || codec === 'auto') return 'Auto';
     return this.videoCodecs.find(c => c.id === codec)?.text ?? codec;
   }
@@ -425,17 +468,130 @@ export class App implements AfterViewInit, OnInit {
   }
 
   setQualities() {
-    // qualities for specific format
-    const format = this.formats.find(el => el.id == this.format)
-    if (format) {
-      this.qualities = format.qualities
-      const exists = this.qualities.find(el => el.id === this.quality)
-      this.quality = exists ? this.quality : 'best'
+    if (this.downloadType === 'video') {
+      this.qualities = this.format === 'ios'
+        ? [{ id: 'best', text: 'Best' }]
+        : VIDEO_QUALITIES;
+    } else if (this.downloadType === 'audio') {
+      const selectedFormat = this.audioFormats.find(el => el.id === this.format);
+      this.qualities = selectedFormat ? selectedFormat.qualities : [{ id: 'best', text: 'Best' }];
+    } else {
+      this.qualities = [{ id: 'best', text: 'Best' }];
+    }
+    const exists = this.qualities.find(el => el.id === this.quality);
+    this.quality = exists ? this.quality : 'best';
   }
-}
+
+  showCodecSelector() {
+    return this.downloadType === 'video';
+  }
+
+  showFormatSelector() {
+    return this.downloadType !== 'thumbnail';
+  }
+
+  showQualitySelector() {
+    if (this.downloadType === 'video') {
+      return this.format !== 'ios';
+    }
+    return this.downloadType === 'audio';
+  }
+
+  getFormatOptions() {
+    if (this.downloadType === 'video') {
+      return this.videoFormats;
+    }
+    if (this.downloadType === 'audio') {
+      return this.audioFormats;
+    }
+    if (this.downloadType === 'captions') {
+      return this.captionFormats;
+    }
+    return this.thumbnailFormats;
+  }
+
+  private normalizeSelectionsForType(resetForTypeChange = false) {
+    if (this.downloadType === 'video') {
+      const allowedFormats = new Set(this.videoFormats.map(f => f.id));
+      if (resetForTypeChange || !allowedFormats.has(this.format)) {
+        this.format = 'any';
+      }
+      const allowedCodecs = new Set(this.videoCodecs.map(c => c.id));
+      if (resetForTypeChange || !allowedCodecs.has(this.codec)) {
+        this.codec = 'auto';
+      }
+    } else if (this.downloadType === 'audio') {
+      const allowedFormats = new Set(this.audioFormats.map(f => f.id));
+      if (resetForTypeChange || !allowedFormats.has(this.format)) {
+        this.format = this.audioFormats[0].id;
+      }
+    } else if (this.downloadType === 'captions') {
+      const allowedFormats = new Set(this.captionFormats.map(f => f.id));
+      if (resetForTypeChange || !allowedFormats.has(this.format)) {
+        this.format = 'srt';
+      }
+      this.quality = 'best';
+    } else {
+      this.format = 'jpg';
+      this.quality = 'best';
+    }
+    this.cookieService.set('metube_format', this.format, { expires: 3650 });
+    this.cookieService.set('metube_codec', this.codec, { expires: 3650 });
+  }
+
+  private saveSelection(type: string) {
+    if (!type) return;
+    const selection = {
+      codec: this.codec,
+      format: this.format,
+      quality: this.quality,
+      subtitleLanguage: this.subtitleLanguage,
+      subtitleMode: this.subtitleMode,
+    };
+    this.selectionsByType[type] = selection;
+    this.cookieService.set(
+      this.selectionCookiePrefix + type,
+      JSON.stringify(selection),
+      { expires: 3650 }
+    );
+  }
+
+  private restoreSelection(type: string) {
+    const saved = this.selectionsByType[type];
+    if (!saved) return;
+    this.codec = saved.codec;
+    this.format = saved.format;
+    this.quality = saved.quality;
+    this.subtitleLanguage = saved.subtitleLanguage;
+    this.subtitleMode = saved.subtitleMode;
+  }
+
+  private loadSavedSelections() {
+    for (const type of this.downloadTypes.map(t => t.id)) {
+      const key = this.selectionCookiePrefix + type;
+      if (!this.cookieService.check(key)) continue;
+      try {
+        const raw = this.cookieService.get(key);
+        const parsed = JSON.parse(raw);
+        if (parsed && typeof parsed === 'object') {
+          this.selectionsByType[type] = {
+            codec: String(parsed.codec ?? 'auto'),
+            format: String(parsed.format ?? ''),
+            quality: String(parsed.quality ?? 'best'),
+            subtitleLanguage: String(parsed.subtitleLanguage ?? 'en'),
+            subtitleMode: String(parsed.subtitleMode ?? 'prefer_manual'),
+          };
+        }
+      } catch {
+        // Ignore malformed cookie values.
+      }
+    }
+  }
 
   addDownload(
     url?: string,
+    downloadType?: string,
+    codec?: string,
     quality?: string,
     format?: string,
     folder?: string,
@@ -444,12 +600,12 @@ export class App implements AfterViewInit, OnInit {
     autoStart?: boolean,
     splitByChapters?: boolean,
     chapterTemplate?: string,
-    subtitleFormat?: string,
     subtitleLanguage?: string,
     subtitleMode?: string,
-    videoCodec?: string,
   ) {
     url = url ?? this.addUrl
+    downloadType = downloadType ?? this.downloadType
+    codec = codec ?? this.codec
     quality = quality ?? this.quality
     format = format ?? this.format
     folder = folder ?? this.folder
@@ -458,10 +614,8 @@ export class App implements AfterViewInit, OnInit {
     autoStart = autoStart ?? this.autoStart
     splitByChapters = splitByChapters ?? this.splitByChapters
     chapterTemplate = chapterTemplate ?? this.chapterTemplate
-    subtitleFormat = subtitleFormat ?? this.subtitleFormat
     subtitleLanguage = subtitleLanguage ?? this.subtitleLanguage
     subtitleMode = subtitleMode ?? this.subtitleMode
-    videoCodec = videoCodec ?? this.videoCodec
 
     // Validate chapter template if chapter splitting is enabled
     if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
@@ -469,10 +623,10 @@ export class App implements AfterViewInit, OnInit {
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleFormat=' + subtitleFormat + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode + ' videoCodec=' + videoCodec);
+    console.debug('Downloading: url=' + url + ' downloadType=' + downloadType + ' codec=' + codec + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(url, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleFormat, subtitleLanguage, subtitleMode, videoCodec).subscribe((status: Status) => {
+    this.downloads.add(url, downloadType, codec, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
@@ -499,6 +653,8 @@ export class App implements AfterViewInit, OnInit {
   retryDownload(key: string, download: Download) {
     this.addDownload(
       download.url,
+      download.download_type,
+      download.codec,
       download.quality,
       download.format,
       download.folder,
@@ -507,10 +663,8 @@ export class App implements AfterViewInit, OnInit {
       true,
       download.split_by_chapters,
       download.chapter_template,
-      download.subtitle_format,
       download.subtitle_language,
       download.subtitle_mode,
-      download.video_codec,
     );
     this.downloads.delById('done', [key]).subscribe();
   }
@@ -560,7 +714,7 @@ export class App implements AfterViewInit, OnInit {
 
   buildDownloadLink(download: Download) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    if (download.quality == 'audio' || download.filename.endsWith('.mp3')) {
+    if (download.download_type === 'audio' || download.filename.endsWith('.mp3')) {
       baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
     }
 
@@ -584,7 +738,7 @@ export class App implements AfterViewInit, OnInit {
 
   buildChapterDownloadLink(download: Download, chapterFilename: string) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    if (download.quality == 'audio' || chapterFilename.endsWith('.mp3')) {
+    if (download.download_type === 'audio' || chapterFilename.endsWith('.mp3')) {
       baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
     }
 
@@ -655,10 +809,10 @@ export class App implements AfterViewInit, OnInit {
       }
       const url = urls[index];
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
-      // Now pass the selected quality, format, folder, etc. to the add() method
-      this.downloads.add(url, this.quality, this.format, this.folder, this.customNamePrefix,
+      // Pass current selection options to backend
+      this.downloads.add(url, this.downloadType, this.codec, this.quality, this.format, this.folder, this.customNamePrefix,
         this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
-        this.subtitleFormat, this.subtitleLanguage, this.subtitleMode, this.videoCodec)
+        this.subtitleLanguage, this.subtitleMode)
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
@@ -891,7 +1045,7 @@ export class App implements AfterViewInit, OnInit {
 
   private refreshCookieStatus() {
     this.downloads.getCookieStatus().subscribe(data => {
-      this.hasCookies = data?.has_cookies || false;
+      this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
     });
   }
 

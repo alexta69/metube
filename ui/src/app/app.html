@@ -120,39 +120,205 @@
 
       <!-- Options Row -->
       <div class="row mb-3 g-3">
-        <div class="col-md-4">
-          <div class="input-group">
-            <span class="input-group-text">Quality</span>
-            <select class="form-select"
-              name="quality"
-              [(ngModel)]="quality"
-              (change)="qualityChanged()"
-              [disabled]="addInProgress || downloads.loading">
-              @for (q of qualities; track q) {
-                <option [ngValue]="q.id">{{ q.text }}</option>
-              }
-            </select>
+        @if (downloadType === 'video') {
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Type</span>
+              <select class="form-select"
+                name="downloadType"
+                [(ngModel)]="downloadType"
+                (change)="downloadTypeChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (type of downloadTypes; track type.id) {
+                  <option [ngValue]="type.id">{{ type.text }}</option>
+                }
+              </select>
+            </div>
           </div>
-        </div>
-        <div class="col-md-4">
-          <div class="input-group">
-            <span class="input-group-text">Format</span>
-            <select class="form-select"
-              name="format"
-              [(ngModel)]="format"
-              (change)="formatChanged()"
-              [disabled]="addInProgress || downloads.loading">
-              @for (f of formats; track f) {
-                <option [ngValue]="f.id">{{ f.text }}</option>
-              }
-            </select>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Codec</span>
+              <select class="form-select"
+                name="codec"
+                [(ngModel)]="codec"
+                (change)="codecChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (vc of videoCodecs; track vc.id) {
+                  <option [ngValue]="vc.id">{{ vc.text }}</option>
+                }
+              </select>
+            </div>
           </div>
-        </div>
-        <div class="col-md-4">
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Format</span>
+              <select class="form-select"
+                name="format"
+                [(ngModel)]="format"
+                (change)="formatChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (f of getFormatOptions(); track f.id) {
+                  <option [ngValue]="f.id">{{ f.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Quality</span>
+              <select class="form-select"
+                name="quality"
+                [(ngModel)]="quality"
+                (change)="qualityChanged()"
+                [disabled]="addInProgress || downloads.loading || !showQualitySelector()">
+                @for (q of qualities; track q.id) {
+                  <option [ngValue]="q.id">{{ q.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        } @else if (downloadType === 'audio') {
+          <div class="col-md-4">
+            <div class="input-group">
+              <span class="input-group-text">Type</span>
+              <select class="form-select"
+                name="downloadType"
+                [(ngModel)]="downloadType"
+                (change)="downloadTypeChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (type of downloadTypes; track type.id) {
+                  <option [ngValue]="type.id">{{ type.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="input-group">
+              <span class="input-group-text">Format</span>
+              <select class="form-select"
+                name="format"
+                [(ngModel)]="format"
+                (change)="formatChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (f of getFormatOptions(); track f.id) {
+                  <option [ngValue]="f.id">{{ f.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-4">
+            <div class="input-group">
+              <span class="input-group-text">Quality</span>
+              <select class="form-select"
+                name="quality"
+                [(ngModel)]="quality"
+                (change)="qualityChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (q of qualities; track q.id) {
+                  <option [ngValue]="q.id">{{ q.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        } @else if (downloadType === 'captions') {
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Type</span>
+              <select class="form-select"
+                name="downloadType"
+                [(ngModel)]="downloadType"
+                (change)="downloadTypeChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (type of downloadTypes; track type.id) {
+                  <option [ngValue]="type.id">{{ type.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Format</span>
+              <select class="form-select"
+                name="format"
+                [(ngModel)]="format"
+                (change)="formatChanged()"
+                [disabled]="addInProgress || downloads.loading"
+                ngbTooltip="Subtitle output format for captions mode">
+                @for (f of getFormatOptions(); track f.id) {
+                  <option [ngValue]="f.id">{{ f.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Language</span>
+              <input class="form-control"
+                type="text"
+                list="subtitleLanguageOptions"
+                name="subtitleLanguage"
+                [(ngModel)]="subtitleLanguage"
+                (change)="subtitleLanguageChanged()"
+                [disabled]="addInProgress || downloads.loading"
+                placeholder="e.g. en, es, zh-Hans"
+                ngbTooltip="Subtitle language (you can type any language code)">
+              <datalist id="subtitleLanguageOptions">
+                @for (lang of subtitleLanguages; track lang.id) {
+                  <option [value]="lang.id">{{ lang.text }}</option>
+                }
+              </datalist>
+            </div>
+          </div>
+          <div class="col-md-3">
+            <div class="input-group">
+              <span class="input-group-text">Subtitle Source</span>
+              <select class="form-select"
+                name="subtitleMode"
+                [(ngModel)]="subtitleMode"
+                (change)="subtitleModeChanged()"
+                [disabled]="addInProgress || downloads.loading"
+                ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
+                @for (mode of subtitleModes; track mode.id) {
+                  <option [ngValue]="mode.id">{{ mode.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+        } @else {
+          <div class="col-md-6">
+            <div class="input-group">
+              <span class="input-group-text">Type</span>
+              <select class="form-select"
+                name="downloadType"
+                [(ngModel)]="downloadType"
+                (change)="downloadTypeChanged()"
+                [disabled]="addInProgress || downloads.loading">
+                @for (type of downloadTypes; track type.id) {
+                  <option [ngValue]="type.id">{{ type.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
+          <div class="col-md-6">
+            <div class="input-group">
+              <span class="input-group-text">Format</span>
+              <input class="form-control" value="JPG" disabled>
+            </div>
+          </div>
+        }
+      </div>
+
+      <div class="row mb-3 g-3">
+        <div class="col-12 text-start">
           <button type="button"
-            class="btn btn-outline-secondary w-100 h-100"
-            (click)="toggleAdvanced()">
+            class="btn btn-link p-0 text-decoration-none"
+            (click)="toggleAdvanced()"
+            [attr.aria-expanded]="isAdvancedOpen"
+            aria-controls="advancedOptions">
             Advanced Options
+            <fa-icon
+              [icon]="isAdvancedOpen ? faChevronDown : faChevronRight"
+              class="ms-1" />
           </button>
         </div>
       </div>
@@ -161,7 +327,7 @@
       <div class="row">
         <div class="col-12">
           <div class="collapse show" id="advancedOptions" [ngbCollapse]="!isAdvancedOpen">
-            <div class="card card-body">
+            <div class="py-2">
               <!-- Advanced Settings -->
               <div class="row g-3 mb-2">
                 <div class="col-md-6">
@@ -225,77 +391,6 @@
                       ngbTooltip="Maximum number of items to download from a playlist or channel (0 = no limit)">
                   </div>
                 </div>
-                @if (format === 'captions') {
-                  <div class="col-md-4">
-                    <div class="input-group">
-                      <span class="input-group-text">Subtitles</span>
-                      <select class="form-select"
-                        name="subtitleFormat"
-                        [(ngModel)]="subtitleFormat"
-                        (change)="subtitleFormatChanged()"
-                        [disabled]="addInProgress || downloads.loading"
-                        ngbTooltip="Subtitle output format for captions mode">
-                        @for (fmt of subtitleFormats; track fmt.id) {
-                          <option [ngValue]="fmt.id">{{ fmt.text }}</option>
-                        }
-                      </select>
-                    </div>
-                    @if (subtitleFormat === 'txt') {
-                      <div class="form-text">TXT is generated from SRT by stripping timestamps and cue numbers.</div>
-                    }
-                  </div>
-                  <div class="col-md-4">
-                    <div class="input-group">
-                      <span class="input-group-text">Language</span>
-                      <input class="form-control"
-                        type="text"
-                        list="subtitleLanguageOptions"
-                        name="subtitleLanguage"
-                        [(ngModel)]="subtitleLanguage"
-                        (change)="subtitleLanguageChanged()"
-                        [disabled]="addInProgress || downloads.loading"
-                        placeholder="e.g. en, es, zh-Hans"
-                        ngbTooltip="Subtitle language (you can type any language code)">
-                      <datalist id="subtitleLanguageOptions">
-                        @for (lang of subtitleLanguages; track lang.id) {
-                          <option [value]="lang.id">{{ lang.text }}</option>
-                        }
-                      </datalist>
-                    </div>
-                  </div>
-                  <div class="col-md-4">
-                    <div class="input-group">
-                      <span class="input-group-text">Subtitle Source</span>
-                      <select class="form-select"
-                        name="subtitleMode"
-                        [(ngModel)]="subtitleMode"
-                        (change)="subtitleModeChanged()"
-                        [disabled]="addInProgress || downloads.loading"
-                        ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
-                        @for (mode of subtitleModes; track mode.id) {
-                          <option [ngValue]="mode.id">{{ mode.text }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-                }
-                @if (isVideoType()) {
-                  <div class="col-md-4">
-                    <div class="input-group">
-                      <span class="input-group-text">Video Codec</span>
-                      <select class="form-select"
-                        name="videoCodec"
-                        [(ngModel)]="videoCodec"
-                        (change)="videoCodecChanged()"
-                        [disabled]="addInProgress || downloads.loading"
-                        ngbTooltip="Prefer a specific video codec. Falls back to best available if not found.">
-                        @for (vc of videoCodecs; track vc.id) {
-                          <option [ngValue]="vc.id">{{ vc.text }}</option>
-                        }
-                      </select>
-                    </div>
-                  </div>
-                }
                 <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
@@ -506,8 +601,9 @@
             <app-master-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
+          <th scope="col">Type</th>
           <th scope="col">Quality</th>
-          <th scope="col">Codec</th>
+          <th scope="col">Codec / Format</th>
           <th scope="col">File Size</th>
           <th scope="col">Downloaded</th>
           <th scope="col" style="width: 8rem;"></th>
@@ -536,15 +632,18 @@
               <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
                 <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
               } @else {
-                <span [style.cursor]="entry[1].status === 'error' ? 'pointer' : 'default'"
-                  (click)="entry[1].status === 'error' ? toggleErrorDetail(entry[0]) : null">
-                  {{entry[1].title}}
-                  @if (entry[1].status === 'error' && !isErrorExpanded(entry[0])) {
-                    <small class="text-danger ms-2">
-                      <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
-                    </small>
-                  }
-                </span>
+                @if (entry[1].status === 'error') {
+                  <button type="button" class="btn btn-link p-0 text-start align-baseline" (click)="toggleErrorDetail(entry[0])">
+                    {{entry[1].title}}
+                    @if (!isErrorExpanded(entry[0])) {
+                      <small class="text-danger ms-2">
+                        <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
+                      </small>
+                    }
+                  </button>
+                } @else {
+                  <span>{{entry[1].title}}</span>
+                }
               }</span>
               @if (entry[1].status === 'error' && isErrorExpanded(entry[0])) {
                 <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
@@ -570,6 +669,9 @@
                   </div>
                 </div>
               }
+            </td>
+            <td class="text-nowrap">
+              {{ downloadTypeLabel(entry[1]) }}
             </td>
             <td class="text-nowrap">
               {{ formatQualityLabel(entry[1]) }}
@@ -611,6 +713,7 @@
                 getChapterFileName(chapterFile.filename) }}</a>
             </div>
           </td>
+          <td></td>
           <td></td>
           <td></td>
           <td>
