@@ -34,7 +34,7 @@ RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
     UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --no-dev --compile-bytecode && \
     uv cache clean && \
     rm -f /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/uvw && \
-    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y v2.7.2 && \
+    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y && \
     apt-get purge -y --auto-remove build-essential && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /.cache && chmod 777 /.cache
