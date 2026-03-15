@@ -35,7 +35,7 @@ jobs:
       - name: Run backend tests
         run: python -m unittest discover -s app/tests -p "test_*.py"
       - name: Run Trivy filesystem scan
-        uses: aquasecurity/trivy-action@0.33.1
+        uses: aquasecurity/trivy-action@0.34.0
         with:
           scan-type: fs
           scan-ref: .
