@@ -3,18 +3,18 @@ import { Checkable } from "../interfaces";
 import { FormsModule } from "@angular/forms";
 
 @Component({
-    selector: 'app-master-checkbox',
+    selector: 'app-select-all-checkbox',
     template: `
   <div class="form-check">
-    <input type="checkbox" class="form-check-input" id="{{id()}}-select-all" #masterCheckbox [(ngModel)]="selected" (change)="clicked()">
-    <label class="form-check-label" for="{{id()}}-select-all"></label>
+    <input type="checkbox" class="form-check-input" id="{{id()}}-select-all" #masterCheckbox [(ngModel)]="selected" (change)="clicked()" [attr.aria-label]="'Select all ' + id() + ' items'">
+    <label class="form-check-label visually-hidden" for="{{id()}}-select-all">Select all</label>
   </div>
 `,
 imports: [
   FormsModule
 ]
 })
-export class MasterCheckboxComponent {
+export class SelectAllCheckboxComponent {
   readonly id = input.required<string>();
   readonly list = input.required<Map<string, Checkable>>();
   readonly changed = output<number>();

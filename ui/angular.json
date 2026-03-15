@@ -33,9 +33,7 @@
               "node_modules/@ng-select/ng-select/themes/default.theme.css",
               "src/styles.sass"
             ],
-            "scripts": [
-              "node_modules/bootstrap/dist/js/bootstrap.bundle.min.js"
-            ],
+            "scripts": [],
             "serviceWorker": "ngsw-config.json",
             "browser": "src/main.ts",
             "polyfills": [

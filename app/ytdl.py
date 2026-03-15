@@ -229,6 +229,12 @@ class DownloadInfo:
 class Download:
     manager = None
 
+    @classmethod
+    def shutdown_manager(cls):
+        if cls.manager is not None:
+            cls.manager.shutdown()
+            cls.manager = None
+
     def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
         self.download_dir = download_dir
         self.temp_dir = temp_dir
@@ -568,20 +574,33 @@ class PersistentQueue:
             log_prefix = f"PersistentQueue:{self.identifier} repair (sqlite3/file)"
             log.debug(f"{log_prefix} started")
             try:
-                result = subprocess.run(
-                    f"sqlite3 {self.path} '.recover' | sqlite3 {self.path}.tmp",
+                recover_proc = subprocess.Popen(
+                    ["sqlite3", self.path, ".recover"],
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    text=True,
+                )
+                run_result = subprocess.run(
+                    ["sqlite3", f"{self.path}.tmp"],
+                    stdin=recover_proc.stdout,
                     capture_output=True,
                     text=True,
-                    shell=True,
-                    timeout=60
+                    timeout=60,
                 )
-                if result.stderr:
-                    log.debug(f"{log_prefix} failed: {result.stderr}")
+                if recover_proc.stdout is not None:
+                    recover_proc.stdout.close()
+                recover_stderr = recover_proc.stderr.read() if recover_proc.stderr is not None else ""
+                recover_proc.wait(timeout=60)
+                if run_result.stderr or recover_stderr:
+                    error_text = " ".join(part for part in [recover_stderr.strip(), run_result.stderr.strip()] if part)
+                    log.debug(f"{log_prefix} failed: {error_text}")
                 else:
                     shutil.move(f"{self.path}.tmp", self.path)
-                    log.debug(f"{log_prefix}{result.stdout or " was successful, no output"}")
+                    log.debug(f"{log_prefix}{run_result.stdout or ' was successful, no output'}")
             except FileNotFoundError:
                 log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
+            except subprocess.TimeoutExpired:
+                log.debug(f"{log_prefix} failed: sqlite recovery timed out")
 
 class DownloadQueue:
     def __init__(self, config, notifier):
@@ -629,7 +648,7 @@ class DownloadQueue:
             if download.tmpfilename and os.path.isfile(download.tmpfilename):
                 try:
                     os.remove(download.tmpfilename)
-                except:
+                except OSError:
                     pass
             download.info.status = 'error'
         download.close()
@@ -898,7 +917,7 @@ class DownloadQueue:
     async def start_pending(self, ids):
         for id in ids:
             if not self.pending.exists(id):
-                log.warn(f'requested start for non-existent download {id}')
+                log.warning(f'requested start for non-existent download {id}')
                 continue
             dl = self.pending.get(id)
             self.queue.put(dl)
@@ -915,7 +934,7 @@ class DownloadQueue:
                 await self.notifier.canceled(id)
                 continue
             if not self.queue.exists(id):
-                log.warn(f'requested cancel for non-existent download {id}')
+                log.warning(f'requested cancel for non-existent download {id}')
                 continue
             if self.queue.get(id).started():
                 self.queue.get(id).cancel()
@@ -927,7 +946,7 @@ class DownloadQueue:
     async def clear(self, ids):
         for id in ids:
             if not self.done.exists(id):
-                log.warn(f'requested delete for non-existent download {id}')
+                log.warning(f'requested delete for non-existent download {id}')
                 continue
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
@@ -935,7 +954,7 @@ class DownloadQueue:
                     dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
                     os.remove(os.path.join(dldirectory, dl.info.filename))
                 except Exception as e:
-                    log.warn(f'deleting file for download {id} failed with error message {e!r}')
+                    log.warning(f'deleting file for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}

@@ -1,15 +1,16 @@
 import { AsyncPipe, DatePipe, KeyValuePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { AfterViewInit, Component, ElementRef, viewChild, inject, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
 import { Observable, map, distinctUntilChanged } from 'rxjs';
 import { FormsModule } from '@angular/forms';
+import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { DownloadsService } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { Themes } from './theme';
 import {
   Download,
@@ -28,10 +29,11 @@ import {
   State,
 } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
-import { MasterCheckboxComponent , SlaveCheckboxComponent} from './components/';
+import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/';
 
 @Component({
   selector: 'app-root',
+  changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
         FormsModule,
         KeyValuePipe,
@@ -43,16 +45,18 @@ import { MasterCheckboxComponent , SlaveCheckboxComponent} from './components/';
         EtaPipe,
         SpeedPipe,
         FileSizePipe,
-        MasterCheckboxComponent,
-        SlaveCheckboxComponent,
+        SelectAllCheckboxComponent,
+        ItemCheckboxComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.sass',
 })
-export class App implements AfterViewInit, OnInit {
+export class App implements AfterViewInit, OnInit, OnDestroy {
   downloads = inject(DownloadsService);
   private cookieService = inject(CookieService);
   private http = inject(HttpClient);
+  private cdr = inject(ChangeDetectorRef);
+  private destroyRef = inject(DestroyRef);
 
   addUrl!: string;
   downloadTypes: Option[] = DOWNLOAD_TYPES;
@@ -61,6 +65,7 @@ export class App implements AfterViewInit, OnInit {
   audioFormats: AudioFormatOption[] = AUDIO_FORMATS;
   captionFormats: Option[] = CAPTION_FORMATS;
   thumbnailFormats: Option[] = THUMBNAIL_FORMATS;
+  formatOptions: Option[] = [];
   qualities!: Quality[];
   downloadType: string;
   codec: string;
@@ -104,6 +109,14 @@ export class App implements AfterViewInit, OnInit {
     subtitleMode: string;
   }> = {};
   private readonly selectionCookiePrefix = 'metube_selection_';
+  private readonly settingsCookieExpiryDays = 3650;
+  private lastFocusedElement: HTMLElement | null = null;
+  private colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+  private onColorSchemeChanged = () => {
+    if (this.activeTheme && this.activeTheme.id === 'auto') {
+      this.setTheme(this.activeTheme);
+    }
+  };
 
   // Download metrics
   activeDownloads = 0;
@@ -111,15 +124,14 @@ export class App implements AfterViewInit, OnInit {
   completedDownloads = 0;
   failedDownloads = 0;
   totalSpeed = 0;
+  hasCompletedDone = false;
+  hasFailedDone = false;
 
-  readonly queueMasterCheckbox = viewChild<MasterCheckboxComponent>('queueMasterCheckboxRef');
+  readonly queueMasterCheckbox = viewChild<SelectAllCheckboxComponent>('queueMasterCheckboxRef');
   readonly queueDelSelected = viewChild.required<ElementRef>('queueDelSelected');
   readonly queueDownloadSelected = viewChild.required<ElementRef>('queueDownloadSelected');
-  readonly doneMasterCheckbox = viewChild<MasterCheckboxComponent>('doneMasterCheckboxRef');
+  readonly doneMasterCheckbox = viewChild<SelectAllCheckboxComponent>('doneMasterCheckboxRef');
   readonly doneDelSelected = viewChild.required<ElementRef>('doneDelSelected');
-  readonly doneClearCompleted = viewChild.required<ElementRef>('doneClearCompleted');
-  readonly doneClearFailed = viewChild.required<ElementRef>('doneClearFailed');
-  readonly doneRetryFailed = viewChild.required<ElementRef>('doneRetryFailed');
   readonly doneDownloadSelected = viewChild.required<ElementRef>('doneDownloadSelected');
 
   faTrashAlt = faTrashAlt;
@@ -221,6 +233,7 @@ export class App implements AfterViewInit, OnInit {
     this.restoreSelection(this.downloadType);
     this.normalizeSelectionsForType();
     this.setQualities();
+    this.refreshFormatOptions();
     this.previousDownloadType = this.downloadType;
     this.saveSelection(this.downloadType);
     this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
@@ -228,53 +241,52 @@ export class App implements AfterViewInit, OnInit {
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
     // Subscribe to download updates
-    this.downloads.queueChanged.subscribe(() => {
+    this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
+      this.cdr.markForCheck();
     });
-    this.downloads.doneChanged.subscribe(() => {
+    this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
       this.rebuildSortedDone();
+      this.cdr.markForCheck();
     });
     // Subscribe to real-time updates
-    this.downloads.updated.subscribe(() => {
+    this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
+      this.cdr.markForCheck();
     });
   }
 
   ngOnInit() {
-    this.downloads.getCookieStatus().subscribe(data => {
+    this.downloads.getCookieStatus().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
+      this.cdr.markForCheck();
     });
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
-    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
-      if (this.activeTheme && this.activeTheme.id === 'auto') {
-         this.setTheme(this.activeTheme);
-      }
-    });
+    this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
   }
 
   ngAfterViewInit() {
-    this.downloads.queueChanged.subscribe(() => {
+    this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.queueMasterCheckbox()?.selectionChanged();
+      this.cdr.markForCheck();
     });
-    this.downloads.doneChanged.subscribe(() => {
+    this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.doneMasterCheckbox()?.selectionChanged();
-      let completed = 0, failed = 0;
-      this.downloads.done.forEach(dl => {
-        if (dl.status === 'finished')
-          completed++;
-        else if (dl.status === 'error')
-          failed++;
-      });
-      this.doneClearCompleted().nativeElement.disabled = completed === 0;
-      this.doneClearFailed().nativeElement.disabled = failed === 0;
-      this.doneRetryFailed().nativeElement.disabled = failed === 0;
+      this.updateDoneActionButtons();
+      this.cdr.markForCheck();
     });
+    // Initialize action button states for already-loaded entries.
+    this.updateDoneActionButtons();
     this.fetchVersionInfo();
+  }
+
+  ngOnDestroy() {
+    this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
@@ -287,7 +299,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   qualityChanged() {
-    this.cookieService.set('metube_quality', this.quality, { expires: 3650 });
+    this.cookieService.set('metube_quality', this.quality, { expires: this.settingsCookieExpiryDays });
     this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
@@ -296,16 +308,17 @@ export class App implements AfterViewInit, OnInit {
   downloadTypeChanged() {
     this.saveSelection(this.previousDownloadType);
     this.restoreSelection(this.downloadType);
-    this.cookieService.set('metube_download_type', this.downloadType, { expires: 3650 });
+    this.cookieService.set('metube_download_type', this.downloadType, { expires: this.settingsCookieExpiryDays });
     this.normalizeSelectionsForType(false);
     this.setQualities();
+    this.refreshFormatOptions();
     this.saveSelection(this.downloadType);
     this.previousDownloadType = this.downloadType;
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   codecChanged() {
-    this.cookieService.set('metube_codec', this.codec, { expires: 3650 });
+    this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
     this.saveSelection(this.downloadType);
   }
 
@@ -342,7 +355,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   getYtdlOptionsUpdateTime() {
-    this.downloads.ytdlOptionsChanged.subscribe({
+    this.downloads.ytdlOptionsChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       next: (data:any) => {
         if (data['success']){
@@ -351,11 +364,12 @@ export class App implements AfterViewInit, OnInit {
         }else{
           alert("Error reload yt-dlp options: "+data['msg']);
         }
+        this.cdr.markForCheck();
       }
     });
   }
   getConfiguration() {
-    this.downloads.configurationChanged.subscribe({
+    this.downloads.configurationChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       next: (config: any) => {
         const playlistItemLimit = config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'];
@@ -366,6 +380,7 @@ export class App implements AfterViewInit, OnInit {
         if (!this.chapterTemplate) {
           this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
         }
+        this.cdr.markForCheck();
       }
     });
   }
@@ -380,7 +395,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   themeChanged(theme: Theme) {
-    this.cookieService.set('metube_theme', theme.id, { expires: 3650 });
+    this.cookieService.set('metube_theme', theme.id, { expires: this.settingsCookieExpiryDays });
     this.setTheme(theme);
   }
 
@@ -394,7 +409,7 @@ export class App implements AfterViewInit, OnInit {
   }
 
   formatChanged() {
-    this.cookieService.set('metube_format', this.format, { expires: 3650 });
+    this.cookieService.set('metube_format', this.format, { expires: this.settingsCookieExpiryDays });
     this.setQualities();
     this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
@@ -402,28 +417,29 @@ export class App implements AfterViewInit, OnInit {
   }
 
   autoStartChanged() {
-    this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: 3650 });
+    this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
 
   splitByChaptersChanged() {
-    this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: 3650 });
+    this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
 
   chapterTemplateChanged() {
     // Restore default if template is cleared - get from configuration
     if (!this.chapterTemplate || this.chapterTemplate.trim() === '') {
-      this.chapterTemplate = this.downloads.configuration['OUTPUT_TEMPLATE_CHAPTER'];
+      const configuredTemplate = this.downloads.configuration['OUTPUT_TEMPLATE_CHAPTER'];
+      this.chapterTemplate = typeof configuredTemplate === 'string' ? configuredTemplate : '';
     }
-    this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: 3650 });
+    this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: this.settingsCookieExpiryDays });
   }
 
   subtitleLanguageChanged() {
-    this.cookieService.set('metube_subtitle_language', this.subtitleLanguage, { expires: 3650 });
+    this.cookieService.set('metube_subtitle_language', this.subtitleLanguage, { expires: this.settingsCookieExpiryDays });
     this.saveSelection(this.downloadType);
   }
 
   subtitleModeChanged() {
-    this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: 3650 });
+    this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: this.settingsCookieExpiryDays });
     this.saveSelection(this.downloadType);
   }
 
@@ -467,6 +483,26 @@ export class App implements AfterViewInit, OnInit {
     this.doneDownloadSelected().nativeElement.disabled = checked == 0;
   }
 
+  private updateDoneActionButtons() {
+    let completed = 0;
+    let failed = 0;
+    this.downloads.done.forEach((download) => {
+      const isFailed = download.status === 'error';
+      const isCompleted = !isFailed && (
+        download.status === 'finished' ||
+        download.status === 'completed' ||
+        Boolean(download.filename)
+      );
+      if (isCompleted) {
+        completed++;
+      } else if (isFailed) {
+        failed++;
+      }
+    });
+    this.hasCompletedDone = completed > 0;
+    this.hasFailedDone = failed > 0;
+  }
+
   setQualities() {
     if (this.downloadType === 'video') {
       this.qualities = this.format === 'ios'
@@ -482,6 +518,22 @@ export class App implements AfterViewInit, OnInit {
     this.quality = exists ? this.quality : 'best';
   }
 
+  refreshFormatOptions() {
+    if (this.downloadType === 'video') {
+      this.formatOptions = this.videoFormats;
+      return;
+    }
+    if (this.downloadType === 'audio') {
+      this.formatOptions = this.audioFormats;
+      return;
+    }
+    if (this.downloadType === 'captions') {
+      this.formatOptions = this.captionFormats;
+      return;
+    }
+    this.formatOptions = this.thumbnailFormats;
+  }
+
   showCodecSelector() {
     return this.downloadType === 'video';
   }
@@ -495,19 +547,6 @@ export class App implements AfterViewInit, OnInit {
       return this.format !== 'ios';
     }
     return this.downloadType === 'audio';
-  }
-
-  getFormatOptions() {
-    if (this.downloadType === 'video') {
-      return this.videoFormats;
-    }
-    if (this.downloadType === 'audio') {
-      return this.audioFormats;
-    }
-    if (this.downloadType === 'captions') {
-      return this.captionFormats;
-    }
-    return this.thumbnailFormats;
   }
 
   private normalizeSelectionsForType(resetForTypeChange = false) {
@@ -535,8 +574,8 @@ export class App implements AfterViewInit, OnInit {
       this.format = 'jpg';
       this.quality = 'best';
     }
-    this.cookieService.set('metube_format', this.format, { expires: 3650 });
-    this.cookieService.set('metube_codec', this.codec, { expires: 3650 });
+    this.cookieService.set('metube_format', this.format, { expires: this.settingsCookieExpiryDays });
+    this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
   }
 
   private saveSelection(type: string) {
@@ -552,7 +591,7 @@ export class App implements AfterViewInit, OnInit {
     this.cookieService.set(
       this.selectionCookiePrefix + type,
       JSON.stringify(selection),
-      { expires: 3650 }
+      { expires: this.settingsCookieExpiryDays }
     );
   }
 
@@ -588,45 +627,37 @@ export class App implements AfterViewInit, OnInit {
     }
   }
 
-  addDownload(
-    url?: string,
-    downloadType?: string,
-    codec?: string,
-    quality?: string,
-    format?: string,
-    folder?: string,
-    customNamePrefix?: string,
-    playlistItemLimit?: number,
-    autoStart?: boolean,
-    splitByChapters?: boolean,
-    chapterTemplate?: string,
-    subtitleLanguage?: string,
-    subtitleMode?: string,
-  ) {
-    url = url ?? this.addUrl
-    downloadType = downloadType ?? this.downloadType
-    codec = codec ?? this.codec
-    quality = quality ?? this.quality
-    format = format ?? this.format
-    folder = folder ?? this.folder
-    customNamePrefix = customNamePrefix ?? this.customNamePrefix
-    playlistItemLimit = playlistItemLimit ?? this.playlistItemLimit
-    autoStart = autoStart ?? this.autoStart
-    splitByChapters = splitByChapters ?? this.splitByChapters
-    chapterTemplate = chapterTemplate ?? this.chapterTemplate
-    subtitleLanguage = subtitleLanguage ?? this.subtitleLanguage
-    subtitleMode = subtitleMode ?? this.subtitleMode
+  private buildAddPayload(overrides: Partial<AddDownloadPayload> = {}): AddDownloadPayload {
+    return {
+      url: overrides.url ?? this.addUrl,
+      downloadType: overrides.downloadType ?? this.downloadType,
+      codec: overrides.codec ?? this.codec,
+      quality: overrides.quality ?? this.quality,
+      format: overrides.format ?? this.format,
+      folder: overrides.folder ?? this.folder,
+      customNamePrefix: overrides.customNamePrefix ?? this.customNamePrefix,
+      playlistItemLimit: overrides.playlistItemLimit ?? this.playlistItemLimit,
+      autoStart: overrides.autoStart ?? this.autoStart,
+      splitByChapters: overrides.splitByChapters ?? this.splitByChapters,
+      chapterTemplate: overrides.chapterTemplate ?? this.chapterTemplate,
+      subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
+      subtitleMode: overrides.subtitleMode ?? this.subtitleMode,
+    };
+  }
+
+  addDownload(overrides: Partial<AddDownloadPayload> = {}) {
+    const payload = this.buildAddPayload(overrides);
 
     // Validate chapter template if chapter splitting is enabled
-    if (splitByChapters && !chapterTemplate.includes('%(section_number)')) {
+    if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
       alert('Chapter template must include %(section_number)');
       return;
     }
 
-    console.debug('Downloading: url=' + url + ' downloadType=' + downloadType + ' codec=' + codec + ' quality=' + quality + ' format=' + format + ' folder=' + folder + ' customNamePrefix=' + customNamePrefix + ' playlistItemLimit=' + playlistItemLimit + ' autoStart=' + autoStart + ' splitByChapters=' + splitByChapters + ' chapterTemplate=' + chapterTemplate + ' subtitleLanguage=' + subtitleLanguage + ' subtitleMode=' + subtitleMode);
+    console.debug('Downloading:', payload);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(url, downloadType, codec, quality, format, folder, customNamePrefix, playlistItemLimit, autoStart, splitByChapters, chapterTemplate, subtitleLanguage, subtitleMode).subscribe((status: Status) => {
+    this.downloads.add(payload).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
@@ -651,21 +682,21 @@ export class App implements AfterViewInit, OnInit {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload(
-      download.url,
-      download.download_type,
-      download.codec,
-      download.quality,
-      download.format,
-      download.folder,
-      download.custom_name_prefix,
-      download.playlist_item_limit,
-      true,
-      download.split_by_chapters,
-      download.chapter_template,
-      download.subtitle_language,
-      download.subtitle_mode,
-    );
+    this.addDownload({
+      url: download.url,
+      downloadType: download.download_type,
+      codec: download.codec,
+      quality: download.quality,
+      format: download.format,
+      folder: download.folder,
+      customNamePrefix: download.custom_name_prefix,
+      playlistItemLimit: download.playlist_item_limit,
+      autoStart: true,
+      splitByChapters: download.split_by_chapters,
+      chapterTemplate: download.chapter_template,
+      subtitleLanguage: download.subtitle_language,
+      subtitleMode: download.subtitle_mode,
+    });
     this.downloads.delById('done', [key]).subscribe();
   }
 
@@ -719,7 +750,7 @@ export class App implements AfterViewInit, OnInit {
     }
 
     if (download.folder) {
-      baseDir += download.folder + '/';
+      baseDir += this.encodeFolderPath(download.folder);
     }
 
     return baseDir + encodeURIComponent(download.filename);
@@ -743,10 +774,18 @@ export class App implements AfterViewInit, OnInit {
     }
 
     if (download.folder) {
-      baseDir += download.folder + '/';
+      baseDir += this.encodeFolderPath(download.folder);
     }
 
     return baseDir + encodeURIComponent(chapterFilename);
+  }
+
+  private encodeFolderPath(folder: string): string {
+    return folder
+      .split('/')
+      .filter(segment => segment.length > 0)
+      .map(segment => encodeURIComponent(segment))
+      .join('/') + '/';
   }
 
   getChapterFileName(filepath: string) {
@@ -756,8 +795,12 @@ export class App implements AfterViewInit, OnInit {
   }
 
   isNumber(event: KeyboardEvent) {
-    const charCode = +event.code || event.keyCode;
-    if (charCode > 31 && (charCode  < 48 || charCode > 57)) {
+    const allowedControlKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
+    if (allowedControlKeys.includes(event.key)) {
+      return;
+    }
+
+    if (!/^[0-9]$/.test(event.key)) {
       event.preventDefault();
     }
   }
@@ -769,16 +812,24 @@ export class App implements AfterViewInit, OnInit {
 
   // Open the Batch Import modal
   openBatchImportModal(): void {
+    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
     this.batchImportModalOpen = true;
     this.batchImportText = '';
     this.batchImportStatus = '';
     this.importInProgress = false;
     this.cancelImportFlag = false;
+    setTimeout(() => {
+      const textarea = document.getElementById('batch-import-textarea');
+      if (textarea instanceof HTMLTextAreaElement) {
+        textarea.focus();
+      }
+    }, 0);
   }
 
   // Close the Batch Import modal
   closeBatchImportModal(): void {
     this.batchImportModalOpen = false;
+    this.lastFocusedElement?.focus();
   }
 
   // Start importing URLs from the batch modal textarea
@@ -810,9 +861,7 @@ export class App implements AfterViewInit, OnInit {
       const url = urls[index];
       this.batchImportStatus = `Importing URL ${index + 1} of ${urls.length}: ${url}`;
       // Pass current selection options to backend
-      this.downloads.add(url, this.downloadType, this.codec, this.quality, this.format, this.folder, this.customNamePrefix,
-        this.playlistItemLimit, this.autoStart, this.splitByChapters, this.chapterTemplate,
-        this.subtitleLanguage, this.subtitleMode)
+      this.downloads.add(this.buildAddPayload({ url }))
         .subscribe({
           next: (status: Status) => {
             if (status.status === 'error') {
@@ -921,7 +970,7 @@ export class App implements AfterViewInit, OnInit {
 
   toggleSortOrder() {
     this.sortAscending = !this.sortAscending;
-    this.cookieService.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false', { expires: 3650 });
+    this.cookieService.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
     this.rebuildSortedDone();
   }
 
@@ -1050,15 +1099,35 @@ export class App implements AfterViewInit, OnInit {
   }
 
   private updateMetrics() {
-    this.activeDownloads = Array.from(this.downloads.queue.values()).filter(d => d.status === 'downloading' || d.status === 'preparing').length;
-    this.queuedDownloads = Array.from(this.downloads.queue.values()).filter(d => d.status === 'pending').length;
-    this.completedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'finished').length;
-    this.failedDownloads = Array.from(this.downloads.done.values()).filter(d => d.status === 'error').length;
-    
-    // Calculate total speed from downloading items
-    const downloadingItems = Array.from(this.downloads.queue.values())
-      .filter(d => d.status === 'downloading');
-    
-    this.totalSpeed = downloadingItems.reduce((total, item) => total + (item.speed || 0), 0);
+    let active = 0;
+    let queued = 0;
+    let completed = 0;
+    let failed = 0;
+    let speed = 0;
+
+    this.downloads.queue.forEach((download) => {
+      if (download.status === 'downloading') {
+        active++;
+        speed += download.speed || 0;
+      } else if (download.status === 'preparing') {
+        active++;
+      } else if (download.status === 'pending') {
+        queued++;
+      }
+    });
+
+    this.downloads.done.forEach((download) => {
+      if (download.status === 'finished') {
+        completed++;
+      } else if (download.status === 'error') {
+        failed++;
+      }
+    });
+
+    this.activeDownloads = active;
+    this.queuedDownloads = queued;
+    this.completedDownloads = completed;
+    this.failedDownloads = failed;
+    this.totalSpeed = speed;
   }
 }

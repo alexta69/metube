@@ -6,13 +6,50 @@ on:
       - 'master'
 
 jobs:
+  quality-checks:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+      - name: Set up Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: lts/*
+      - name: Enable pnpm
+        run: corepack enable
+      - name: Install frontend dependencies
+        working-directory: ui
+        run: pnpm install --frozen-lockfile
+      - name: Run frontend lint
+        working-directory: ui
+        run: pnpm run lint
+      - name: Build frontend
+        working-directory: ui
+        run: pnpm run build
+      - name: Set up Python
+        uses: actions/setup-python@v6
+        with:
+          python-version: '3.13'
+      - name: Run backend smoke checks
+        run: python -m compileall app
+      - name: Run backend tests
+        run: python -m unittest discover -s app/tests -p "test_*.py"
+      - name: Run Trivy filesystem scan
+        uses: aquasecurity/trivy-action@0.33.1
+        with:
+          scan-type: fs
+          scan-ref: .
+          format: table
+          severity: CRITICAL,HIGH
+
   dockerhub-build-push:
+    needs: quality-checks
     runs-on: ubuntu-latest
     steps:
       -
         name: Get current date
         id: date
-        run: echo "::set-output name=date::$(date +'%Y.%m.%d')"
+        run: echo "date=$(date +'%Y.%m.%d')" >> "$GITHUB_OUTPUT"
       -
         name: Checkout
         uses: actions/checkout@v6

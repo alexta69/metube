@@ -53,12 +53,12 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
 
     if download_type == "audio":
         if format not in AUDIO_FORMATS:
-            raise Exception(f"Unknown audio format {format}")
+            raise ValueError(f"Unknown audio format {format}")
         return f"bestaudio[ext={format}]/bestaudio/best"
 
     if download_type == "video":
         if format not in ("any", "mp4", "ios"):
-            raise Exception(f"Unknown video format {format}")
+            raise ValueError(f"Unknown video format {format}")
         vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format in ("mp4", "ios") else ("", "")
         vres = f"[height<={quality}]" if quality not in ("best", "worst") else ""
         vcombo = vres + vfmt
@@ -71,12 +71,12 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
             return f"bestvideo{codec_filter}{vcombo}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
         return f"bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
 
-    raise Exception(f"Unknown download_type {download_type}")
+    raise ValueError(f"Unknown download_type {download_type}")
 
 
 def get_opts(
     download_type: str,
-    codec: str,
+    _codec: str,
     format: str,
     quality: str,
     ytdl_opts: dict,
@@ -96,8 +96,6 @@ def get_opts(
     Returns:
       dict: extended options
     """
-    del codec  # kept for parity with get_format signature
-
     download_type = (download_type or "video").strip().lower()
     format = (format or "any").strip().lower()
     opts = copy.deepcopy(ytdl_opts)
@@ -113,7 +111,7 @@ def get_opts(
             }
         )
 
-        if format not in ("wav") and "writethumbnail" not in opts:
+        if format != "wav" and "writethumbnail" not in opts:
             opts["writethumbnail"] = True
             postprocessors.append(
                 {

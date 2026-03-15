@@ -5,6 +5,22 @@ import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket.service';
 import { Download, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
+
+export interface AddDownloadPayload {
+  url: string;
+  downloadType: string;
+  codec: string;
+  quality: string;
+  format: string;
+  folder: string;
+  customNamePrefix: string;
+  playlistItemLimit: number;
+  autoStart: boolean;
+  splitByChapters: boolean;
+  chapterTemplate: string;
+  subtitleLanguage: string;
+  subtitleMode: string;
+}
 @Injectable({
   providedIn: 'root'
 })
@@ -14,16 +30,15 @@ export class DownloadsService {
   loading = true;
   queue = new Map<string, Download>();
   done = new Map<string, Download>();
-  queueChanged = new Subject();
-  doneChanged = new Subject();
-  customDirsChanged = new Subject();
-  ytdlOptionsChanged = new Subject();
-  configurationChanged = new Subject();
-  updated = new Subject();
+  queueChanged = new Subject<void>();
+  doneChanged = new Subject<void>();
+  customDirsChanged = new Subject<Record<string, string[]>>();
+  ytdlOptionsChanged = new Subject<Record<string, unknown>>();
+  configurationChanged = new Subject<Record<string, unknown>>();
+  updated = new Subject<void>();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  configuration: any = {};
-  customDirs = {};
+  configuration: Record<string, unknown> = {};
+  customDirs: Record<string, string[]> = {};
 
   constructor() {
     this.socket.fromEvent('all')
@@ -35,15 +50,15 @@ export class DownloadsService {
       data[0].forEach(entry => this.queue.set(...entry));
       this.done.clear();
       data[1].forEach(entry => this.done.set(...entry));
-      this.queueChanged.next(null);
-      this.doneChanged.next(null);
+      this.queueChanged.next();
+      this.doneChanged.next();
     });
     this.socket.fromEvent('added')
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: Download = JSON.parse(strdata);
       this.queue.set(data.url, data);
-      this.queueChanged.next(null);
+      this.queueChanged.next();
     });
     this.socket.fromEvent('updated')
     .pipe(takeUntilDestroyed())
@@ -53,7 +68,7 @@ export class DownloadsService {
       data.checked = !!dl?.checked;
       data.deleting = !!dl?.deleting;
       this.queue.set(data.url, data);
-      this.updated.next(null);
+      this.updated.next();
     });
     this.socket.fromEvent('completed')
     .pipe(takeUntilDestroyed())
@@ -61,22 +76,22 @@ export class DownloadsService {
       const data: Download = JSON.parse(strdata);
       this.queue.delete(data.url);
       this.done.set(data.url, data);
-      this.queueChanged.next(null);
-      this.doneChanged.next(null);
+      this.queueChanged.next();
+      this.doneChanged.next();
     });
     this.socket.fromEvent('canceled')
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: string = JSON.parse(strdata);
       this.queue.delete(data);
-      this.queueChanged.next(null);
+      this.queueChanged.next();
     });
     this.socket.fromEvent('cleared')
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: string = JSON.parse(strdata);
       this.done.delete(data);
-      this.doneChanged.next(null);
+      this.doneChanged.next();
     });
     this.socket.fromEvent('configuration')
     .pipe(takeUntilDestroyed())
@@ -103,39 +118,29 @@ export class DownloadsService {
   }
 
   handleHTTPError(error: HttpErrorResponse) {
-    const msg = error.error instanceof ErrorEvent ? error.error.message : error.error;
-    return of({status: 'error', msg: msg})
+    const msg = error.error instanceof ErrorEvent
+      ? error.error.message
+      : (typeof error.error === 'string'
+          ? error.error
+          : (error.error?.msg || error.message || 'Request failed'));
+    return of({ status: 'error', msg });
   }
 
-  public add(
-    url: string,
-    downloadType: string,
-    codec: string,
-    quality: string,
-    format: string,
-    folder: string,
-    customNamePrefix: string,
-    playlistItemLimit: number,
-    autoStart: boolean,
-    splitByChapters: boolean,
-    chapterTemplate: string,
-    subtitleLanguage: string,
-    subtitleMode: string,
-  ) {
+  public add(payload: AddDownloadPayload) {
     return this.http.post<Status>('add', {
-      url: url,
-      download_type: downloadType,
-      codec: codec,
-      quality: quality,
-      format: format,
-      folder: folder,
-      custom_name_prefix: customNamePrefix,
-      playlist_item_limit: playlistItemLimit,
-      auto_start: autoStart,
-      split_by_chapters: splitByChapters,
-      chapter_template: chapterTemplate,
-      subtitle_language: subtitleLanguage,
-      subtitle_mode: subtitleMode,
+      url: payload.url,
+      download_type: payload.downloadType,
+      codec: payload.codec,
+      quality: payload.quality,
+      format: payload.format,
+      folder: payload.folder,
+      custom_name_prefix: payload.customNamePrefix,
+      playlist_item_limit: payload.playlistItemLimit,
+      auto_start: payload.autoStart,
+      split_by_chapters: payload.splitByChapters,
+      chapter_template: payload.chapterTemplate,
+      subtitle_language: payload.subtitleLanguage,
+      subtitle_mode: payload.subtitleMode,
     }).pipe(
       catchError(this.handleHTTPError)
     );
@@ -168,49 +173,6 @@ export class DownloadsService {
     const ids: string[] = [];
     this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
     return this.delById(where, ids);
-  }
-  public addDownloadByUrl(url: string): Promise<{
-    response: Status} | {
-    status: string;
-    msg?: string;
-  }> {
-    const defaultDownloadType = 'video';
-    const defaultCodec = 'auto';
-    const defaultQuality = 'best';
-    const defaultFormat = 'mp4';
-    const defaultFolder = ''; 
-    const defaultCustomNamePrefix = '';
-    const defaultPlaylistItemLimit = 0;
-    const defaultAutoStart = true;
-    const defaultSplitByChapters = false;
-    const defaultChapterTemplate = this.configuration['OUTPUT_TEMPLATE_CHAPTER'];
-    const defaultSubtitleLanguage = 'en';
-    const defaultSubtitleMode = 'prefer_manual';
-
-    return new Promise((resolve, reject) => {
-      this.add(
-        url,
-        defaultDownloadType,
-        defaultCodec,
-        defaultQuality,
-        defaultFormat,
-        defaultFolder,
-        defaultCustomNamePrefix,
-        defaultPlaylistItemLimit,
-        defaultAutoStart,
-        defaultSplitByChapters,
-        defaultChapterTemplate,
-        defaultSubtitleLanguage,
-        defaultSubtitleMode,
-      )
-        .subscribe({
-          next: (response) => resolve(response),
-          error: (error) => reject(error)
-        });
-    });
-  }
-  public exportQueueUrls(): string[] {
-    return Array.from(this.queue.values()).map(download => download.url);
   }
   public cancelAdd() {
     return this.http.post<Status>('cancel-add', {}).pipe(

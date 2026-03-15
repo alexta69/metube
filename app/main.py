@@ -16,25 +16,15 @@ import pathlib
 import re
 from watchfiles import DefaultFilter, Change, awatch
 
-from ytdl import DownloadQueueNotifier, DownloadQueue
+from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
 
 def parseLogLevel(logLevel):
-    match logLevel:
-        case 'DEBUG':
-            return logging.DEBUG
-        case 'INFO':
-            return logging.INFO
-        case 'WARNING':
-            return logging.WARNING
-        case 'ERROR':
-            return logging.ERROR
-        case 'CRITICAL':
-            return logging.CRITICAL
-        case _:
-            return None
+    if not isinstance(logLevel, str):
+        return None
+    return getattr(logging, logLevel.upper(), None)
 
 # Configure logging before Config() uses it so early messages are not dropped.
 # Only configure if no handlers are set (avoid clobbering hosting app settings).
@@ -71,7 +61,7 @@ class Config:
         'KEYFILE': '',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
-        'MAX_CONCURRENT_DOWNLOADS': 3,
+        'MAX_CONCURRENT_DOWNLOADS': '3',
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',
     }
@@ -181,7 +171,7 @@ class ObjectSerializer(json.JSONEncoder):
         elif hasattr(obj, '__iter__') and not isinstance(obj, (str, bytes)):
             try:
                 return list(obj)
-            except:
+            except Exception:
                 pass
         # Fall back to default behavior
         return json.JSONEncoder.default(self, obj)
@@ -280,6 +270,7 @@ class Notifier(DownloadQueueNotifier):
 
 dqueue = DownloadQueue(config, Notifier())
 app.on_startup.append(lambda app: dqueue.initialize())
+app.on_cleanup.append(lambda app: Download.shutdown_manager())
 
 class FileOpsFilter(DefaultFilter):
     def __call__(self, change_type: int, path: str) -> bool:
@@ -330,12 +321,30 @@ async def watch_files():
 if config.YTDL_OPTIONS_FILE:
     app.on_startup.append(lambda app: watch_files())
 
+
+async def _read_json_request(request: web.Request) -> dict:
+    try:
+        post = await request.json()
+    except json.JSONDecodeError as exc:
+        raise web.HTTPBadRequest(reason='Invalid JSON request body') from exc
+    if not isinstance(post, dict):
+        raise web.HTTPBadRequest(reason='JSON request body must be an object')
+    return post
+
+
 @routes.post(config.URL_PREFIX + 'add')
 async def add(request):
     log.info("Received request to add download")
-    post = await request.json()
+    post = await _read_json_request(request)
     post = _migrate_legacy_request(post)
-    log.info(f"Request data: {post}")
+    log.info(
+        "Add download request: type=%s quality=%s format=%s has_folder=%s auto_start=%s",
+        post.get('download_type'),
+        post.get('quality'),
+        post.get('format'),
+        bool(post.get('folder')),
+        post.get('auto_start'),
+    )
     url = post.get('url')
     download_type = post.get('download_type')
     codec = post.get('codec')
@@ -415,7 +424,10 @@ async def add(request):
         quality = 'best'
         codec = 'auto'
 
-    playlist_item_limit = int(playlist_item_limit)
+    try:
+        playlist_item_limit = int(playlist_item_limit)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
 
     status = await dqueue.add(
         url,
@@ -441,7 +453,7 @@ async def cancel_add(request):
 
 @routes.post(config.URL_PREFIX + 'delete')
 async def delete(request):
-    post = await request.json()
+    post = await _read_json_request(request)
     ids = post.get('ids')
     where = post.get('where')
     if not ids or where not in ['queue', 'done']:
@@ -453,7 +465,7 @@ async def delete(request):
 
 @routes.post(config.URL_PREFIX + 'start')
 async def start(request):
-    post = await request.json()
+    post = await _read_json_request(request)
     ids = post.get('ids')
     log.info(f"Received request to start pending downloads for ids: {ids}")
     status = await dqueue.start_pending(ids)
@@ -468,17 +480,23 @@ async def upload_cookies(request):
     field = await reader.next()
     if field is None or field.name != 'cookies':
         return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'No cookies file provided'}))
+
+    max_size = 1_000_000  # 1MB limit
     size = 0
-    with open(COOKIES_PATH, 'wb') as f:
-        while True:
-            chunk = await field.read_chunk()
-            if not chunk:
-                break
-            size += len(chunk)
-            if size > 1_000_000:  # 1MB limit
-                os.remove(COOKIES_PATH)
-                return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'Cookie file too large (max 1MB)'}))
-            f.write(chunk)
+    content = bytearray()
+    while True:
+        chunk = await field.read_chunk()
+        if not chunk:
+            break
+        size += len(chunk)
+        if size > max_size:
+            return web.Response(status=400, text=serializer.encode({'status': 'error', 'msg': 'Cookie file too large (max 1MB)'}))
+        content.extend(chunk)
+
+    tmp_cookie_path = f"{COOKIES_PATH}.tmp"
+    with open(tmp_cookie_path, 'wb') as f:
+        f.write(content)
+    os.replace(tmp_cookie_path, COOKIES_PATH)
     config.set_runtime_override('cookiefile', COOKIES_PATH)
     log.info(f'Cookies file uploaded ({size} bytes)')
     return web.Response(text=serializer.encode({'status': 'ok', 'msg': f'Cookies uploaded ({size} bytes)'}))
@@ -543,6 +561,22 @@ async def connect(sid, environ):
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
 def get_custom_dirs():
+    cache_ttl_seconds = 5
+    now = asyncio.get_running_loop().time()
+    cache_key = (
+        config.DOWNLOAD_DIR,
+        config.AUDIO_DOWNLOAD_DIR,
+        config.CUSTOM_DIRS_EXCLUDE_REGEX,
+    )
+    if (
+        hasattr(get_custom_dirs, "_cache_key")
+        and hasattr(get_custom_dirs, "_cache_value")
+        and hasattr(get_custom_dirs, "_cache_time")
+        and get_custom_dirs._cache_key == cache_key
+        and (now - get_custom_dirs._cache_time) < cache_ttl_seconds
+    ):
+        return get_custom_dirs._cache_value
+
     def recursive_dirs(base):
         path = pathlib.Path(base)
 
@@ -579,10 +613,14 @@ def get_custom_dirs():
     if config.DOWNLOAD_DIR != config.AUDIO_DOWNLOAD_DIR:
         audio_download_dir = recursive_dirs(config.AUDIO_DOWNLOAD_DIR)
 
-    return {
+    result = {
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
     }
+    get_custom_dirs._cache_key = cache_key
+    get_custom_dirs._cache_time = now
+    get_custom_dirs._cache_value = result
+    return result
 
 @routes.get(config.URL_PREFIX)
 def index(request):
