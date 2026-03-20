@@ -15,4 +15,13 @@ dependencies = [
 [dependency-groups]
 dev = [
     "pylint",
+    "pytest>=8.0",
+    "pytest-aiohttp>=1.0",
+    "pytest-asyncio>=0.24",
 ]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["app/tests"]
+pythonpath = [".", "app"]
+addopts = "-v"

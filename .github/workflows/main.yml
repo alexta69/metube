@@ -26,14 +26,19 @@ jobs:
       - name: Build frontend
         working-directory: ui
         run: pnpm run build
-      - name: Set up Python
-        uses: actions/setup-python@v6
-        with:
-          python-version: '3.13'
+      - name: Run frontend tests
+        working-directory: ui
+        run: pnpm exec ng test --watch=false
+        env:
+          CI: true
+      - name: Install uv
+        uses: astral-sh/setup-uv@v6
+      - name: Install Python dependencies
+        run: uv sync --frozen --group dev
       - name: Run backend smoke checks
         run: python -m compileall app
       - name: Run backend tests
-        run: python -m unittest discover -s app/tests -p "test_*.py"
+        run: uv run pytest app/tests/
       - name: Run Trivy filesystem scan
         uses: aquasecurity/trivy-action@0.35.0
         with:

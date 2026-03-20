@@ -623,14 +623,14 @@ def get_custom_dirs():
     return result
 
 @routes.get(config.URL_PREFIX)
-def index(request):
+async def index(request):
     response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/browser/index.html'))
     if 'metube_theme' not in request.cookies:
         response.set_cookie('metube_theme', config.DEFAULT_THEME)
     return response
 
 @routes.get(config.URL_PREFIX + 'robots.txt')
-def robots(request):
+async def robots(request):
     if config.ROBOTS_TXT:
         response = web.FileResponse(os.path.join(config.BASE_DIR, config.ROBOTS_TXT))
     else:
@@ -640,7 +640,7 @@ def robots(request):
     return response
 
 @routes.get(config.URL_PREFIX + 'version')
-def version(request):
+async def version(request):
     return web.json_response({
         "yt-dlp": yt_dlp_version,
         "version": os.getenv("METUBE_VERSION", "dev")
@@ -648,11 +648,11 @@ def version(request):
 
 if config.URL_PREFIX != '/':
     @routes.get('/')
-    def index_redirect_root(request):
+    async def index_redirect_root(request):
         return web.HTTPFound(config.URL_PREFIX)
 
     @routes.get(config.URL_PREFIX[:-1])
-    def index_redirect_dir(request):
+    async def index_redirect_dir(request):
         return web.HTTPFound(config.URL_PREFIX)
 
 routes.static(config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR, show_index=config.DOWNLOAD_DIRS_INDEXABLE)
