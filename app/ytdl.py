@@ -1,6 +1,9 @@
 import os
 import shutil
 import yt_dlp
+import collections
+import collections.abc
+import pickle
 from collections import OrderedDict
 import shelve
 import time
@@ -78,16 +81,40 @@ def _outtmpl_substitute_field(template: str, field: str, value: Any) -> str:
 
     return pattern.sub(replacement, template)
 
-def _convert_generators_to_lists(obj):
-    """Recursively convert generators to lists in a dictionary to make it pickleable."""
-    if isinstance(obj, types.GeneratorType):
-        return list(obj)
-    elif isinstance(obj, dict):
-        return {k: _convert_generators_to_lists(v) for k, v in obj.items()}
-    elif isinstance(obj, (list, tuple)):
-        return type(obj)(_convert_generators_to_lists(item) for item in obj)
-    else:
+_MAX_ENTRY_SANITIZE_DEPTH = 64
+
+
+def _sanitize_entry_for_pickle(obj, _depth=0):
+    """Recursively normalize yt-dlp ``info_dict`` data so it can be stored in shelve/pickle.
+
+    Live streams and newer yt-dlp versions may nest generators, iterators, sets, or
+    non-serializable objects (e.g. locks) inside the extracted metadata. The previous
+    helper only walked plain dict/list/tuple and only expanded ``types.GeneratorType``.
+    """
+    if _depth > _MAX_ENTRY_SANITIZE_DEPTH:
+        return None
+    if obj is None or isinstance(obj, (bool, int, float, str, bytes)):
         return obj
+    if isinstance(obj, types.GeneratorType):
+        return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+    if isinstance(obj, collections.abc.Mapping):
+        return {k: _sanitize_entry_for_pickle(v, _depth + 1) for k, v in obj.items()}
+    if isinstance(obj, (list, tuple)):
+        return type(obj)(_sanitize_entry_for_pickle(x, _depth + 1) for x in obj)
+    if isinstance(obj, (set, frozenset)):
+        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+    if isinstance(obj, collections.deque):
+        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+    if isinstance(obj, collections.abc.Iterator):
+        try:
+            return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+        except Exception:
+            return None
+    try:
+        pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+        return obj
+    except Exception:
+        return None
 
 
 def _convert_srt_to_txt_file(subtitle_path: str):
@@ -178,8 +205,8 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        # Convert generators to lists to make entry pickleable
-        self.entry = _convert_generators_to_lists(entry) if entry is not None else None
+        # Strip non-pickleable values (generators, iterators, locks, etc.) for shelve
+        self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.chapter_template = chapter_template
@@ -501,9 +528,17 @@ class PersistentQueue:
 
     def put(self, value):
         key = value.info.url
+        old = self.dict.get(key)
         self.dict[key] = value
-        with shelve.open(self.path, 'w') as shelf:
-            shelf[key] = value.info
+        try:
+            with shelve.open(self.path, 'w') as shelf:
+                shelf[key] = value.info
+        except Exception:
+            if old is None:
+                del self.dict[key]
+            else:
+                self.dict[key] = old
+            raise
 
     def delete(self, key):
         if key in self.dict:

@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import pickle
 import tempfile
+import threading
 import unittest
 from pathlib import Path
 
 from ytdl import (
     DownloadInfo,
-    _convert_generators_to_lists,
     _convert_srt_to_txt_file,
     _outtmpl_substitute_field,
+    _sanitize_entry_for_pickle,
     _sanitize_path_component,
 )
 
@@ -35,17 +37,41 @@ class OuttmplSubstituteFieldTests(unittest.TestCase):
         self.assertEqual(_outtmpl_substitute_field("%(other)s", "title", "x"), "%(other)s")
 
 
-class ConvertGeneratorsToListsTests(unittest.TestCase):
+class SanitizeEntryForPickleTests(unittest.TestCase):
     def test_nested(self):
         def g():
             yield 1
 
         obj = {"a": g(), "b": [g()]}
-        out = _convert_generators_to_lists(obj)
+        out = _sanitize_entry_for_pickle(obj)
         self.assertEqual(out, {"a": [1], "b": [[1]]})
+        pickle.dumps(out)
 
     def test_plain(self):
-        self.assertEqual(_convert_generators_to_lists(5), 5)
+        self.assertEqual(_sanitize_entry_for_pickle(5), 5)
+
+    def test_set_converted_to_list(self):
+        obj = {"s": {1, 2}}
+        out = _sanitize_entry_for_pickle(obj)
+        self.assertEqual(sorted(out["s"]), [1, 2])
+        pickle.dumps(out)
+
+    def test_map_iterator(self):
+        out = _sanitize_entry_for_pickle({"m": map(int, ["1", "2"])})
+        self.assertEqual(out, {"m": [1, 2]})
+
+    def test_lock_replaced_with_none(self):
+        lock = threading.Lock()
+        out = _sanitize_entry_for_pickle({"k": lock})
+        self.assertIsNone(out["k"])
+        pickle.dumps(out)
+
+    def test_ordered_dict(self):
+        from collections import OrderedDict
+
+        od = OrderedDict([("z", 1), ("a", 2)])
+        out = _sanitize_entry_for_pickle(od)
+        self.assertEqual(out, {"z": 1, "a": 2})
 
 
 class ConvertSrtToTxtTests(unittest.TestCase):

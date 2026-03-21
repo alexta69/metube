@@ -5,6 +5,7 @@ from __future__ import annotations
 import os
 import tempfile
 import unittest
+from unittest.mock import patch
 
 from ytdl import DownloadInfo, PersistentQueue
 
@@ -70,6 +71,48 @@ class PersistentQueueTests(unittest.TestCase):
             pq2 = PersistentQueue("queue", path)
             pq2.load()
             self.assertTrue(pq2.exists("http://load.example"))
+
+    def test_put_rollbacks_in_memory_queue_when_shelf_write_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue")
+            pq = PersistentQueue("queue", path)
+            dl = _FakeDownload(_make_info("http://rollback.example"))
+            self.assertFalse(pq.exists("http://rollback.example"))
+
+            orig_open = __import__("shelve").open
+
+            def bad_open(filename, flag="c", *args, **kwargs):
+                if flag == "w":
+                    raise OSError("simulated shelf failure")
+                return orig_open(filename, flag, *args, **kwargs)
+
+            with patch("ytdl.shelve.open", bad_open):
+                with self.assertRaises(OSError):
+                    pq.put(dl)
+
+            self.assertFalse(pq.exists("http://rollback.example"))
+
+    def test_put_rollbacks_to_previous_download_when_replace_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue")
+            pq = PersistentQueue("queue", path)
+            first = _FakeDownload(_make_info("http://same.example"))
+            second = _FakeDownload(_make_info("http://same.example"))
+            second.info.title = "Replaced title"
+            pq.put(first)
+
+            orig_open = __import__("shelve").open
+
+            def bad_open(filename, flag="c", *args, **kwargs):
+                if flag == "w":
+                    raise OSError("simulated shelf failure")
+                return orig_open(filename, flag, *args, **kwargs)
+
+            with patch("ytdl.shelve.open", bad_open):
+                with self.assertRaises(OSError):
+                    pq.put(second)
+
+            self.assertEqual(pq.get("http://same.example").info.title, "Title")
 
 
 if __name__ == "__main__":
