@@ -5,9 +5,6 @@ on:
     branches:
       - 'master'
 
-env:
-  GHCR_REPOSITORY: ghcr.io/${{ github.repository }}
-
 jobs:
   quality-checks:
     runs-on: ubuntu-latest
@@ -72,11 +69,15 @@ jobs:
         name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v4
       -
+        name: Prepare GHCR repository name
+        id: ghcr_repo
+        run: echo "value=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+      -
         name: Prepare image tags
         id: image_tags
         env:
           DOCKERHUB_REPOSITORY: ${{ env.DOCKERHUB_REPOSITORY }}
-          GHCR_REPOSITORY: ${{ env.GHCR_REPOSITORY }}
+          GHCR_REPOSITORY: ${{ steps.ghcr_repo.outputs.value }}
           DATE: ${{ steps.date.outputs.date }}
         run: |
           {
@@ -185,11 +186,12 @@ jobs:
         id: release_body
         env:
           DOCKERHUB_REPO: ${{ secrets.DOCKERHUB_REPOSITORY }}
-          GHCR_REPO: ${{ env.GHCR_REPOSITORY }}
+          GHCR_REPO: ghcr.io/${{ github.repository }}
           DATE: ${{ steps.date.outputs.date }}
           HAS_COMMITS: ${{ steps.commits.outputs.has_commits }}
           COMMITS: ${{ steps.commits.outputs.commits }}
         run: |
+          GHCR_REPO="$(echo "${GHCR_REPO}" | tr '[:upper:]' '[:lower:]')"
           {
             echo '## Docker Images'
             echo ''
