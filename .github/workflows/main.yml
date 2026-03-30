@@ -122,9 +122,9 @@ jobs:
       DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
       DOCKERHUB_TOKEN: ${{ secrets.DOCKERHUB_TOKEN }}
       DOCKERHUB_REPOSITORY: ${{ secrets.DOCKERHUB_REPOSITORY }}
-    if: ${{ env.DOCKERHUB_USERNAME != '' && (env.DOCKERHUB_PASSWORD != '' || env.DOCKERHUB_TOKEN != '') && env.DOCKERHUB_REPOSITORY != '' }}
     steps:
       - name: Sync README
+        if: ${{ env.DOCKERHUB_USERNAME != '' && (env.DOCKERHUB_PASSWORD != '' || env.DOCKERHUB_TOKEN != '') && env.DOCKERHUB_REPOSITORY != '' }}
         uses: docker://lsiodev/readme-sync:latest
         env:
           DOCKERHUB_USERNAME: ${{ env.DOCKERHUB_USERNAME }}
