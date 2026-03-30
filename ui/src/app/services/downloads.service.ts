@@ -36,6 +36,9 @@ export class DownloadsService {
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   configurationChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
+  private updateRefreshScheduled = false;
+  private readonly foregroundRefreshMs = 250;
+  private readonly backgroundRefreshMs = 30000;
 
   configuration: Record<string, unknown> = {};
   customDirs: Record<string, string[]> = {};
@@ -68,7 +71,7 @@ export class DownloadsService {
       data.checked = !!dl?.checked;
       data.deleting = !!dl?.deleting;
       this.queue.set(data.url, data);
-      this.updated.next();
+      this.scheduleUpdatedRefresh();
     });
     this.socket.fromEvent('completed')
     .pipe(takeUntilDestroyed())
@@ -115,6 +118,28 @@ export class DownloadsService {
       const data = JSON.parse(strdata);
       this.ytdlOptionsChanged.next(data);
     });
+  }
+
+  private scheduleUpdatedRefresh() {
+    // Coalesce high-frequency download progress events into a capped refresh rate.
+    // requestAnimationFrame (~60fps) is smooth but expensive on large queues.
+    // We trade a little smoothness for much lower CPU:
+    // - foreground: ~8fps
+    // - background: ~1fps
+    if (this.updateRefreshScheduled) {
+      return;
+    }
+    this.updateRefreshScheduled = true;
+
+    const flush = () => {
+      this.updateRefreshScheduled = false;
+      this.updated.next();
+    };
+
+    const delay = document.hidden
+      ? this.backgroundRefreshMs
+      : this.foregroundRefreshMs;
+    setTimeout(() => flush(), delay);
   }
 
   handleHTTPError(error: HttpErrorResponse) {

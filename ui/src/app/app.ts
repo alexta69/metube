@@ -1,7 +1,7 @@
 import { AsyncPipe, DatePipe, KeyValuePipe } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, map, distinctUntilChanged } from 'rxjs';
+import { Observable, map, distinctUntilChanged, auditTime } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
@@ -250,8 +250,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.rebuildSortedDone();
       this.cdr.markForCheck();
     });
-    // Subscribe to real-time updates
-    this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+    // Subscribe to real-time updates (throttled to reduce CPU on large queues).
+    this.downloads.updated
+    .pipe(
+      auditTime(200),
+      takeUntilDestroyed(this.destroyRef)
+    )
+    .subscribe(() => {
       this.updateMetrics();
       this.cdr.markForCheck();
     });
