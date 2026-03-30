@@ -122,10 +122,10 @@ export class DownloadsService {
 
   private scheduleUpdatedRefresh() {
     // Coalesce high-frequency download progress events into a capped refresh rate.
-    // requestAnimationFrame (~60fps) is smooth but expensive on large queues.
+    // requestAnimationFrame (~60fps) is smooth but expensive remotely and on large queues.
     // We trade a little smoothness for much lower CPU:
-    // - foreground: ~8fps
-    // - background: ~1fps
+    // - foreground: ~4fps
+    // - background: 1/30 seconds
     if (this.updateRefreshScheduled) {
       return;
     }
