@@ -37,7 +37,7 @@ export class DownloadsService {
   configurationChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
   private updateRefreshScheduled = false;
-  private readonly foregroundRefreshMs = 250;
+  private readonly foregroundRefreshMs = 3000;
   private readonly backgroundRefreshMs = 30000;
 
   configuration: Record<string, unknown> = {};
@@ -124,8 +124,8 @@ export class DownloadsService {
     // Coalesce high-frequency download progress events into a capped refresh rate.
     // requestAnimationFrame (~60fps) is smooth but expensive remotely and on large queues.
     // We trade a little smoothness for much lower CPU:
-    // - foreground: ~4fps
-    // - background: 1/30 seconds
+    // - foreground: 1 per 3 seconds
+    // - background: 1 per 30 seconds
     if (this.updateRefreshScheduled) {
       return;
     }
