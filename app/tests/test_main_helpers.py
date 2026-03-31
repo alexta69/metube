@@ -4,9 +4,13 @@ from __future__ import annotations
 
 import json
 import logging
+import os
 import unittest
+from pathlib import Path
 
 import main
+
+TEST_APP_ROOT = Path(os.environ["METUBE_TEST_APP_ROOT"])
 
 
 class MigrateLegacyRequestTests(unittest.TestCase):
@@ -94,7 +98,8 @@ class ObjectSerializerTests(unittest.TestCase):
 
 class FrontendSafeTests(unittest.TestCase):
     def test_only_expected_keys(self):
-        safe = main.config.frontend_safe()
+        settings = main.Config.from_env(app_root=TEST_APP_ROOT)
+        safe = settings.frontend_safe()
         for key in main.Config._FRONTEND_KEYS:
             self.assertIn(key, safe)
         self.assertNotIn("YTDL_OPTIONS", safe)

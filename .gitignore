@@ -52,3 +52,6 @@ pending*
 
 __pycache__
 .venv
+
+# Testing
+./local
