@@ -24,6 +24,9 @@ class _ImpersonateTarget:
 
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
+# The inner ``key`` group mirrors the real ``STR_FORMAT_RE_TMPL`` so that
+# ``_OUTTMPL_FIELD_RE`` (compiled at import time) has the named group that
+# ``_resolve_outtmpl_fields`` reads via ``match.group('key')``.
 fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>(?P<key>{}))\)(?P<format>[-0-9.]*{})"
 fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
 fake_yt_dlp.networking = fake_networking
