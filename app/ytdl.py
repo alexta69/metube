@@ -912,6 +912,8 @@ class DownloadQueue:
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
                 etr[f"{etype}_count"] = total_entries
                 etr[f"{etype}_autonumber"] = index
+                # n_entries: standard yt-dlp field for total count (used by template engine)
+                # __last_playlist_index: yt-dlp internal field for auto-padding autonumber
                 etr["n_entries"] = total_entries
                 etr["__last_playlist_index"] = total_entries
                 for property in ("id", "title", "uploader", "uploader_id"):
