@@ -10,7 +10,7 @@ import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService, HasharrSettings } from './services/downloads.service';
 import { Themes } from './theme';
 import {
   Download,
@@ -96,6 +96,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
+  hasharrEnabled = false;
+  hasharrUrl = 'http://hasharr:9995';
+  hasharrServiceID = 1;
+  hasharrTimeoutSec = 20;
+  hasharrSettingsStatus = '';
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
@@ -268,11 +273,63 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.cdr.markForCheck();
     });
     this.getConfiguration();
+    this.loadHasharrSettings();
     this.getYtdlOptionsUpdateTime();
     this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
+  }
+
+  loadHasharrSettings() {
+    this.downloads.getHasharrSettings().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (data) => {
+        if (!data || typeof data !== 'object' || ('status' in data && data.status === 'error')) {
+          this.hasharrSettingsStatus = 'Unable to load hasharr settings.';
+          this.cdr.markForCheck();
+          return;
+        }
+        const settings = data as HasharrSettings;
+        this.hasharrEnabled = !!settings.enabled;
+        this.hasharrUrl = String(settings.url || 'http://hasharr:9995');
+        this.hasharrServiceID = Math.max(1, Number(settings.service_id || 1));
+        this.hasharrTimeoutSec = Math.max(1, Number(settings.timeout_sec || 20));
+        this.hasharrSettingsStatus = '';
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.hasharrSettingsStatus = 'Unable to load hasharr settings.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  saveHasharrSettings() {
+    const payload: HasharrSettings = {
+      enabled: !!this.hasharrEnabled,
+      url: String(this.hasharrUrl || '').trim(),
+      service_id: Math.max(1, Number(this.hasharrServiceID || 1)),
+      timeout_sec: Math.max(1, Number(this.hasharrTimeoutSec || 20)),
+    };
+    if (!payload.url) {
+      this.hasharrSettingsStatus = 'Hasharr URL is required.';
+      this.cdr.markForCheck();
+      return;
+    }
+    this.downloads.saveHasharrSettings(payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (out) => {
+        if (out && typeof out === 'object' && 'status' in out && out.status === 'ok') {
+          this.hasharrSettingsStatus = 'Hasharr settings saved.';
+        } else {
+          this.hasharrSettingsStatus = 'Failed to save hasharr settings.';
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.hasharrSettingsStatus = 'Failed to save hasharr settings.';
+        this.cdr.markForCheck();
+      },
+    });
   }
 
   ngAfterViewInit() {

@@ -6,6 +6,13 @@ import { MeTubeSocket } from './metube-socket.service';
 import { Download, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
+export interface HasharrSettings {
+  enabled: boolean;
+  url: string;
+  service_id: number;
+  timeout_sec: number;
+}
+
 export interface AddDownloadPayload {
   url: string;
   downloadType: string;
@@ -221,6 +228,18 @@ export class DownloadsService {
 
   getCookieStatus() {
     return this.http.get<{ status: string; has_cookies: boolean }>('cookie-status').pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  getHasharrSettings() {
+    return this.http.get<HasharrSettings>('hasharr-settings').pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  saveHasharrSettings(settings: HasharrSettings) {
+    return this.http.post<{ status: string; msg?: string }>('hasharr-settings', settings).pipe(
       catchError(this.handleHTTPError)
     );
   }

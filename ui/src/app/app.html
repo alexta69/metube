@@ -428,6 +428,60 @@
               <div class="row">
                 <div class="col-12">
                   <hr class="my-3">
+                  <div class="row g-3 mb-3">
+                    <div class="col-12">
+                      <div class="action-group-label">Hasharr Integration</div>
+                    </div>
+                    <div class="col-md-3">
+                      <div class="form-check form-switch mt-2">
+                        <input class="form-check-input" type="checkbox" role="switch" id="hasharrEnabled"
+                          name="hasharrEnabled" [(ngModel)]="hasharrEnabled"
+                          [disabled]="addInProgress || downloads.loading">
+                        <label class="form-check-label" for="hasharrEnabled">Enabled</label>
+                      </div>
+                    </div>
+                    <div class="col-md-5">
+                      <div class="input-group">
+                        <span class="input-group-text">Hasharr URL</span>
+                        <input type="text"
+                          class="form-control"
+                          placeholder="http://hasharr:9995"
+                          name="hasharrUrl"
+                          [(ngModel)]="hasharrUrl"
+                          [disabled]="addInProgress || downloads.loading">
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="input-group">
+                        <span class="input-group-text">Service ID</span>
+                        <input type="number"
+                          min="1"
+                          class="form-control"
+                          name="hasharrServiceID"
+                          [(ngModel)]="hasharrServiceID"
+                          [disabled]="addInProgress || downloads.loading">
+                      </div>
+                    </div>
+                    <div class="col-md-2">
+                      <div class="input-group">
+                        <span class="input-group-text">Timeout</span>
+                        <input type="number"
+                          min="1"
+                          class="form-control"
+                          name="hasharrTimeoutSec"
+                          [(ngModel)]="hasharrTimeoutSec"
+                          [disabled]="addInProgress || downloads.loading">
+                      </div>
+                    </div>
+                    <div class="col-12">
+                      <button type="button" class="btn btn-secondary" (click)="saveHasharrSettings()">
+                        Save Hasharr Settings
+                      </button>
+                      @if (hasharrSettingsStatus) {
+                        <span class="ms-3 text-muted">{{ hasharrSettingsStatus }}</span>
+                      }
+                    </div>
+                  </div>
                   <div class="row g-3">
                     <div class="col-md-4">
                       <div class="action-group-label">Cookies</div>
