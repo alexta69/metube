@@ -1,0 +1,57 @@
+name: publish-branch-image
+
+on:
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Container tag to publish"
+        required: true
+        default: "hash-mt-integration"
+
+permissions:
+  contents: read
+  packages: write
+
+jobs:
+  publish-ghcr-branch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Prepare image name
+        id: image
+        run: echo "name=$(echo "ghcr.io/${GITHUB_REPOSITORY}" | tr '[:upper:]' '[:lower:]')" >> "$GITHUB_OUTPUT"
+
+      - name: Compute publish tag
+        id: tag
+        run: |
+          TAG="${{ github.event.inputs.image_tag }}"
+          TAG="$(echo "$TAG" | tr '[:upper:]' '[:lower:]')"
+          echo "value=$TAG" >> "$GITHUB_OUTPUT"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v4
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v4
+
+      - name: Login to GHCR
+        uses: docker/login-action@v4
+        with:
+          registry: ghcr.io
+          username: ${{ github.repository_owner }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Publish image
+        uses: docker/build-push-action@v7
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          build-args: |
+            VERSION=${{ github.run_number }}
+          tags: |
+            ${{ steps.image.outputs.name }}:${{ steps.tag.outputs.value }}
+            ${{ steps.image.outputs.name }}:${{ github.sha }}
+
