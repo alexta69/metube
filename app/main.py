@@ -17,6 +17,7 @@ import re
 from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
+from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
@@ -50,6 +51,9 @@ class Config:
         'OUTPUT_TEMPLATE_PLAYLIST': '%(playlist_title)s/%(title)s.%(ext)s',
         'OUTPUT_TEMPLATE_CHANNEL': '%(channel)s/%(title)s.%(ext)s',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT' : '0',
+        'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL': '60',
+        'SUBSCRIPTION_SCAN_PLAYLIST_END': '50',
+        'SUBSCRIPTION_MAX_SEEN_IDS': '50000',
         'CLEAR_COMPLETED_AFTER': '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
@@ -114,6 +118,7 @@ class Config:
         'PUBLIC_HOST_URL',
         'PUBLIC_HOST_AUDIO_URL',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
+        'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL',
     )
 
     def frontend_safe(self) -> dict:
@@ -272,6 +277,34 @@ dqueue = DownloadQueue(config, Notifier())
 app.on_startup.append(lambda app: dqueue.initialize())
 app.on_cleanup.append(lambda app: Download.shutdown_manager())
 
+
+class MetubeSubscriptionNotifier(SubscriptionNotifier):
+    async def subscription_added(self, sub: SubscriptionInfo):
+        log.info("Subscription added: %s", sub.name)
+        await sio.emit('subscription_added', serializer.encode(sub.to_public_dict()))
+
+    async def subscription_updated(self, sub: SubscriptionInfo):
+        await sio.emit('subscription_updated', serializer.encode(sub.to_public_dict()))
+
+    async def subscription_removed(self, sub_id: str):
+        log.info("Subscription removed: %s", sub_id)
+        await sio.emit('subscription_removed', serializer.encode(sub_id))
+
+    async def subscriptions_all(self, subs: list[SubscriptionInfo]):
+        await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in subs]))
+
+
+submgr = SubscriptionManager(config, dqueue, MetubeSubscriptionNotifier())
+app.on_cleanup.append(lambda app: submgr.close())
+
+
+async def _subscription_loop_startup(app):
+    """aiohttp on_startup requires awaitable receivers; start_background_loop is sync."""
+    submgr.start_background_loop()
+
+
+app.on_startup.append(_subscription_loop_startup)
+
 class FileOpsFilter(DefaultFilter):
     def __call__(self, change_type: int, path: str) -> bool:
         # Check if this path matches our YTDL_OPTIONS_FILE
@@ -332,27 +365,17 @@ async def _read_json_request(request: web.Request) -> dict:
     return post
 
 
-@routes.post(config.URL_PREFIX + 'add')
-async def add(request):
-    log.info("Received request to add download")
-    post = await _read_json_request(request)
-    post = _migrate_legacy_request(post)
-    log.info(
-        "Add download request: type=%s quality=%s format=%s has_folder=%s auto_start=%s",
-        post.get('download_type'),
-        post.get('quality'),
-        post.get('format'),
-        bool(post.get('folder')),
-        post.get('auto_start'),
-    )
+def parse_download_options(post: dict) -> dict:
+    """Validate add/subscribe body; raise HTTPBadRequest on invalid input."""
+    post = _migrate_legacy_request(dict(post))
     url = post.get('url')
     download_type = post.get('download_type')
     codec = post.get('codec')
     format = post.get('format')
     quality = post.get('quality')
     if not url or not quality or not download_type:
-        log.error("Bad request: missing 'url', 'download_type', or 'quality'")
-        raise web.HTTPBadRequest()
+        raise web.HTTPBadRequest(reason="missing 'url', 'download_type', or 'quality'")
+    url = str(url).strip()
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
     playlist_item_limit = post.get('playlist_item_limit')
@@ -429,20 +452,54 @@ async def add(request):
     except (TypeError, ValueError) as exc:
         raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
 
+    return {
+        'url': url,
+        'download_type': download_type,
+        'codec': codec,
+        'format': format,
+        'quality': quality,
+        'folder': folder,
+        'custom_name_prefix': custom_name_prefix,
+        'playlist_item_limit': playlist_item_limit,
+        'auto_start': auto_start,
+        'split_by_chapters': split_by_chapters,
+        'chapter_template': chapter_template,
+        'subtitle_language': subtitle_language,
+        'subtitle_mode': subtitle_mode,
+    }
+
+
+@routes.post(config.URL_PREFIX + 'add')
+async def add(request):
+    log.info("Received request to add download")
+    post = await _read_json_request(request)
+    try:
+        o = parse_download_options(post)
+    except web.HTTPBadRequest as e:
+        log.error("Bad request: %s", e.reason)
+        raise
+    log.info(
+        "Add download request: type=%s quality=%s format=%s has_folder=%s auto_start=%s",
+        o['download_type'],
+        o['quality'],
+        o['format'],
+        bool(o.get('folder')),
+        o['auto_start'],
+    )
     status = await dqueue.add(
-        url,
-        download_type,
-        codec,
-        format,
-        quality,
-        folder,
-        custom_name_prefix,
-        playlist_item_limit,
-        auto_start,
-        split_by_chapters,
-        chapter_template,
-        subtitle_language,
-        subtitle_mode,
+        o['url'],
+        o['download_type'],
+        o['codec'],
+        o['format'],
+        o['quality'],
+        o['folder'],
+        o['custom_name_prefix'],
+        o['playlist_item_limit'],
+        o['auto_start'],
+        o['split_by_chapters'],
+        o['chapter_template'],
+        o['subtitle_language'],
+        o['subtitle_mode'],
     )
     return web.Response(text=serializer.encode(status))
 
@@ -450,6 +507,82 @@ async def add(request):
 async def cancel_add(request):
     dqueue.cancel_add()
     return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
+
+
+@routes.post(config.URL_PREFIX + 'subscribe')
+async def subscribe(request):
+    post = await _read_json_request(request)
+    try:
+        o = parse_download_options(post)
+    except web.HTTPBadRequest:
+        raise
+    cic = post.get('check_interval_minutes')
+    if cic is None:
+        cic = config.SUBSCRIPTION_DEFAULT_CHECK_INTERVAL
+    try:
+        cic = int(cic)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(reason='check_interval_minutes must be an integer') from exc
+    if cic < 1:
+        raise web.HTTPBadRequest(reason='check_interval_minutes must be at least 1')
+
+    result = await submgr.add_subscription(
+        o['url'],
+        check_interval_minutes=cic,
+        download_type=o['download_type'],
+        codec=o['codec'],
+        format=o['format'],
+        quality=o['quality'],
+        folder=o['folder'] or '',
+        custom_name_prefix=o['custom_name_prefix'],
+        auto_start=o['auto_start'],
+        playlist_item_limit=o['playlist_item_limit'],
+        split_by_chapters=o['split_by_chapters'],
+        chapter_template=o['chapter_template'],
+        subtitle_language=o['subtitle_language'],
+        subtitle_mode=o['subtitle_mode'],
+    )
+    return web.Response(text=serializer.encode(result))
+
+
+@routes.get(config.URL_PREFIX + 'subscriptions')
+async def subscriptions_list(request):
+    return web.Response(text=serializer.encode([s.to_public_dict() for s in submgr.list_all()]))
+
+
+@routes.post(config.URL_PREFIX + 'subscriptions/update')
+async def subscriptions_update(request):
+    post = await _read_json_request(request)
+    sub_id = post.get('id')
+    if not sub_id:
+        raise web.HTTPBadRequest(reason='missing subscription id')
+    changes = {k: v for k, v in post.items() if k != 'id' and k in ('enabled', 'check_interval_minutes', 'name')}
+    if not changes:
+        raise web.HTTPBadRequest(reason='no valid fields to update')
+    log.info("Subscription update requested for %s: %s", sub_id, sorted(changes.keys()))
+    result = await submgr.update_subscription(str(sub_id), changes)
+    return web.Response(text=serializer.encode(result))
+
+
+@routes.post(config.URL_PREFIX + 'subscriptions/delete')
+async def subscriptions_delete(request):
+    post = await _read_json_request(request)
+    ids = post.get('ids')
+    if not ids or not isinstance(ids, list):
+        raise web.HTTPBadRequest(reason='missing ids list')
+    result = await submgr.delete_subscriptions([str(i) for i in ids])
+    return web.Response(text=serializer.encode(result))
+
+
+@routes.post(config.URL_PREFIX + 'subscriptions/check')
+async def subscriptions_check(request):
+    post = await _read_json_request(request)
+    ids = post.get('ids')
+    if ids is not None and not isinstance(ids, list):
+        raise web.HTTPBadRequest(reason='ids must be a list')
+    log.info("Subscription check-now requested for ids=%s", ids if ids else "all-enabled")
+    result = await submgr.check_now([str(i) for i in ids] if ids else None)
+    return web.Response(text=serializer.encode(result))
 
 @routes.post(config.URL_PREFIX + 'delete')
 async def delete(request):
@@ -554,6 +687,7 @@ async def history(request):
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
+    await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
     await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
     if config.CUSTOM_DIRS:
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
@@ -672,6 +806,11 @@ async def add_cors(request):
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscribe', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/update', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/delete', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/check', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 
