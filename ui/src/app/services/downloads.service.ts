@@ -13,6 +13,14 @@ export interface HasharrSettings {
   timeout_sec: number;
 }
 
+export interface HasharrServiceTestResponse {
+  status: string;
+  reachable: boolean;
+  valid_service_id: boolean;
+  message?: string;
+  profile?: Record<string, unknown>;
+}
+
 export interface AddDownloadPayload {
   url: string;
   downloadType: string;
@@ -240,6 +248,12 @@ export class DownloadsService {
 
   saveHasharrSettings(settings: HasharrSettings) {
     return this.http.post<{ status: string; msg?: string }>('hasharr-settings', settings).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  testHasharrSettings(settings: Pick<HasharrSettings, 'url' | 'service_id' | 'timeout_sec'>) {
+    return this.http.post<HasharrServiceTestResponse>('hasharr-settings/test', settings).pipe(
       catchError(this.handleHTTPError)
     );
   }

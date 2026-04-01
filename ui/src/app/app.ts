@@ -10,7 +10,7 @@ import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService, HasharrSettings } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService, HasharrSettings, HasharrServiceTestResponse } from './services/downloads.service';
 import { Themes } from './theme';
 import {
   Download,
@@ -101,6 +101,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   hasharrServiceID = 1;
   hasharrTimeoutSec = 20;
   hasharrSettingsStatus = '';
+  hasharrTestStatus = '';
+  hasharrTestProfile: Record<string, unknown> | null = null;
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
@@ -327,6 +329,43 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       },
       error: () => {
         this.hasharrSettingsStatus = 'Failed to save hasharr settings.';
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  testHasharrService() {
+    this.hasharrTestStatus = 'Testing hasharr service...';
+    this.hasharrTestProfile = null;
+    this.cdr.markForCheck();
+    this.downloads.testHasharrSettings({
+      url: String(this.hasharrUrl || '').trim(),
+      service_id: Math.max(1, Number(this.hasharrServiceID || 1)),
+      timeout_sec: Math.max(1, Number(this.hasharrTimeoutSec || 20)),
+    }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (resp) => {
+        if (!resp || typeof resp !== 'object' || ('status' in resp && resp.status === 'error')) {
+          this.hasharrTestStatus = 'Hasharr test failed.';
+          this.hasharrTestProfile = null;
+          this.cdr.markForCheck();
+          return;
+        }
+        const result = resp as HasharrServiceTestResponse;
+        if (result.valid_service_id) {
+          this.hasharrTestStatus = 'Hasharr reachable. Service ID is valid.';
+          this.hasharrTestProfile = result.profile || null;
+        } else if (result.reachable) {
+          this.hasharrTestStatus = result.message || 'Hasharr reachable, but service ID is not valid.';
+          this.hasharrTestProfile = null;
+        } else {
+          this.hasharrTestStatus = result.message || 'Could not reach hasharr.';
+          this.hasharrTestProfile = null;
+        }
+        this.cdr.markForCheck();
+      },
+      error: () => {
+        this.hasharrTestStatus = 'Hasharr test failed.';
+        this.hasharrTestProfile = null;
         this.cdr.markForCheck();
       },
     });

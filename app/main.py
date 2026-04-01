@@ -14,6 +14,8 @@ import logging
 import json
 import pathlib
 import re
+from urllib import request as urlrequest
+from urllib import error as urlerror
 from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
@@ -585,6 +587,66 @@ async def set_hasharr_settings(request):
     config.HASHARR_SERVICE_ID = service_id
     config.HASHARR_TIMEOUT_SEC = timeout_sec
     return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
+
+@routes.post(config.URL_PREFIX + 'hasharr-settings/test')
+async def test_hasharr_settings(request):
+    post = await _read_json_request(request)
+    url = str(post.get('url', config.HASHARR_URL)).strip()
+    service_id = int(post.get('service_id', config.HASHARR_SERVICE_ID))
+    timeout_sec = int(post.get('timeout_sec', config.HASHARR_TIMEOUT_SEC))
+    if not url:
+        raise web.HTTPBadRequest(reason='url is required')
+    if service_id <= 0:
+        raise web.HTTPBadRequest(reason='service_id must be > 0')
+    if timeout_sec <= 0:
+        raise web.HTTPBadRequest(reason='timeout_sec must be > 0')
+
+    base_url = url.rstrip('/')
+    profile_url = f"{base_url}/v1/hash-service-profiles/{service_id}"
+
+    def _fetch_profile():
+        req = urlrequest.Request(profile_url, method='GET')
+        with urlrequest.urlopen(req, timeout=timeout_sec) as resp:
+            body = resp.read().decode('utf-8', errors='replace')
+            return resp.status, body
+
+    try:
+        status, body = await asyncio.get_running_loop().run_in_executor(None, _fetch_profile)
+        if status != 200:
+            return web.json_response({
+                'status': 'error',
+                'reachable': True,
+                'valid_service_id': False,
+                'message': f'hasharr responded with status {status}',
+            }, status=502)
+        profile = json.loads(body)
+        return web.json_response({
+            'status': 'ok',
+            'reachable': True,
+            'valid_service_id': True,
+            'profile': profile,
+        })
+    except urlerror.HTTPError as exc:
+        if exc.code == 404:
+            return web.json_response({
+                'status': 'ok',
+                'reachable': True,
+                'valid_service_id': False,
+                'message': f'Service ID {service_id} was not found in hasharr.',
+            })
+        return web.json_response({
+            'status': 'error',
+            'reachable': True,
+            'valid_service_id': False,
+            'message': f'hasharr returned HTTP {exc.code}',
+        }, status=502)
+    except Exception as exc:
+        return web.json_response({
+            'status': 'error',
+            'reachable': False,
+            'valid_service_id': False,
+            'message': f'Could not reach hasharr: {exc}',
+        }, status=502)
 
 @sio.event
 async def connect(sid, environ):

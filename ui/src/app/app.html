@@ -477,10 +477,30 @@
                       <button type="button" class="btn btn-secondary" (click)="saveHasharrSettings()">
                         Save Hasharr Settings
                       </button>
+                      <button type="button" class="btn btn-outline-secondary ms-2" (click)="testHasharrService()">
+                        Test Service
+                      </button>
                       @if (hasharrSettingsStatus) {
                         <span class="ms-3 text-muted">{{ hasharrSettingsStatus }}</span>
                       }
                     </div>
+                    @if (hasharrTestStatus) {
+                      <div class="col-12">
+                        <small class="text-muted">{{ hasharrTestStatus }}</small>
+                      </div>
+                    }
+                    @if (hasharrTestProfile) {
+                      <div class="col-12">
+                        <div class="small text-muted">
+                          <div><strong>Profile Name:</strong> {{ hasharrTestProfile['name'] }}</div>
+                          <div><strong>Enabled:</strong> {{ hasharrTestProfile['enabled'] }}</div>
+                          <div><strong>Apply Actions:</strong> {{ hasharrTestProfile['applyActions'] }}</div>
+                          <div><strong>Stash Index:</strong> {{ hasharrTestProfile['stashIndex'] }}</div>
+                          <div><strong>Max Time Delta:</strong> {{ hasharrTestProfile['maxTimeDelta'] }}</div>
+                          <div><strong>Max Distance:</strong> {{ hasharrTestProfile['maxDistance'] }}</div>
+                        </div>
+                      </div>
+                    }
                   </div>
                   <div class="row g-3">
                     <div class="col-md-4">
