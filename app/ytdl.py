@@ -14,6 +14,8 @@ import re
 import types
 import dbm
 import subprocess
+import json
+from urllib import request as urlrequest
 from typing import Any
 from functools import lru_cache
 
@@ -694,6 +696,7 @@ class DownloadQueue:
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
+                asyncio.create_task(self._notify_hasharr(download.info))
                 try:
                     clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
                 except ValueError:
@@ -702,6 +705,56 @@ class DownloadQueue:
                 if clear_after > 0:
                     task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
                     task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
+
+    async def _notify_hasharr(self, info):
+        if not getattr(self.config, 'HASHARR_ENABLED', False):
+            return
+        base_url = str(getattr(self.config, 'HASHARR_URL', 'http://hasharr:9995')).rstrip('/')
+        service_id = int(getattr(self.config, 'HASHARR_SERVICE_ID', 1))
+        timeout_sec = int(getattr(self.config, 'HASHARR_TIMEOUT_SEC', 20))
+        files = []
+        if getattr(info, 'filename', None):
+            files.append(info.filename)
+        for cf in getattr(info, 'chapter_files', []) or []:
+            if isinstance(cf, dict) and cf.get('filename'):
+                files.append(cf['filename'])
+        for sf in getattr(info, 'subtitle_files', []) or []:
+            if isinstance(sf, dict) and sf.get('filename'):
+                files.append(sf['filename'])
+        dedup = []
+        seen = set()
+        for f in files:
+            if f and f not in seen:
+                seen.add(f)
+                dedup.append(f)
+        if not dedup:
+            return
+
+        def _post_one(rel_name):
+            download_type = getattr(info, 'download_type', 'video')
+            base_dir = self.config.AUDIO_DOWNLOAD_DIR if download_type == 'audio' else self.config.DOWNLOAD_DIR
+            full_path = os.path.join(base_dir, rel_name)
+            payload = {
+                "filePath": full_path,
+                "source": "metube",
+                "jobId": str(getattr(info, 'id', '')),
+            }
+            data = json.dumps(payload).encode('utf-8')
+            req = urlrequest.Request(
+                f"{base_url}/api/hash-service/{service_id}",
+                data=data,
+                headers={"Content-Type": "application/json"},
+                method="POST",
+            )
+            with urlrequest.urlopen(req, timeout=timeout_sec) as resp:
+                return resp.status
+
+        for rel_name in dedup:
+            try:
+                status = await asyncio.get_running_loop().run_in_executor(None, _post_one, rel_name)
+                log.info(f"hasharr callback status={status} file={rel_name}")
+            except Exception as exc:
+                log.warning(f"hasharr callback failed for {rel_name}: {exc}")
 
     async def __auto_clear_after_delay(self, url, delay_seconds):
         await asyncio.sleep(delay_seconds)
