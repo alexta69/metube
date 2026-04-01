@@ -295,13 +295,16 @@ _PERSISTED_DOWNLOAD_FIELDS = (
 )
 
 
+_COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index"))
+
+
 def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
     if not isinstance(entry, dict):
         return None
     compact = {
         key: value
         for key, value in entry.items()
-        if key.startswith("playlist") or key.startswith("channel")
+        if key.startswith("playlist") or key.startswith("channel") or key in _COMPACT_ENTRY_EXTRA_KEYS
     }
     return compact or None
 
@@ -893,8 +896,9 @@ class DownloadQueue:
             # Convert generator to list if needed (for len() and slicing operations)
             if isinstance(entries, types.GeneratorType):
                 entries = list(entries)
-            log.info(f'{etype} detected with {len(entries)} entries')
-            index_digits = len(str(len(entries)))
+            total_entries = len(entries)
+            log.info(f'{etype} detected with {total_entries} entries')
+            index_digits = len(str(total_entries))
             results = []
             if playlist_item_limit > 0:
                 log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
@@ -906,6 +910,10 @@ class DownloadQueue:
                 etr["_type"] = "video"
                 etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
+                etr[f"{etype}_count"] = total_entries
+                etr[f"{etype}_autonumber"] = index
+                etr["n_entries"] = total_entries
+                etr["__last_playlist_index"] = total_entries
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"{etype}_{property}"] = entry[property]

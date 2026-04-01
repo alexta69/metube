@@ -93,6 +93,35 @@ class ResolveOuttmplFieldsTests(unittest.TestCase):
         result = _resolve_outtmpl_fields("%(playlist_index+100)d", info, ("playlist",))
         self.assertEqual(result, "103")
 
+    def test_playlist_count_and_autonumber(self):
+        info = {
+            "playlist_title": "My PL",
+            "playlist_index": "03",
+            "playlist_count": 10,
+            "playlist_autonumber": 3,
+            "n_entries": 10,
+            "__last_playlist_index": 10,
+        }
+        result = _resolve_outtmpl_fields(
+            "%(playlist_title)s/%(playlist_autonumber)s of %(playlist_count)s - %(title)s.%(ext)s",
+            info,
+            ("playlist",),
+        )
+        # playlist_autonumber is auto-padded by yt-dlp using __last_playlist_index
+        self.assertEqual(result, "My PL/03 of 10 - %(title)s.%(ext)s")
+
+    def test_conditional_playlist_index(self):
+        info = {
+            "playlist_index": "5",
+            "playlist_count": 10,
+        }
+        result = _resolve_outtmpl_fields(
+            "%(playlist_index&{} - |)s%(title)s.%(ext)s",
+            info,
+            ("playlist",),
+        )
+        self.assertEqual(result, "5 - %(title)s.%(ext)s")
+
 
 class SanitizeEntryForPickleTests(unittest.TestCase):
     def test_nested(self):
@@ -250,8 +279,12 @@ class CompactPersistedEntryTests(unittest.TestCase):
         entry = {
             "playlist_index": "01",
             "playlist_title": "Playlist",
+            "playlist_count": 10,
+            "playlist_autonumber": 1,
             "channel_index": "02",
             "channel_title": "Channel",
+            "n_entries": 10,
+            "__last_playlist_index": 10,
             "formats": [{"id": "huge"}],
             "description": "big blob",
         }
@@ -263,8 +296,12 @@ class CompactPersistedEntryTests(unittest.TestCase):
             {
                 "playlist_index": "01",
                 "playlist_title": "Playlist",
+                "playlist_count": 10,
+                "playlist_autonumber": 1,
                 "channel_index": "02",
                 "channel_title": "Channel",
+                "n_entries": 10,
+                "__last_playlist_index": 10,
             },
         )
 
