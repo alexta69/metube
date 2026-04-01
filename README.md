@@ -37,6 +37,10 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
 * __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
 * __CLEAR_COMPLETED_AFTER__: Number of seconds after which completed (and failed) downloads are automatically removed from the "Completed" list. Defaults to `0` (disabled).
+* __HASHARR_ENABLED__: If `true`, call hasharr when a download completes. Defaults to `false`.
+* __HASHARR_URL__: Base URL for hasharr service (for example `http://hasharr:9995`). Defaults to `http://hasharr:9995`.
+* __HASHARR_SERVICE_ID__: Hash service profile ID to call at `POST /api/hash-service/{id}`. Defaults to `1`.
+* __HASHARR_TIMEOUT_SEC__: Timeout (seconds) for hasharr callback requests. Defaults to `20`.
 
 ### 📁 Storage & Directories
 
@@ -85,6 +89,30 @@ Certain values can be set via environment variables, using the `-e` parameter on
 The project's Wiki contains examples of useful configurations contributed by users of MeTube:
 * [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)
 * [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)
+
+## hasharr integration
+
+MeTube can call hasharr after download completion to perform pHash matching and action policy.
+
+### Runtime API endpoints
+
+- `GET /hasharr-settings` -> current effective integration settings
+- `POST /hasharr-settings` -> update runtime settings
+
+Example:
+
+```json
+{
+  "enabled": true,
+  "url": "http://hasharr:9995",
+  "service_id": 1,
+  "timeout_sec": 20
+}
+```
+
+When enabled, MeTube posts each completed output file to:
+
+`POST {HASHARR_URL}/api/hash-service/{HASHARR_SERVICE_ID}`
 
 ## 🍪 Using browser cookies
 

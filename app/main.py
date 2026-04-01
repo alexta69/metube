@@ -64,9 +64,13 @@ class Config:
         'MAX_CONCURRENT_DOWNLOADS': '3',
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',
+        'HASHARR_ENABLED': 'false',
+        'HASHARR_URL': 'http://hasharr:9995',
+        'HASHARR_SERVICE_ID': '1',
+        'HASHARR_TIMEOUT_SEC': '20',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'HASHARR_ENABLED')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -114,6 +118,10 @@ class Config:
         'PUBLIC_HOST_URL',
         'PUBLIC_HOST_AUDIO_URL',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
+        'HASHARR_ENABLED',
+        'HASHARR_URL',
+        'HASHARR_SERVICE_ID',
+        'HASHARR_TIMEOUT_SEC',
     )
 
     def frontend_safe(self) -> dict:
@@ -549,6 +557,34 @@ async def history(request):
 
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
+
+@routes.get(config.URL_PREFIX + 'hasharr-settings')
+async def get_hasharr_settings(request):
+    return web.Response(text=serializer.encode({
+        'enabled': bool(config.HASHARR_ENABLED),
+        'url': str(config.HASHARR_URL),
+        'service_id': int(config.HASHARR_SERVICE_ID),
+        'timeout_sec': int(config.HASHARR_TIMEOUT_SEC),
+    }), content_type='application/json')
+
+@routes.post(config.URL_PREFIX + 'hasharr-settings')
+async def set_hasharr_settings(request):
+    post = await _read_json_request(request)
+    enabled = bool(post.get('enabled', config.HASHARR_ENABLED))
+    url = str(post.get('url', config.HASHARR_URL)).strip()
+    service_id = int(post.get('service_id', config.HASHARR_SERVICE_ID))
+    timeout_sec = int(post.get('timeout_sec', config.HASHARR_TIMEOUT_SEC))
+    if not url:
+        raise web.HTTPBadRequest(reason='url is required')
+    if service_id <= 0:
+        raise web.HTTPBadRequest(reason='service_id must be > 0')
+    if timeout_sec <= 0:
+        raise web.HTTPBadRequest(reason='timeout_sec must be > 0')
+    config.HASHARR_ENABLED = enabled
+    config.HASHARR_URL = url
+    config.HASHARR_SERVICE_ID = service_id
+    config.HASHARR_TIMEOUT_SEC = timeout_sec
+    return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
 
 @sio.event
 async def connect(sid, environ):
