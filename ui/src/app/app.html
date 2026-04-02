@@ -400,28 +400,32 @@
                     <div class="col-12">
                       <div class="action-group-label">Webhook Integration</div>
                     </div>
-                    <div class="col-12 col-md-2 d-flex align-items-center">
-                      <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
-                          name="webhookEnabled" [(ngModel)]="webhookEnabled"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                        <label class="form-check-label" for="webhookEnabled">Enabled</label>
-                      </div>
-                    </div>
-                    <div class="col-12 col-md-8">
-                      <div class="input-group">
-                        <span class="input-group-text">Endpoint</span>
-                        <input type="text" class="form-control" placeholder="http://localhost:9995/api/hash-service/1"
-                          name="webhookEndpoint" [(ngModel)]="webhookEndpoint"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                      </div>
-                    </div>
-                    <div class="col-6 col-md-2">
-                      <div class="input-group">
-                        <span class="input-group-text">Timeout</span>
-                        <input type="number" min="1" class="form-control webhook-timeout-input" name="webhookTimeoutSec"
-                          [(ngModel)]="webhookTimeoutSec"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                    <div class="col-12">
+                      <div class="webhook-control-row">
+                        <div class="webhook-control-enabled d-flex align-items-center">
+                          <div class="form-check form-switch mb-0">
+                            <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
+                              name="webhookEnabled" [(ngModel)]="webhookEnabled"
+                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                            <label class="form-check-label" for="webhookEnabled">Enabled</label>
+                          </div>
+                        </div>
+                        <div class="webhook-control-endpoint">
+                          <div class="input-group">
+                            <span class="input-group-text">Endpoint</span>
+                            <input type="text" class="form-control" placeholder="http://localhost:9995/api/hash-service/1"
+                              name="webhookEndpoint" [(ngModel)]="webhookEndpoint"
+                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                          </div>
+                        </div>
+                        <div class="webhook-control-timeout">
+                          <div class="input-group webhook-timeout-group">
+                            <span class="input-group-text">Timeout</span>
+                            <input type="number" min="1" class="form-control webhook-timeout-input" name="webhookTimeoutSec"
+                              [(ngModel)]="webhookTimeoutSec"
+                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                          </div>
+                        </div>
                       </div>
                     </div>
                     <div class="col-12 col-md-7">
