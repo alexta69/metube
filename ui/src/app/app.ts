@@ -7,10 +7,10 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faGear } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService, HasharrSettings, HasharrServiceTestResponse } from './services/downloads.service';
+import { AddDownloadPayload, DownloadsService, WebhookSettings, WebhookTestResponse } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
@@ -107,13 +107,15 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
-  hasharrEnabled = false;
-  hasharrUrl = 'http://hasharr:9995';
-  hasharrServiceID = 1;
-  hasharrTimeoutSec = 20;
-  hasharrSettingsStatus = '';
-  hasharrTestStatus = '';
-  hasharrTestProfile: Record<string, unknown> | null = null;
+  webhookEnabled = false;
+  webhookEndpoint = 'http://localhost:9995/api/hash-service/1';
+  webhookTimeoutSec = 20;
+  webhookSettingsStatus = '';
+  webhookTestStatus = '';
+  webhookTestResponsePretty = '';
+  settingsModalOpen = false;
+  focusedRefreshMs = 3000;
+  backgroundRefreshMs = 30000;
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
@@ -129,6 +131,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }> = {};
   private readonly selectionCookiePrefix = 'metube_selection_';
   private readonly settingsCookieExpiryDays = 3650;
+  private readonly focusedRefreshCookie = 'metube_focused_refresh_ms';
+  private readonly backgroundRefreshCookie = 'metube_background_refresh_ms';
   private lastFocusedElement: HTMLElement | null = null;
   private colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private onColorSchemeChanged = () => {
@@ -176,6 +180,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faUpload = faUpload;
   faPause = faPause;
   faPlay = faPlay;
+  faGear = faGear;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -263,6 +268,15 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     if (!Number.isNaN(ci) && ci >= 1) {
       this.checkIntervalMinutes = ci;
     }
+    const focusedCookie = parseInt(this.cookieService.get(this.focusedRefreshCookie) || '', 10);
+    if (!Number.isNaN(focusedCookie)) {
+      this.focusedRefreshMs = this.clampRefreshMs(focusedCookie, 500, 10000);
+    }
+    const backgroundCookie = parseInt(this.cookieService.get(this.backgroundRefreshCookie) || '', 10);
+    if (!Number.isNaN(backgroundCookie)) {
+      this.backgroundRefreshMs = this.clampRefreshMs(backgroundCookie, 2000, 120000);
+    }
+    this.downloads.setRefreshCadence(this.focusedRefreshMs, this.backgroundRefreshMs);
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
     // Subscribe to download updates
@@ -298,7 +312,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.cdr.markForCheck();
     });
     this.getConfiguration();
-    this.loadHasharrSettings();
+    this.loadWebhookSettings();
     this.getYtdlOptionsUpdateTime();
     this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
@@ -306,89 +320,78 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
   }
 
-  loadHasharrSettings() {
-    this.downloads.getHasharrSettings().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+  loadWebhookSettings() {
+    this.downloads.getWebhookSettings().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (data) => {
         if (!data || typeof data !== 'object' || ('status' in data && data.status === 'error')) {
-          this.hasharrSettingsStatus = 'Unable to load hasharr settings.';
+          this.webhookSettingsStatus = 'Unable to load webhook settings.';
           this.cdr.markForCheck();
           return;
         }
-        const settings = data as HasharrSettings;
-        this.hasharrEnabled = !!settings.enabled;
-        this.hasharrUrl = String(settings.url || 'http://hasharr:9995');
-        this.hasharrServiceID = Math.max(1, Number(settings.service_id || 1));
-        this.hasharrTimeoutSec = Math.max(1, Number(settings.timeout_sec || 20));
-        this.hasharrSettingsStatus = '';
+        const settings = data as WebhookSettings;
+        this.webhookEnabled = !!settings.enabled;
+        this.webhookEndpoint = String(settings.endpoint || 'http://localhost:9995/api/hash-service/1');
+        this.webhookTimeoutSec = Math.max(1, Number(settings.timeout_sec || 20));
+        this.webhookSettingsStatus = '';
         this.cdr.markForCheck();
       },
       error: () => {
-        this.hasharrSettingsStatus = 'Unable to load hasharr settings.';
+        this.webhookSettingsStatus = 'Unable to load webhook settings.';
         this.cdr.markForCheck();
       },
     });
   }
 
-  saveHasharrSettings() {
-    const payload: HasharrSettings = {
-      enabled: !!this.hasharrEnabled,
-      url: String(this.hasharrUrl || '').trim(),
-      service_id: Math.max(1, Number(this.hasharrServiceID || 1)),
-      timeout_sec: Math.max(1, Number(this.hasharrTimeoutSec || 20)),
+  saveWebhookSettings() {
+    const payload: WebhookSettings = {
+      enabled: !!this.webhookEnabled,
+      endpoint: String(this.webhookEndpoint || '').trim(),
+      timeout_sec: Math.max(1, Number(this.webhookTimeoutSec || 20)),
     };
-    if (!payload.url) {
-      this.hasharrSettingsStatus = 'Hasharr URL is required.';
+    if (!payload.endpoint) {
+      this.webhookSettingsStatus = 'Endpoint is required.';
       this.cdr.markForCheck();
       return;
     }
-    this.downloads.saveHasharrSettings(payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+    this.downloads.saveWebhookSettings(payload).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (out) => {
         if (out && typeof out === 'object' && 'status' in out && out.status === 'ok') {
-          this.hasharrSettingsStatus = 'Hasharr settings saved.';
+          this.webhookSettingsStatus = 'Webhook settings saved.';
         } else {
-          this.hasharrSettingsStatus = 'Failed to save hasharr settings.';
+          this.webhookSettingsStatus = 'Failed to save webhook settings.';
         }
         this.cdr.markForCheck();
       },
       error: () => {
-        this.hasharrSettingsStatus = 'Failed to save hasharr settings.';
+        this.webhookSettingsStatus = 'Failed to save webhook settings.';
         this.cdr.markForCheck();
       },
     });
   }
 
-  testHasharrService() {
-    this.hasharrTestStatus = 'Testing hasharr service...';
-    this.hasharrTestProfile = null;
+  testWebhookService() {
+    this.webhookTestStatus = 'Testing webhook endpoint...';
+    this.webhookTestResponsePretty = '';
     this.cdr.markForCheck();
-    this.downloads.testHasharrSettings({
-      url: String(this.hasharrUrl || '').trim(),
-      service_id: Math.max(1, Number(this.hasharrServiceID || 1)),
-      timeout_sec: Math.max(1, Number(this.hasharrTimeoutSec || 20)),
+    this.downloads.testWebhookSettings({
+      endpoint: String(this.webhookEndpoint || '').trim(),
+      timeout_sec: Math.max(1, Number(this.webhookTimeoutSec || 20)),
     }).pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (resp) => {
-        if (!resp || typeof resp !== 'object' || ('status' in resp && resp.status === 'error')) {
-          this.hasharrTestStatus = 'Hasharr test failed.';
-          this.hasharrTestProfile = null;
+        if (!resp || typeof resp !== 'object') {
+          this.webhookTestStatus = 'Webhook test failed.';
+          this.webhookTestResponsePretty = '';
           this.cdr.markForCheck();
           return;
         }
-        const result = resp as HasharrServiceTestResponse;
-        if (result.valid_service_id) {
-          this.hasharrTestStatus = 'Hasharr reachable. Service ID is valid.';
-          this.hasharrTestProfile = result.profile || null;
-        } else if (result.reachable) {
-          this.hasharrTestStatus = result.message || 'Hasharr reachable, but service ID is not valid.';
-          this.hasharrTestProfile = null;
-        } else {
-          this.hasharrTestStatus = result.message || 'Could not reach hasharr.';
-          this.hasharrTestProfile = null;
-        }
+        const result = resp as WebhookTestResponse;
+        this.webhookTestStatus = result.message || (result.status === 'ok' ? 'Webhook test succeeded.' : 'Webhook test completed with errors.');
+        this.webhookTestResponsePretty = JSON.stringify(result.response ?? result, null, 2);
         this.cdr.markForCheck();
       },
       error: () => {
-        this.hasharrTestStatus = 'Hasharr test failed.';
-        this.hasharrTestProfile = null;
+        this.webhookTestStatus = 'Webhook test failed.';
+        this.webhookTestResponsePretty = '';
         this.cdr.markForCheck();
       },
     });
@@ -412,6 +415,31 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   ngOnDestroy() {
     this.addRequestSub?.unsubscribe();
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
+  }
+
+  openSettingsModal(): void {
+    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.settingsModalOpen = true;
+  }
+
+  closeSettingsModal(): void {
+    this.settingsModalOpen = false;
+    this.lastFocusedElement?.focus();
+  }
+
+  saveRefreshSettings(): void {
+    this.focusedRefreshMs = this.clampRefreshMs(this.focusedRefreshMs, 500, 10000);
+    this.backgroundRefreshMs = this.clampRefreshMs(this.backgroundRefreshMs, 2000, 120000);
+    this.downloads.setRefreshCadence(this.focusedRefreshMs, this.backgroundRefreshMs);
+    this.cookieService.set(this.focusedRefreshCookie, String(this.focusedRefreshMs), { expires: this.settingsCookieExpiryDays });
+    this.cookieService.set(this.backgroundRefreshCookie, String(this.backgroundRefreshMs), { expires: this.settingsCookieExpiryDays });
+    this.closeSettingsModal();
+  }
+
+  private clampRefreshMs(value: number, min: number, max: number): number {
+    const normalized = Number(value);
+    if (Number.isNaN(normalized)) return min;
+    return Math.min(max, Math.max(min, Math.round(normalized)));
   }
 
   // workaround to allow fetching of Map values in the order they were inserted

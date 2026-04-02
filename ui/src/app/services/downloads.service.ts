@@ -6,19 +6,17 @@ import { MeTubeSocket } from './metube-socket.service';
 import { Download, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
-export interface HasharrSettings {
+export interface WebhookSettings {
   enabled: boolean;
-  url: string;
-  service_id: number;
+  endpoint: string;
   timeout_sec: number;
 }
 
-export interface HasharrServiceTestResponse {
+export interface WebhookTestResponse {
   status: string;
-  reachable: boolean;
-  valid_service_id: boolean;
   message?: string;
-  profile?: Record<string, unknown>;
+  response?: unknown;
+  status_code?: number;
 }
 
 export interface AddDownloadPayload {
@@ -52,8 +50,8 @@ export class DownloadsService {
   configurationChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
   private updateRefreshScheduled = false;
-  private readonly foregroundRefreshMs = 3000;
-  private readonly backgroundRefreshMs = 30000;
+  private foregroundRefreshMs = 3000;
+  private backgroundRefreshMs = 30000;
 
   configuration: Record<string, unknown> = {};
   customDirs: Record<string, string[]> = {};
@@ -157,6 +155,11 @@ export class DownloadsService {
     setTimeout(() => flush(), delay);
   }
 
+  setRefreshCadence(focusedMs: number, backgroundMs: number) {
+    this.foregroundRefreshMs = focusedMs;
+    this.backgroundRefreshMs = backgroundMs;
+  }
+
   handleHTTPError(error: HttpErrorResponse) {
     const msg = error.error instanceof ErrorEvent
       ? error.error.message
@@ -240,20 +243,20 @@ export class DownloadsService {
     );
   }
 
-  getHasharrSettings() {
-    return this.http.get<HasharrSettings>('hasharr-settings').pipe(
+  getWebhookSettings() {
+    return this.http.get<WebhookSettings>('webhook-settings').pipe(
       catchError(this.handleHTTPError)
     );
   }
 
-  saveHasharrSettings(settings: HasharrSettings) {
-    return this.http.post<{ status: string; msg?: string }>('hasharr-settings', settings).pipe(
+  saveWebhookSettings(settings: WebhookSettings) {
+    return this.http.post<{ status: string; msg?: string }>('webhook-settings', settings).pipe(
       catchError(this.handleHTTPError)
     );
   }
 
-  testHasharrSettings(settings: Pick<HasharrSettings, 'url' | 'service_id' | 'timeout_sec'>) {
-    return this.http.post<HasharrServiceTestResponse>('hasharr-settings/test', settings).pipe(
+  testWebhookSettings(settings: Pick<WebhookSettings, 'endpoint' | 'timeout_sec'>) {
+    return this.http.post<WebhookTestResponse>('webhook-settings/test', settings).pipe(
       catchError(this.handleHTTPError)
     );
   }

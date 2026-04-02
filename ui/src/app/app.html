@@ -49,6 +49,12 @@
     </div>
     -->
     <div class="navbar-nav ms-auto">
+      <button type="button" class="btn btn-link nav-link py-2 px-0 px-sm-2"
+        aria-label="Open settings"
+        title="UI settings"
+        (click)="openSettingsModal()">
+        <fa-icon [icon]="faGear" />
+      </button>
       <div class="nav-item dropdown" ngbDropdown placement="bottom-end">
         <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
           id="theme-select"
@@ -476,38 +482,27 @@
               <div class="row">
                 <div class="col-12">
                   <hr class="my-3">
-                  <div class="row g-3 mb-3 hasharr-integration">
+                  <div class="row g-3 mb-3 webhook-integration">
                     <div class="col-12">
-                      <div class="action-group-label">Hasharr Integration</div>
+                      <div class="action-group-label">Webhook Integration</div>
                     </div>
                     <div class="col-12 col-md-3 d-flex align-items-center">
                       <div class="form-check form-switch mb-0">
-                        <input class="form-check-input" type="checkbox" role="switch" id="hasharrEnabled"
-                          name="hasharrEnabled" [(ngModel)]="hasharrEnabled"
-                          [disabled]="addInProgress || downloads.loading">
-                        <label class="form-check-label" for="hasharrEnabled">Enabled</label>
+                        <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
+                          name="webhookEnabled" [(ngModel)]="webhookEnabled"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                        <label class="form-check-label" for="webhookEnabled">Enabled</label>
                       </div>
                     </div>
-                    <div class="col-12 col-md-5">
+                    <div class="col-12 col-md-7">
                       <div class="input-group">
-                        <span class="input-group-text">Hasharr URL</span>
+                        <span class="input-group-text">Endpoint</span>
                         <input type="text"
                           class="form-control"
-                          placeholder="http://hasharr:9995"
-                          name="hasharrUrl"
-                          [(ngModel)]="hasharrUrl"
-                          [disabled]="addInProgress || downloads.loading">
-                      </div>
-                    </div>
-                    <div class="col-6 col-md-2">
-                      <div class="input-group">
-                        <span class="input-group-text">Service ID</span>
-                        <input type="number"
-                          min="1"
-                          class="form-control"
-                          name="hasharrServiceID"
-                          [(ngModel)]="hasharrServiceID"
-                          [disabled]="addInProgress || downloads.loading">
+                          placeholder="http://localhost:9995/api/hash-service/1"
+                          name="webhookEndpoint"
+                          [(ngModel)]="webhookEndpoint"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
                     </div>
                     <div class="col-6 col-md-2">
@@ -516,41 +511,34 @@
                         <input type="number"
                           min="1"
                           class="form-control"
-                          name="hasharrTimeoutSec"
-                          [(ngModel)]="hasharrTimeoutSec"
-                          [disabled]="addInProgress || downloads.loading">
+                          name="webhookTimeoutSec"
+                          [(ngModel)]="webhookTimeoutSec"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
                     </div>
                     <div class="col-12 col-md-7">
-                      <div class="hasharr-action-row">
-                        <button type="button" class="btn btn-secondary" (click)="saveHasharrSettings()">
-                          Save Hasharr Settings
+                      <div class="webhook-action-row">
+                        <button type="button" class="btn btn-secondary" (click)="saveWebhookSettings()">
+                          Save Webhook Settings
                         </button>
-                        <button type="button" class="btn btn-outline-secondary" (click)="testHasharrService()">
+                        <button type="button" class="btn btn-outline-secondary" (click)="testWebhookService()">
                           Test Service
                         </button>
                       </div>
                     </div>
                     <div class="col-12 col-md-5">
-                      <div class="hasharr-status-block">
-                        @if (hasharrSettingsStatus) {
-                          <small class="text-muted d-block">{{ hasharrSettingsStatus }}</small>
+                      <div class="webhook-status-block">
+                        @if (webhookSettingsStatus) {
+                          <small class="text-muted d-block">{{ webhookSettingsStatus }}</small>
                         }
-                        @if (hasharrTestStatus) {
-                          <small class="text-muted d-block">{{ hasharrTestStatus }}</small>
+                        @if (webhookTestStatus) {
+                          <small class="text-muted d-block">{{ webhookTestStatus }}</small>
                         }
                       </div>
                     </div>
-                    @if (hasharrTestProfile) {
+                    @if (webhookTestResponsePretty) {
                       <div class="col-12">
-                        <div class="small text-muted hasharr-profile-result">
-                          <div><strong>Profile Name:</strong> {{ hasharrTestProfile['name'] }}</div>
-                          <div><strong>Enabled:</strong> {{ hasharrTestProfile['enabled'] }}</div>
-                          <div><strong>Apply Actions:</strong> {{ hasharrTestProfile['applyActions'] }}</div>
-                          <div><strong>Stash Index:</strong> {{ hasharrTestProfile['stashIndex'] }}</div>
-                          <div><strong>Max Time Delta:</strong> {{ hasharrTestProfile['maxTimeDelta'] }}</div>
-                          <div><strong>Max Distance:</strong> {{ hasharrTestProfile['maxDistance'] }}</div>
-                        </div>
+                        <pre class="webhook-response-block">{{ webhookTestResponsePretty }}</pre>
                       </div>
                     }
                   </div>
@@ -661,6 +649,45 @@
           <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
             Import URLs
           </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <div class="modal fade" tabindex="-1" role="dialog"
+    aria-modal="true"
+    aria-labelledby="ui-settings-modal-title"
+    [class.show]="settingsModalOpen"
+    [style.display]="settingsModalOpen ? 'block' : 'none'">
+    <div class="modal-dialog" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="ui-settings-modal-title" class="modal-title">UI Refresh Settings</h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeSettingsModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="row g-3">
+            <div class="col-12">
+              <div class="input-group">
+                <span class="input-group-text">Focused Refresh (ms)</span>
+                <input type="number" min="500" max="10000" class="form-control"
+                  [(ngModel)]="focusedRefreshMs"
+                  [ngModelOptions]="{standalone: true}">
+              </div>
+            </div>
+            <div class="col-12">
+              <div class="input-group">
+                <span class="input-group-text">Background Refresh (ms)</span>
+                <input type="number" min="2000" max="120000" class="form-control"
+                  [(ngModel)]="backgroundRefreshMs"
+                  [ngModelOptions]="{standalone: true}">
+              </div>
+            </div>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeSettingsModal()">Cancel</button>
+          <button type="button" class="btn btn-primary" (click)="saveRefreshSettings()">Save</button>
         </div>
       </div>
     </div>

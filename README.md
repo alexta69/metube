@@ -40,10 +40,9 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __SUBSCRIPTION_SCAN_PLAYLIST_END__: Maximum playlist/channel entries to fetch per subscription check (newest-first). Defaults to `50`.
 * __SUBSCRIPTION_MAX_SEEN_IDS__: Cap on stored video IDs per subscription to limit state file growth. Defaults to `50000`.
 * __CLEAR_COMPLETED_AFTER__: Number of seconds after which completed (and failed) downloads are automatically removed from the "Completed" list. Defaults to `0` (disabled).
-* __HASHARR_ENABLED__: If `true`, call hasharr when a download completes. Defaults to `false`.
-* __HASHARR_URL__: Base URL for hasharr service (for example `http://hasharr:9995`). Defaults to `http://hasharr:9995`.
-* __HASHARR_SERVICE_ID__: Hash service profile ID to call at `POST /api/hash-service/{id}`. Defaults to `1`.
-* __HASHARR_TIMEOUT_SEC__: Timeout (seconds) for hasharr callback requests. Defaults to `20`.
+* __WEBSERVICE_ENABLED__: If `true`, call a webhook endpoint when a download completes. Defaults to `false`.
+* __WEBSERVICE_ENDPOINT__: Full webhook URL to call (for example `http://localhost:9995/api/hash-service/1`). Defaults to `http://localhost:9995/api/hash-service/1`.
+* __WEBSERVICE_TIMEOUT_SEC__: Timeout (seconds) for webhook requests. Defaults to `20`.
 
 ### 📁 Storage & Directories
 
@@ -93,29 +92,37 @@ The project's Wiki contains examples of useful configurations contributed by use
 * [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)
 * [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)
 
-## hasharr integration
+## Webhook integration
 
-MeTube can call hasharr after download completion to perform pHash matching and action policy.
+MeTube can call a generic webhook endpoint after download completion. The payload is fixed JSON so any consumer can implement it.
 
 ### Runtime API endpoints
 
-- `GET /hasharr-settings` -> current effective integration settings
-- `POST /hasharr-settings` -> update runtime settings
+- `GET /webhook-settings` -> current effective integration settings
+- `POST /webhook-settings` -> update runtime settings
+- `POST /webhook-settings/test` -> send test payload and return endpoint response
 
 Example:
 
 ```json
 {
   "enabled": true,
-  "url": "http://hasharr:9995",
-  "service_id": 1,
+  "endpoint": "http://localhost:9995/api/hash-service/1",
   "timeout_sec": 20
 }
 ```
 
-When enabled, MeTube posts each completed output file to:
+When enabled, MeTube posts each completed output file to `POST {WEBSERVICE_ENDPOINT}` with:
 
-`POST {HASHARR_URL}/api/hash-service/{HASHARR_SERVICE_ID}`
+```json
+{
+  "filePath": "/downloads/example.mp4",
+  "source": "metube",
+  "jobId": "optional-job-id"
+}
+```
+
+The test route posts the same shape with an empty `filePath`.
 
 ## 🍪 Using browser cookies
 
