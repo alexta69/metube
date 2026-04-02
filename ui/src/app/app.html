@@ -450,7 +450,41 @@
                     </div>
                     @if (webhookTestResponsePretty) {
                     <div class="col-12">
-                      <pre class="webhook-response-block">{{ webhookTestResponsePretty }}</pre>
+                      <div class="webhook-response-view-toggle">
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          [class.btn-secondary]="webhookTestViewMode === 'pretty'"
+                          [class.btn-outline-secondary]="webhookTestViewMode !== 'pretty'"
+                          (click)="setWebhookTestViewMode('pretty')">
+                          Pretty
+                        </button>
+                        <button
+                          type="button"
+                          class="btn btn-sm"
+                          [class.btn-secondary]="webhookTestViewMode === 'raw'"
+                          [class.btn-outline-secondary]="webhookTestViewMode !== 'raw'"
+                          (click)="setWebhookTestViewMode('raw')">
+                          Raw
+                        </button>
+                      </div>
+
+                      @if (webhookTestViewMode === 'pretty') {
+                      <div class="webhook-response-block webhook-response-pretty">
+                        <table class="table table-sm table-borderless mb-0">
+                          <tbody>
+                            @for (entry of webhookTestResponseEntries; track entry.key) {
+                            <tr>
+                              <th scope="row">{{ entry.key }}:</th>
+                              <td>{{ entry.value }}</td>
+                            </tr>
+                            }
+                          </tbody>
+                        </table>
+                      </div>
+                      } @else {
+                      <pre class="webhook-response-block">{{ webhookTestResponseRaw }}</pre>
+                      }
                     </div>
                     }
                   </div>

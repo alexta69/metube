@@ -112,7 +112,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   webhookTimeoutSec = 20;
   webhookSettingsStatus = '';
   webhookTestStatus = '';
+  webhookTestViewMode: 'pretty' | 'raw' = 'pretty';
+  webhookTestResponseEntries: Array<{ key: string; value: string }> = [];
   webhookTestResponsePretty = '';
+  webhookTestResponseRaw = '';
   settingsModalOpen = false;
   focusedRefreshMs = 3000;
   backgroundRefreshMs = 30000;
@@ -371,6 +374,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   testWebhookService() {
     this.webhookTestStatus = 'Testing webhook endpoint...';
+    this.webhookTestViewMode = 'pretty';
+    this.webhookTestResponseEntries = [];
+    this.webhookTestResponseRaw = '';
     this.webhookTestResponsePretty = '';
     this.cdr.markForCheck();
     this.downloads.testWebhookSettings({
@@ -385,16 +391,47 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
           return;
         }
         const result = resp as WebhookTestResponse;
+        const display = result.response ?? result;
         this.webhookTestStatus = result.message || (result.status === 'ok' ? 'Webhook test succeeded.' : 'Webhook test completed with errors.');
-        this.webhookTestResponsePretty = JSON.stringify(result.response ?? result, null, 2);
+        this.webhookTestResponseRaw = JSON.stringify(display, null, 2);
+        this.webhookTestResponsePretty = this.webhookTestResponseRaw;
+        this.webhookTestResponseEntries = this.toWebhookResponseEntries(display);
         this.cdr.markForCheck();
       },
       error: () => {
         this.webhookTestStatus = 'Webhook test failed.';
+        this.webhookTestResponseEntries = [];
+        this.webhookTestResponseRaw = '';
         this.webhookTestResponsePretty = '';
         this.cdr.markForCheck();
       },
     });
+  }
+
+  setWebhookTestViewMode(mode: 'pretty' | 'raw') {
+    this.webhookTestViewMode = mode;
+  }
+
+  private toWebhookResponseEntries(value: unknown): Array<{ key: string; value: string }> {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) {
+      return [{ key: 'value', value: this.stringifyWebhookValue(value) }];
+    }
+    const obj = value as Record<string, unknown>;
+    return Object.entries(obj).map(([key, entryValue]) => ({
+      key,
+      value: this.stringifyWebhookValue(entryValue),
+    }));
+  }
+
+  private stringifyWebhookValue(value: unknown): string {
+    if (value === null || value === undefined) return '';
+    if (typeof value === 'string') return value;
+    if (typeof value === 'number' || typeof value === 'boolean') return String(value);
+    try {
+      return JSON.stringify(value);
+    } catch {
+      return String(value);
+    }
   }
 
   ngAfterViewInit() {
