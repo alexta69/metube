@@ -102,6 +102,8 @@ MeTube can call a generic webhook endpoint after download completion. The payloa
 - `POST /webhook-settings` -> update runtime settings
 - `POST /webhook-settings/test` -> send test payload and return endpoint response
 
+Settings saved via `POST /webhook-settings` are written to `{STATE_DIR}/webhook_settings.json` and reloaded on startup, so they survive container restarts. If this file is present, it overrides the `WEBSERVICE_*` environment defaults for the running process.
+
 Example:
 
 ```json

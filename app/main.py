@@ -20,6 +20,7 @@ from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo
+from state_store import AtomicJsonStore
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
@@ -169,6 +170,43 @@ class Config:
         return (True, '')
 
 config = Config()
+
+_webhook_settings_store = AtomicJsonStore(
+    os.path.join(config.STATE_DIR, 'webhook_settings.json'),
+    kind='webhook_settings',
+)
+
+
+def _load_persisted_webhook_settings() -> None:
+    """Apply webhook endpoint settings saved under STATE_DIR (survives container restarts)."""
+    payload = _webhook_settings_store.load()
+    if not payload:
+        return
+    try:
+        if 'endpoint' in payload:
+            ep = str(payload['endpoint'] or '').strip()
+            if ep:
+                config.WEBSERVICE_ENDPOINT = ep
+        if 'timeout_sec' in payload:
+            ts = int(payload['timeout_sec'])
+            if ts > 0:
+                config.WEBSERVICE_TIMEOUT_SEC = ts
+        if 'enabled' in payload:
+            config.WEBSERVICE_ENABLED = bool(payload['enabled'])
+    except (TypeError, ValueError) as exc:
+        log.warning('Ignoring invalid persisted webhook settings: %s', exc)
+
+
+def _save_persisted_webhook_settings() -> None:
+    _webhook_settings_store.save({
+        'enabled': bool(config.WEBSERVICE_ENABLED),
+        'endpoint': str(config.WEBSERVICE_ENDPOINT),
+        'timeout_sec': int(config.WEBSERVICE_TIMEOUT_SEC),
+    })
+
+
+_load_persisted_webhook_settings()
+
 # Align root logger level with Config (keeps a single source of truth).
 # This re-applies the log level after Config loads, in case LOGLEVEL was
 # overridden by config file settings or differs from the environment variable.
@@ -712,6 +750,11 @@ async def set_webhook_settings(request):
     config.WEBSERVICE_ENABLED = enabled
     config.WEBSERVICE_ENDPOINT = endpoint
     config.WEBSERVICE_TIMEOUT_SEC = timeout_sec
+    try:
+        _save_persisted_webhook_settings()
+    except OSError as exc:
+        log.exception('Failed to persist webhook settings to %s', _webhook_settings_store.path)
+        raise web.HTTPInternalServerError(reason=f'could not persist webhook settings: {exc}') from exc
     return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
 
 @routes.post(config.URL_PREFIX + 'webhook-settings/test')
