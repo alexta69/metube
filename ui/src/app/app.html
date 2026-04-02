@@ -6,34 +6,34 @@
     </a>
     <div class="download-metrics">
       @if (activeDownloads > 0) {
-        <div class="metric">
-          <fa-icon [icon]="faDownload" class="text-primary" />
-          <span>{{activeDownloads}} downloading</span>
-        </div>
+      <div class="metric">
+        <fa-icon [icon]="faDownload" class="text-primary" />
+        <span>{{activeDownloads}} downloading</span>
+      </div>
       }
       @if (queuedDownloads > 0) {
-        <div class="metric">
-          <fa-icon [icon]="faClock" class="text-warning" />
-          <span>{{queuedDownloads}} queued</span>
-        </div>
+      <div class="metric">
+        <fa-icon [icon]="faClock" class="text-warning" />
+        <span>{{queuedDownloads}} queued</span>
+      </div>
       }
       @if (completedDownloads > 0) {
-        <div class="metric">
-          <fa-icon [icon]="faCheck" class="text-success" />
-          <span>{{completedDownloads}} completed</span>
-        </div>
+      <div class="metric">
+        <fa-icon [icon]="faCheck" class="text-success" />
+        <span>{{completedDownloads}} completed</span>
+      </div>
       }
       @if (failedDownloads > 0) {
-        <div class="metric">
-          <fa-icon [icon]="faTimesCircle" class="text-danger" />
-          <span>{{failedDownloads}} failed</span>
-        </div>
+      <div class="metric">
+        <fa-icon [icon]="faTimesCircle" class="text-danger" />
+        <span>{{failedDownloads}} failed</span>
+      </div>
       }
       @if ((totalSpeed | speed) !== '') {
-        <div class="metric">
-          <fa-icon [icon]="faTachometerAlt" class="text-info" />
-          <span>{{totalSpeed | speed }}</span>
-        </div>
+      <div class="metric">
+        <fa-icon [icon]="faTachometerAlt" class="text-info" />
+        <span>{{totalSpeed | speed }}</span>
+      </div>
       }
     </div>
     <!--
@@ -49,39 +49,31 @@
     </div>
     -->
     <div class="navbar-nav ms-auto">
-      <button type="button" class="btn btn-link nav-link py-2 px-0 px-sm-2"
-        aria-label="Open settings"
-        title="UI settings"
-        (click)="openSettingsModal()">
+      <button type="button" class="btn btn-link nav-link py-2 px-0 px-sm-2" aria-label="Open settings"
+        title="UI settings" (click)="openSettingsModal()">
         <fa-icon [icon]="faGear" />
       </button>
       <div class="nav-item dropdown" ngbDropdown placement="bottom-end">
         <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
-          id="theme-select"
-          type="button"
-          aria-expanded="false"
-          ngbDropdownToggle>
+          id="theme-select" type="button" aria-expanded="false" ngbDropdownToggle>
           @if(activeTheme){
           <fa-icon [icon]="activeTheme.icon" />
           }
         </button>
         <ul class="dropdown-menu dropdown-menu-end position-absolute" aria-labelledby="theme-select" ngbDropdownMenu>
           @for (theme of themes; track theme) {
-            <li>
-              <button type="button" class="dropdown-item d-flex align-items-center"
-              [class.active]="activeTheme === theme"
-              ngbDropdownItem
-              (click)="themeChanged(theme)">
-                <span class="me-2 opacity-50">
-                  <fa-icon [icon]="theme.icon" />
-                </span>
-                {{ theme.displayName }}
-                <span class="ms-auto"
-                [class.d-none]="activeTheme !== theme">
+          <li>
+            <button type="button" class="dropdown-item d-flex align-items-center" [class.active]="activeTheme === theme"
+              ngbDropdownItem (click)="themeChanged(theme)">
+              <span class="me-2 opacity-50">
+                <fa-icon [icon]="theme.icon" />
+              </span>
+              {{ theme.displayName }}
+              <span class="ms-auto" [class.d-none]="activeTheme !== theme">
                 <fa-icon [icon]="faCheck" />
-                </span>
-              </button>
-            </li>
+              </span>
+            </button>
+          </li>
           }
         </ul>
       </div>
@@ -97,52 +89,43 @@
         <div class="col">
           <ng-template #urlBarActions>
             @if (addInProgress && cancelRequested) {
-              <button class="btn btn-warning btn-lg px-3" type="button" disabled>
-                <span class="spinner-border spinner-border-sm me-1" role="status"></span>
-                Canceling...
-              </button>
+            <button class="btn btn-warning btn-lg px-3" type="button" disabled>
+              <span class="spinner-border spinner-border-sm me-1" role="status"></span>
+              Canceling...
+            </button>
             } @else if (addInProgress) {
-              <button class="btn btn-secondary btn-lg px-3 add-progress-btn" type="button" disabled>
-                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                Adding...
-              </button>
-              <button class="btn btn-outline-danger btn-lg px-3 add-cancel-btn"
-                type="button"
-                (click)="cancelAdding()"
-                aria-label="Cancel adding URL"
-                title="Cancel adding URL">
-                <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
-              </button>
+            <button class="btn btn-secondary btn-lg px-3 add-progress-btn" type="button" disabled>
+              <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+              Adding...
+            </button>
+            <button class="btn btn-outline-danger btn-lg px-3 add-cancel-btn" type="button" (click)="cancelAdding()"
+              aria-label="Cancel adding URL" title="Cancel adding URL">
+              <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
+            </button>
             } @else if (subscribeInProgress) {
-              <button class="btn btn-primary btn-lg px-4" type="button" disabled>
-                Download
-              </button>
-              <button class="btn btn-outline-secondary btn-lg px-3" type="button" disabled>
-                <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                Subscribing...
-              </button>
+            <button class="btn btn-primary btn-lg px-4" type="button" disabled>
+              Download
+            </button>
+            <button class="btn btn-outline-secondary btn-lg px-3" type="button" disabled>
+              <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+              Subscribing...
+            </button>
             } @else {
-              <button class="btn btn-primary btn-lg px-4" type="submit"
-                (click)="addDownload()"
-                [disabled]="downloads.loading">
-                Download
-              </button>
-              <button class="btn btn-outline-secondary btn-lg px-3" type="button"
-                (click)="addSubscription()"
-                [disabled]="downloads.loading">
-                Subscribe
-              </button>
+            <button class="btn btn-primary btn-lg px-4" type="submit" (click)="addDownload()"
+              [disabled]="downloads.loading">
+              Download
+            </button>
+            <button class="btn btn-outline-secondary btn-lg px-3" type="button" (click)="addSubscription()"
+              [disabled]="downloads.loading">
+              Subscribe
+            </button>
             }
           </ng-template>
 
           <!-- Narrow viewports: full-width field, then Bootstrap btn-group (no faux input-group strip) -->
           <div class="vstack gap-2 d-md-none">
-            <input type="text"
-              autocomplete="off"
-              spellcheck="false"
-              class="form-control form-control-lg"
-              placeholder="Enter video, channel, or playlist URL"
-              [(ngModel)]="addUrl"
+            <input type="text" autocomplete="off" spellcheck="false" class="form-control form-control-lg"
+              placeholder="Enter video, channel, or playlist URL" [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
             <div class="btn-group w-100" role="group" aria-label="Download or subscribe">
@@ -152,12 +135,8 @@
 
           <!-- md and up: standard input-group so Bootstrap handles fused borders -->
           <div class="input-group input-group-lg shadow-sm d-none d-md-flex">
-            <input type="text"
-              autocomplete="off"
-              spellcheck="false"
-              class="form-control form-control-lg"
-              placeholder="Enter video, channel, or playlist URL"
-              [(ngModel)]="addUrl"
+            <input type="text" autocomplete="off" spellcheck="false" class="form-control form-control-lg"
+              placeholder="Enter video, channel, or playlist URL" [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
               [disabled]="addInProgress || subscribeInProgress || downloads.loading">
             <ng-container [ngTemplateOutlet]="urlBarActions" />
@@ -168,205 +147,162 @@
       <!-- Options Row -->
       <div class="row mb-3 g-3">
         @if (downloadType === 'video') {
-          <div class="col-md-3">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
+        <div class="col-md-3">
+          <div class="input-group">
+            <span class="input-group-text">Type</span>
+            <select class="form-select" name="downloadType" [(ngModel)]="downloadType" (change)="downloadTypeChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (type of downloadTypes; track type.id) {
+              <option [ngValue]="type.id">{{ type.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-3">
-            <div class="input-group">
-              <span class="input-group-text">Codec</span>
-              <select class="form-select"
-                name="codec"
-                [(ngModel)]="codec"
-                (change)="codecChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (vc of videoCodecs; track vc.id) {
-                  <option [ngValue]="vc.id">{{ vc.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-md-3">
+          <div class="input-group">
+            <span class="input-group-text">Codec</span>
+            <select class="form-select" name="codec" [(ngModel)]="codec" (change)="codecChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (vc of videoCodecs; track vc.id) {
+              <option [ngValue]="vc.id">{{ vc.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-3">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <select class="form-select"
-                name="format"
-                [(ngModel)]="format"
-                (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (f of formatOptions; track f.id) {
-                  <option [ngValue]="f.id">{{ f.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-md-3">
+          <div class="input-group">
+            <span class="input-group-text">Format</span>
+            <select class="form-select" name="format" [(ngModel)]="format" (change)="formatChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (f of formatOptions; track f.id) {
+              <option [ngValue]="f.id">{{ f.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-3">
-            <div class="input-group">
-              <span class="input-group-text">Quality</span>
-              <select class="form-select"
-                name="quality"
-                [(ngModel)]="quality"
-                (change)="qualityChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading || !showQualitySelector()">
-                @for (q of qualities; track q.id) {
-                  <option [ngValue]="q.id">{{ q.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-md-3">
+          <div class="input-group">
+            <span class="input-group-text">Quality</span>
+            <select class="form-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading || !showQualitySelector()">
+              @for (q of qualities; track q.id) {
+              <option [ngValue]="q.id">{{ q.text }}</option>
+              }
+            </select>
           </div>
+        </div>
         } @else if (downloadType === 'audio') {
-          <div class="col-md-4">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
+        <div class="col-md-4">
+          <div class="input-group">
+            <span class="input-group-text">Type</span>
+            <select class="form-select" name="downloadType" [(ngModel)]="downloadType" (change)="downloadTypeChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (type of downloadTypes; track type.id) {
+              <option [ngValue]="type.id">{{ type.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-4">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <select class="form-select"
-                name="format"
-                [(ngModel)]="format"
-                (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (f of formatOptions; track f.id) {
-                  <option [ngValue]="f.id">{{ f.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-md-4">
+          <div class="input-group">
+            <span class="input-group-text">Format</span>
+            <select class="form-select" name="format" [(ngModel)]="format" (change)="formatChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (f of formatOptions; track f.id) {
+              <option [ngValue]="f.id">{{ f.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-4">
-            <div class="input-group">
-              <span class="input-group-text">Quality</span>
-              <select class="form-select"
-                name="quality"
-                [(ngModel)]="quality"
-                (change)="qualityChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (q of qualities; track q.id) {
-                  <option [ngValue]="q.id">{{ q.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-md-4">
+          <div class="input-group">
+            <span class="input-group-text">Quality</span>
+            <select class="form-select" name="quality" [(ngModel)]="quality" (change)="qualityChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (q of qualities; track q.id) {
+              <option [ngValue]="q.id">{{ q.text }}</option>
+              }
+            </select>
           </div>
+        </div>
         } @else if (downloadType === 'captions') {
-          <!-- 4× col-md-3 is too tight at ~768px (long addons wrap the 4th field); 2×2 md–lg, one row lg+ -->
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
+        <!-- 4× col-md-3 is too tight at ~768px (long addons wrap the 4th field); 2×2 md–lg, one row lg+ -->
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="input-group">
+            <span class="input-group-text">Type</span>
+            <select class="form-select" name="downloadType" [(ngModel)]="downloadType" (change)="downloadTypeChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (type of downloadTypes; track type.id) {
+              <option [ngValue]="type.id">{{ type.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <select class="form-select"
-                name="format"
-                [(ngModel)]="format"
-                (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                ngbTooltip="Subtitle output format for captions mode">
-                @for (f of formatOptions; track f.id) {
-                  <option [ngValue]="f.id">{{ f.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="input-group">
+            <span class="input-group-text">Format</span>
+            <select class="form-select" name="format" [(ngModel)]="format" (change)="formatChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+              ngbTooltip="Subtitle output format for captions mode">
+              @for (f of formatOptions; track f.id) {
+              <option [ngValue]="f.id">{{ f.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Language</span>
-              <input class="form-control"
-                type="text"
-                list="subtitleLanguageOptions"
-                name="subtitleLanguage"
-                [(ngModel)]="subtitleLanguage"
-                (change)="subtitleLanguageChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                placeholder="e.g. en, es, zh-Hans"
-                ngbTooltip="Subtitle language (you can type any language code)">
-              <datalist id="subtitleLanguageOptions">
-                @for (lang of subtitleLanguages; track lang.id) {
-                  <option [value]="lang.id">{{ lang.text }}</option>
-                }
-              </datalist>
-            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="input-group">
+            <span class="input-group-text">Language</span>
+            <input class="form-control" type="text" list="subtitleLanguageOptions" name="subtitleLanguage"
+              [(ngModel)]="subtitleLanguage" (change)="subtitleLanguageChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading" placeholder="e.g. en, es, zh-Hans"
+              ngbTooltip="Subtitle language (you can type any language code)">
+            <datalist id="subtitleLanguageOptions">
+              @for (lang of subtitleLanguages; track lang.id) {
+              <option [value]="lang.id">{{ lang.text }}</option>
+              }
+            </datalist>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Subtitle Source</span>
-              <select class="form-select"
-                name="subtitleMode"
-                [(ngModel)]="subtitleMode"
-                (change)="subtitleModeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
-                @for (mode of subtitleModes; track mode.id) {
-                  <option [ngValue]="mode.id">{{ mode.text }}</option>
-                }
-              </select>
-            </div>
+        </div>
+        <div class="col-12 col-md-6 col-lg-3">
+          <div class="input-group">
+            <span class="input-group-text">Subtitle Source</span>
+            <select class="form-select" name="subtitleMode" [(ngModel)]="subtitleMode" (change)="subtitleModeChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+              ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
+              @for (mode of subtitleModes; track mode.id) {
+              <option [ngValue]="mode.id">{{ mode.text }}</option>
+              }
+            </select>
           </div>
+        </div>
         } @else {
-          <div class="col-md-6">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
+        <div class="col-md-6">
+          <div class="input-group">
+            <span class="input-group-text">Type</span>
+            <select class="form-select" name="downloadType" [(ngModel)]="downloadType" (change)="downloadTypeChanged()"
+              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              @for (type of downloadTypes; track type.id) {
+              <option [ngValue]="type.id">{{ type.text }}</option>
+              }
+            </select>
           </div>
-          <div class="col-md-6">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <input class="form-control" value="JPG" disabled>
-            </div>
+        </div>
+        <div class="col-md-6">
+          <div class="input-group">
+            <span class="input-group-text">Format</span>
+            <input class="form-control" value="JPG" disabled>
           </div>
+        </div>
         }
       </div>
 
       <div class="row mb-3 g-3">
         <div class="col-12 text-start">
-          <button type="button"
-            class="btn btn-link p-0 text-decoration-none"
-            (click)="toggleAdvanced()"
-            [attr.aria-expanded]="isAdvancedOpen"
-            aria-controls="advancedOptions">
+          <button type="button" class="btn btn-link p-0 text-decoration-none" (click)="toggleAdvanced()"
+            [attr.aria-expanded]="isAdvancedOpen" aria-controls="advancedOptions">
             Advanced Options
-            <fa-icon
-              [icon]="isAdvancedOpen ? faChevronDown : faChevronRight"
-              class="ms-1" />
+            <fa-icon [icon]="isAdvancedOpen ? faChevronDown : faChevronRight" class="ms-1" />
           </button>
         </div>
       </div>
@@ -381,10 +317,7 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Auto Start</span>
-                    <select class="form-select"
-                      name="autoStart"
-                      [(ngModel)]="autoStart"
-                      (change)="autoStartChanged()"
+                    <select class="form-select" name="autoStart" [(ngModel)]="autoStart" (change)="autoStartChanged()"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Automatically start downloads when added">
                       <option [ngValue]="true">Yes</option>
@@ -396,30 +329,19 @@
                   <div class="input-group">
                     <span class="input-group-text">Download Folder</span>
                     @if (customDirs$ | async; as customDirs) {
-                    <ng-select [items]="customDirs"
-                      placeholder="Default"
-                      [addTag]="allowCustomDir.bind(this)"
-                      addTagText="Create directory"
-                      bindLabel="folder"
-                      [(ngModel)]="folder"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      [virtualScroll]="true"
-                      [clearable]="true"
-                      [loading]="downloads.loading"
-                      [searchable]="true"
-                      [closeOnSelect]="true"
+                    <ng-select [items]="customDirs" placeholder="Default" [addTag]="allowCustomDir.bind(this)"
+                      addTagText="Create directory" bindLabel="folder" [(ngModel)]="folder"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading" [virtualScroll]="true"
+                      [clearable]="true" [loading]="downloads.loading" [searchable]="true" [closeOnSelect]="true"
                       ngbTooltip="Choose where to save downloads. Type to create a new folder." />
-                  }
+                    }
                   </div>
 
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Custom Name Prefix</span>
-                    <input type="text"
-                      class="form-control"
-                      placeholder="Default"
-                      name="customNamePrefix"
+                    <input type="text" class="form-control" placeholder="Default" name="customNamePrefix"
                       [(ngModel)]="customNamePrefix"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Add a prefix to downloaded filenames">
@@ -428,13 +350,8 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Items Limit</span>
-                    <input type="number"
-                      min="0"
-                      class="form-control"
-                      placeholder="Default"
-                      name="playlistItemLimit"
-                      (keydown)="isNumber($event)"
-                      [(ngModel)]="playlistItemLimit"
+                    <input type="number" min="0" class="form-control" placeholder="Default" name="playlistItemLimit"
+                      (keydown)="isNumber($event)" [(ngModel)]="playlistItemLimit"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Maximum number of items to download from a playlist or channel (0 = no limit)">
                   </div>
@@ -442,12 +359,8 @@
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Subscription Check (min)</span>
-                    <input type="number"
-                      min="1"
-                      class="form-control"
-                      name="checkIntervalMinutes"
-                      (keydown)="isNumber($event)"
-                      [(ngModel)]="checkIntervalMinutes"
+                    <input type="number" min="1" class="form-control" name="checkIntervalMinutes"
+                      (keydown)="isNumber($event)" [(ngModel)]="checkIntervalMinutes"
                       (ngModelChange)="checkIntervalChanged()"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="How often to poll subscriptions for new videos">
@@ -469,7 +382,8 @@
                       <div class="input-group">
                         <span class="input-group-text">Template</span>
                         <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
-                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                          (change)="chapterTemplateChanged()"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                           ngbTooltip="Output template for chapter files">
                       </div>
                     </div>
@@ -486,7 +400,7 @@
                     <div class="col-12">
                       <div class="action-group-label">Webhook Integration</div>
                     </div>
-                    <div class="col-12 col-md-3 d-flex align-items-center">
+                    <div class="col-12 col-md-2 d-flex align-items-center">
                       <div class="form-check form-switch mb-0">
                         <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
                           name="webhookEnabled" [(ngModel)]="webhookEnabled"
@@ -494,24 +408,18 @@
                         <label class="form-check-label" for="webhookEnabled">Enabled</label>
                       </div>
                     </div>
-                    <div class="col-12 col-md-7">
+                    <div class="col-12 col-md-8">
                       <div class="input-group">
                         <span class="input-group-text">Endpoint</span>
-                        <input type="text"
-                          class="form-control"
-                          placeholder="http://localhost:9995/api/hash-service/1"
-                          name="webhookEndpoint"
-                          [(ngModel)]="webhookEndpoint"
+                        <input type="text" class="form-control" placeholder="http://localhost:9995/api/hash-service/1"
+                          name="webhookEndpoint" [(ngModel)]="webhookEndpoint"
                           [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
                     </div>
                     <div class="col-6 col-md-2">
                       <div class="input-group">
                         <span class="input-group-text">Timeout</span>
-                        <input type="number"
-                          min="1"
-                          class="form-control"
-                          name="webhookTimeoutSec"
+                        <input type="number" min="1" class="form-control webhook-timeout-input" name="webhookTimeoutSec"
                           [(ngModel)]="webhookTimeoutSec"
                           [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
@@ -519,7 +427,7 @@
                     <div class="col-12 col-md-7">
                       <div class="webhook-action-row">
                         <button type="button" class="btn btn-secondary" (click)="saveWebhookSettings()">
-                          Save Webhook Settings
+                          Save Webhook
                         </button>
                         <button type="button" class="btn btn-outline-secondary" (click)="testWebhookService()">
                           Test Service
@@ -529,53 +437,49 @@
                     <div class="col-12 col-md-5">
                       <div class="webhook-status-block">
                         @if (webhookSettingsStatus) {
-                          <small class="text-muted d-block">{{ webhookSettingsStatus }}</small>
+                        <small class="text-muted d-block">{{ webhookSettingsStatus }}</small>
                         }
                         @if (webhookTestStatus) {
-                          <small class="text-muted d-block">{{ webhookTestStatus }}</small>
+                        <small class="text-muted d-block">{{ webhookTestStatus }}</small>
                         }
                       </div>
                     </div>
                     @if (webhookTestResponsePretty) {
-                      <div class="col-12">
-                        <pre class="webhook-response-block">{{ webhookTestResponsePretty }}</pre>
-                      </div>
+                    <div class="col-12">
+                      <pre class="webhook-response-block">{{ webhookTestResponsePretty }}</pre>
+                    </div>
                     }
                   </div>
                   <div class="row g-3">
                     <div class="col-md-4">
                       <div class="action-group-label">Cookies</div>
                       <input type="file" id="cookie-upload" class="d-none" accept=".txt"
-                        (change)="onCookieFileSelect($event)"
-                        [disabled]="cookieUploadInProgress || addInProgress">
+                        (change)="onCookieFileSelect($event)" [disabled]="cookieUploadInProgress || addInProgress">
                       <div class="btn-group w-100" role="group">
                         <label class="btn mb-0"
                           [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
-                          [class.disabled]="cookieUploadInProgress || addInProgress"
-                          for="cookie-upload"
+                          [class.disabled]="cookieUploadInProgress || addInProgress" for="cookie-upload"
                           ngbTooltip="Upload a cookies.txt file for authenticated downloads">
                           @if (cookieUploadInProgress) {
-                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                           } @else {
-                            <fa-icon [icon]="faUpload" class="me-2" />
+                          <fa-icon [icon]="faUpload" class="me-2" />
                           }
                           {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
                         </label>
                         @if (hasCookies) {
-                          <button type="button" class="btn btn-outline-danger"
-                            (click)="deleteCookies()"
-                            [disabled]="cookieUploadInProgress || addInProgress"
-                            ngbTooltip="Remove uploaded cookies">
-                            <fa-icon [icon]="faTrashAlt" />
-                          </button>
+                        <button type="button" class="btn btn-outline-danger" (click)="deleteCookies()"
+                          [disabled]="cookieUploadInProgress || addInProgress" ngbTooltip="Remove uploaded cookies">
+                          <fa-icon [icon]="faTrashAlt" />
+                        </button>
                         }
                       </div>
                       <div class="cookie-status" [class.active]="hasCookies">
                         @if (hasCookies) {
-                          <fa-icon [icon]="faCheckCircle" class="me-1" />
-                          Cookies active
+                        <fa-icon [icon]="faCheckCircle" class="me-1" />
+                        Cookies active
                         } @else {
-                          No cookies configured
+                        No cookies configured
                         }
                       </div>
                     </div>
@@ -583,25 +487,19 @@
                       <div class="action-group-label">Bulk Actions</div>
                       <div class="row g-2">
                         <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="openBatchImportModal()">
+                          <button type="button" class="btn btn-secondary w-100" (click)="openBatchImportModal()">
                             <fa-icon [icon]="faFileImport" class="me-2" />
                             Import URLs
                           </button>
                         </div>
                         <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="exportBatchUrls('all')">
+                          <button type="button" class="btn btn-secondary w-100" (click)="exportBatchUrls('all')">
                             <fa-icon [icon]="faFileExport" class="me-2" />
                             Export URLs
                           </button>
                         </div>
                         <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="copyBatchUrls('all')">
+                          <button type="button" class="btn btn-secondary w-100" (click)="copyBatchUrls('all')">
                             <fa-icon [icon]="faCopy" class="me-2" />
                             Copy URLs
                           </button>
@@ -619,11 +517,8 @@
   </form>
 
   <!-- Batch Import Modal -->
-  <div class="modal fade" tabindex="-1" role="dialog"
-  aria-modal="true"
-  aria-labelledby="batch-import-modal-title"
-  [class.show]="batchImportModalOpen"
-  [style.display]="batchImportModalOpen ? 'block' : 'none'">
+  <div class="modal fade" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="batch-import-modal-title"
+    [class.show]="batchImportModalOpen" [style.display]="batchImportModalOpen ? 'block' : 'none'">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -632,18 +527,18 @@
         </div>
         <div class="modal-body">
           <textarea id="batch-import-textarea" [(ngModel)]="batchImportText" class="form-control" rows="6"
-          placeholder="Paste one video URL per line"></textarea>
+            placeholder="Paste one video URL per line"></textarea>
           <div class="mt-2">
             @if (batchImportStatus) {
-              <small>{{ batchImportStatus }}</small>
+            <small>{{ batchImportStatus }}</small>
             }
           </div>
         </div>
         <div class="modal-footer">
           @if (importInProgress) {
-            <button type="button" class="btn btn-danger me-auto" (click)="cancelBatchImport()">
-              Cancel Import
-            </button>
+          <button type="button" class="btn btn-danger me-auto" (click)="cancelBatchImport()">
+            Cancel Import
+          </button>
           }
           <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
           <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
@@ -654,11 +549,8 @@
     </div>
   </div>
 
-  <div class="modal fade" tabindex="-1" role="dialog"
-    aria-modal="true"
-    aria-labelledby="ui-settings-modal-title"
-    [class.show]="settingsModalOpen"
-    [style.display]="settingsModalOpen ? 'block' : 'none'">
+  <div class="modal fade" tabindex="-1" role="dialog" aria-modal="true" aria-labelledby="ui-settings-modal-title"
+    [class.show]="settingsModalOpen" [style.display]="settingsModalOpen ? 'block' : 'none'">
     <div class="modal-dialog" role="document">
       <div class="modal-content">
         <div class="modal-header">
@@ -670,16 +562,14 @@
             <div class="col-12">
               <div class="input-group">
                 <span class="input-group-text">Focused Refresh (ms)</span>
-                <input type="number" min="500" max="10000" class="form-control"
-                  [(ngModel)]="focusedRefreshMs"
+                <input type="number" min="500" max="10000" class="form-control" [(ngModel)]="focusedRefreshMs"
                   [ngModelOptions]="{standalone: true}">
               </div>
             </div>
             <div class="col-12">
               <div class="input-group">
                 <span class="input-group-text">Background Refresh (ms)</span>
-                <input type="number" min="2000" max="120000" class="form-control"
-                  [(ngModel)]="backgroundRefreshMs"
+                <input type="number" min="2000" max="120000" class="form-control" [(ngModel)]="backgroundRefreshMs"
                   [ngModelOptions]="{standalone: true}">
               </div>
             </div>
@@ -695,21 +585,24 @@
 
 
   @if (downloads.loading) {
-    <div class="alert alert-info" role="alert">
-      Connecting to server...
-    </div>
+  <div class="alert alert-info" role="alert">
+    Connecting to server...
+  </div>
   }
   <div class="metube-section-header">Downloading</div>
   <div class="px-2 py-3 border-bottom">
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt" />&nbsp; Cancel selected</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload" />&nbsp; Download selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected
+      (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt" />&nbsp; Cancel selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected
+      (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload" />&nbsp; Download selected</button>
   </div>
   <div class="overflow-auto">
     <table class="table">
       <thead>
         <tr>
           <th scope="col" style="width: 1rem;">
-            <app-select-all-checkbox #queueMasterCheckboxRef [id]="'queue'" [list]="downloads.queue" (changed)="queueSelectionChanged($event)" />
+            <app-select-all-checkbox #queueMasterCheckboxRef [id]="'queue'" [list]="downloads.queue"
+              (changed)="queueSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
           <th scope="col" style="width: 8rem;">Speed</th>
@@ -719,29 +612,37 @@
       </thead>
       <tbody>
         @for (download of downloads.queue | keyvalue: asIsOrder; track download.value.id) {
-          <tr [class.disabled]='download.value.deleting'>
-            <td>
-              <app-item-checkbox [id]="download.key" [master]="queueMasterCheckboxRef" [checkable]="download.value" />
-            </td>
-            <td title="{{ download.value.filename }}">
-              <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
-                <div>{{ download.value.title }} </div>
-                <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'" [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'" type="success"
-                [value]="download.value.status === 'preparing' ? 100 : download.value.percent" class="download-progressbar" />
-              </div>
-            </td>
-            <td>{{ download.value.speed | speed }}</td>
-            <td>{{ download.value.eta | eta }}</td>
-            <td>
-              <div class="d-flex">
-                @if (download.value.status === 'pending') {
-                  <button type="button" class="btn btn-link" [attr.aria-label]="'Start download for ' + download.value.title" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
-                }
-                <button type="button" class="btn btn-link" [attr.aria-label]="'Remove ' + download.value.title + ' from queue'" (click)="delDownload('queue', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
-                <a href="{{download.value.url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + download.value.title"><fa-icon [icon]="faExternalLinkAlt" /></a>
-              </div>
-            </td>
-          </tr>
+        <tr [class.disabled]='download.value.deleting'>
+          <td>
+            <app-item-checkbox [id]="download.key" [master]="queueMasterCheckboxRef" [checkable]="download.value" />
+          </td>
+          <td title="{{ download.value.filename }}">
+            <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
+              <div>{{ download.value.title }} </div>
+              <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'"
+                [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'"
+                type="success" [value]="download.value.status === 'preparing' ? 100 : download.value.percent"
+                class="download-progressbar" />
+            </div>
+          </td>
+          <td>{{ download.value.speed | speed }}</td>
+          <td>{{ download.value.eta | eta }}</td>
+          <td>
+            <div class="d-flex">
+              @if (download.value.status === 'pending') {
+              <button type="button" class="btn btn-link"
+                [attr.aria-label]="'Start download for ' + download.value.title"
+                (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
+              }
+              <button type="button" class="btn btn-link"
+                [attr.aria-label]="'Remove ' + download.value.title + ' from queue'"
+                (click)="delDownload('queue', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
+              <a href="{{download.value.url}}" target="_blank" class="btn btn-link"
+                [attr.aria-label]="'Open source URL for ' + download.value.title"><fa-icon
+                  [icon]="faExternalLinkAlt" /></a>
+            </div>
+          </td>
+        </tr>
         }
       </tbody>
     </table>
@@ -749,19 +650,28 @@
 
   <div class="metube-section-header">Completed</div>
   <div class="px-2 py-3 border-bottom">
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()" ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest first' }}</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasCompletedDone" (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt" />&nbsp; Retry failed</button>
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDownloadSelected (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload" />&nbsp; Download Selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()"
+      ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon
+        [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest
+      first' }}</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDelSelected
+      (click)="delSelectedDownloads('done')"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasCompletedDone"
+      (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone"
+      (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone"
+      (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt" />&nbsp; Retry failed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #doneDownloadSelected
+      (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload" />&nbsp; Download Selected</button>
   </div>
   <div class="overflow-auto">
     <table class="table">
       <thead>
         <tr>
           <th scope="col" style="width: 1rem;">
-            <app-select-all-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)" />
+            <app-select-all-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done"
+              (changed)="doneSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
           <th scope="col">Type</th>
@@ -774,105 +684,110 @@
       </thead>
       <tbody>
         @for (entry of cachedSortedDone; track entry[1].id) {
-          <tr [class.disabled]='entry[1].deleting'>
-            <td>
-              <app-item-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />
-            </td>
-            <td>
-              <div style="display: inline-block; width: 1.5rem;">
-                @if (entry[1].status === 'finished') {
-                  <fa-icon [icon]="faCheckCircle" class="text-success" />
-                }
-                @if (entry[1].status === 'error') {
-                  <button type="button" class="btn btn-link p-0"
-                    (click)="toggleErrorDetail(entry[0])"
-                    [attr.aria-label]="'Toggle error details for ' + entry[1].title"
-                    [attr.aria-expanded]="isErrorExpanded(entry[0])">
-                    <fa-icon [icon]="faTimesCircle" class="text-danger" />
-                  </button>
-                }
-              </div>
-              <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
-                <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
+        <tr [class.disabled]='entry[1].deleting'>
+          <td>
+            <app-item-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />
+          </td>
+          <td>
+            <div style="display: inline-block; width: 1.5rem;">
+              @if (entry[1].status === 'finished') {
+              <fa-icon [icon]="faCheckCircle" class="text-success" />
+              }
+              @if (entry[1].status === 'error') {
+              <button type="button" class="btn btn-link p-0" (click)="toggleErrorDetail(entry[0])"
+                [attr.aria-label]="'Toggle error details for ' + entry[1].title"
+                [attr.aria-expanded]="isErrorExpanded(entry[0])">
+                <fa-icon [icon]="faTimesCircle" class="text-danger" />
+              </button>
+              }
+            </div>
+            <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
+              <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
               } @else {
-                @if (entry[1].status === 'error') {
-                  <button type="button" class="btn btn-link p-0 text-start align-baseline" (click)="toggleErrorDetail(entry[0])">
-                    {{entry[1].title}}
-                    @if (!isErrorExpanded(entry[0])) {
-                      <small class="text-danger ms-2">
-                        <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
-                      </small>
-                    }
-                  </button>
-                } @else {
-                  <span>{{entry[1].title}}</span>
+              @if (entry[1].status === 'error') {
+              <button type="button" class="btn btn-link p-0 text-start align-baseline"
+                (click)="toggleErrorDetail(entry[0])">
+                {{entry[1].title}}
+                @if (!isErrorExpanded(entry[0])) {
+                <small class="text-danger ms-2">
+                  <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
+                </small>
                 }
+              </button>
+              } @else {
+              <span>{{entry[1].title}}</span>
+              }
               }</span>
-              @if (entry[1].status === 'error' && isErrorExpanded(entry[0])) {
-                <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
-                  <div class="d-flex justify-content-between align-items-start">
-                    <div class="flex-grow-1">
-                      @if (entry[1].msg) {
-                        <div class="mb-1"><strong>Message:</strong> {{entry[1].msg}}</div>
-                      }
-                      @if (entry[1].error) {
-                        <div class="mb-1"><strong>Error:</strong> {{entry[1].error}}</div>
-                      }
-                      <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{entry[1].url}}</div>
-                    </div>
-                    <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
-                      (click)="copyErrorMessage(entry[0], entry[1]); $event.stopPropagation()"
-                      ngbTooltip="Copy error details to clipboard">
-                      @if (lastCopiedErrorId === entry[0]) {
-                        <span class="text-success">Copied!</span>
-                      } @else {
-                        <fa-icon [icon]="faCopy" />
-                      }
-                    </button>
-                  </div>
+            @if (entry[1].status === 'error' && isErrorExpanded(entry[0])) {
+            <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
+              <div class="d-flex justify-content-between align-items-start">
+                <div class="flex-grow-1">
+                  @if (entry[1].msg) {
+                  <div class="mb-1"><strong>Message:</strong> {{entry[1].msg}}</div>
+                  }
+                  @if (entry[1].error) {
+                  <div class="mb-1"><strong>Error:</strong> {{entry[1].error}}</div>
+                  }
+                  <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{entry[1].url}}</div>
                 </div>
-              }
-            </td>
-            <td class="text-nowrap">
-              {{ downloadTypeLabel(entry[1]) }}
-            </td>
-            <td class="text-nowrap">
-              {{ formatQualityLabel(entry[1]) }}
-            </td>
-            <td class="text-nowrap">
-              {{ formatCodecLabel(entry[1]) }}
-            </td>
-            <td>
-              @if (entry[1].size) {
-                <span>{{ entry[1].size | fileSize }}</span>
-              }
-            </td>
-            <td class="text-nowrap">
-              @if (entry[1].timestamp) {
-                <span>{{ entry[1].timestamp / 1000000 | date:'yyyy-MM-dd HH:mm' }}</span>
-              }
-            </td>
-            <td>
-              <div class="d-flex">
-                @if (entry[1].status === 'error') {
-                  <button type="button" class="btn btn-link" [attr.aria-label]="'Retry download for ' + entry[1].title" (click)="retryDownload(entry[0], entry[1])"><fa-icon [icon]="faRedoAlt" /></button>
-                }
-                @if (entry[1].filename) {
-                  <a href="{{buildDownloadLink(entry[1])}}" download class="btn btn-link" [attr.aria-label]="'Download result file for ' + entry[1].title"><fa-icon [icon]="faDownload" /></a>
-                }
-                <a href="{{entry[1].url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + entry[1].title"><fa-icon [icon]="faExternalLinkAlt" /></a>
-                <button type="button" class="btn btn-link" [attr.aria-label]="'Delete completed item ' + entry[1].title" (click)="delDownload('done', entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
+                <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
+                  (click)="copyErrorMessage(entry[0], entry[1]); $event.stopPropagation()"
+                  ngbTooltip="Copy error details to clipboard">
+                  @if (lastCopiedErrorId === entry[0]) {
+                  <span class="text-success">Copied!</span>
+                  } @else {
+                  <fa-icon [icon]="faCopy" />
+                  }
+                </button>
               </div>
-            </td>
-          </tr>
+            </div>
+            }
+          </td>
+          <td class="text-nowrap">
+            {{ downloadTypeLabel(entry[1]) }}
+          </td>
+          <td class="text-nowrap">
+            {{ formatQualityLabel(entry[1]) }}
+          </td>
+          <td class="text-nowrap">
+            {{ formatCodecLabel(entry[1]) }}
+          </td>
+          <td>
+            @if (entry[1].size) {
+            <span>{{ entry[1].size | fileSize }}</span>
+            }
+          </td>
+          <td class="text-nowrap">
+            @if (entry[1].timestamp) {
+            <span>{{ entry[1].timestamp / 1000000 | date:'yyyy-MM-dd HH:mm' }}</span>
+            }
+          </td>
+          <td>
+            <div class="d-flex">
+              @if (entry[1].status === 'error') {
+              <button type="button" class="btn btn-link" [attr.aria-label]="'Retry download for ' + entry[1].title"
+                (click)="retryDownload(entry[0], entry[1])"><fa-icon [icon]="faRedoAlt" /></button>
+              }
+              @if (entry[1].filename) {
+              <a href="{{buildDownloadLink(entry[1])}}" download class="btn btn-link"
+                [attr.aria-label]="'Download result file for ' + entry[1].title"><fa-icon [icon]="faDownload" /></a>
+              }
+              <a href="{{entry[1].url}}" target="_blank" class="btn btn-link"
+                [attr.aria-label]="'Open source URL for ' + entry[1].title"><fa-icon [icon]="faExternalLinkAlt" /></a>
+              <button type="button" class="btn btn-link" [attr.aria-label]="'Delete completed item ' + entry[1].title"
+                (click)="delDownload('done', entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
+            </div>
+          </td>
+        </tr>
         @if (entry[1].chapter_files && entry[1].chapter_files.length > 0) {
-          @for (chapterFile of entry[1].chapter_files; track chapterFile.filename) {
-            <tr [class.disabled]='entry[1].deleting'>
-              <td></td>
-              <td>
-                <div style="padding-left: 2rem;">
+        @for (chapterFile of entry[1].chapter_files; track chapterFile.filename) {
+        <tr [class.disabled]='entry[1].deleting'>
+          <td></td>
+          <td>
+            <div style="padding-left: 2rem;">
               <fa-icon [icon]="faCheckCircle" class="text-success me-2" />
-              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" target="_blank" [attr.aria-label]="'Open chapter file ' + getChapterFileName(chapterFile.filename)">{{
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" target="_blank"
+                [attr.aria-label]="'Open chapter file ' + getChapterFileName(chapterFile.filename)">{{
                 getChapterFileName(chapterFile.filename) }}</a>
             </div>
           </td>
@@ -887,14 +802,15 @@
           <td></td>
           <td>
             <div class="d-flex">
-              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" download [attr.aria-label]="'Download chapter file ' + getChapterFileName(chapterFile.filename)"
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" download
+                [attr.aria-label]="'Download chapter file ' + getChapterFileName(chapterFile.filename)"
                 class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
             </div>
           </td>
         </tr>
         }
-      }
-    }
+        }
+        }
       </tbody>
     </table>
   </div>
@@ -902,29 +818,26 @@
   <div class="metube-section-header">Subscriptions</div>
   <div class="px-2 py-3 border-bottom">
     @if (checkingAllSubscriptions) {
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
-        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check all now
-      </button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
+      <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check all now
+    </button>
     } @else {
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
-        (click)="checkAllSubscriptions()"
-        [disabled]="downloads.loading || cachedSubs.length === 0 || checkingSelectedSubscriptions">
-        <fa-icon [icon]="faRedoAlt" />&nbsp; Check all now
-      </button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="checkAllSubscriptions()"
+      [disabled]="downloads.loading || cachedSubs.length === 0 || checkingSelectedSubscriptions">
+      <fa-icon [icon]="faRedoAlt" />&nbsp; Check all now
+    </button>
     }
     @if (checkingSelectedSubscriptions) {
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
-        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check selected
-      </button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
+      <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check selected
+    </button>
     } @else {
-      <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
-        (click)="checkSelectedSubscriptions()"
-        [disabled]="downloads.loading || selectedSubscriptionIds.size === 0 || checkingAllSubscriptions">
-        <fa-icon [icon]="faRedoAlt" />&nbsp; Check selected
-      </button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="checkSelectedSubscriptions()"
+      [disabled]="downloads.loading || selectedSubscriptionIds.size === 0 || checkingAllSubscriptions">
+      <fa-icon [icon]="faRedoAlt" />&nbsp; Check selected
+    </button>
     }
-    <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
-      (click)="deleteSelectedSubscriptions()"
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="deleteSelectedSubscriptions()"
       [disabled]="downloads.loading || selectedSubscriptionIds.size === 0">
       <fa-icon [icon]="faTrashAlt" />&nbsp; Delete selected
     </button>
@@ -934,10 +847,8 @@
       <thead>
         <tr>
           <th scope="col" style="width: 1rem;">
-            <input type="checkbox" class="form-check-input"
-              [checked]="allSubsSelected()"
-              (change)="toggleSubMaster($event)"
-              [disabled]="downloads.loading || cachedSubs.length === 0"
+            <input type="checkbox" class="form-check-input" [checked]="allSubsSelected()"
+              (change)="toggleSubMaster($event)" [disabled]="downloads.loading || cachedSubs.length === 0"
               aria-label="Select all subscriptions" />
           </th>
           <th scope="col">Name</th>
@@ -950,71 +861,61 @@
       </thead>
       <tbody>
         @for (entry of cachedSubs; track entry[0]) {
-          <tr>
-            <td>
-              <input type="checkbox" class="form-check-input"
-                [checked]="isSubSelected(entry[0])"
-                (change)="toggleSubSelected(entry[0])"
+        <tr>
+          <td>
+            <input type="checkbox" class="form-check-input" [checked]="isSubSelected(entry[0])"
+              (change)="toggleSubSelected(entry[0])" [disabled]="downloads.loading"
+              [attr.aria-label]="'Select subscription ' + entry[1].name" />
+          </td>
+          <td>{{ entry[1].name }}</td>
+          <td class="text-break"><a [href]="entry[1].url" target="_blank" rel="noopener">{{ entry[1].url }}</a></td>
+          <td>{{ entry[1].check_interval_minutes }}</td>
+          <td class="text-nowrap">
+            @if (entry[1].last_checked !== null) {
+            <span>{{ entry[1].last_checked! * 1000 | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+            } @else {
+            <span class="text-muted">—</span>
+            }
+          </td>
+          <td>
+            @if (entry[1].error) {
+            <span class="text-danger small">{{ entry[1].error }}</span>
+            } @else if (entry[1].enabled) {
+            <span class="text-success">Active</span>
+            } @else {
+            <span class="text-secondary">Paused</span>
+            }
+          </td>
+          <td>
+            <div class="d-flex flex-wrap gap-1">
+              @if (isSubscriptionChecking(entry[0])) {
+              <button type="button" class="btn btn-link btn-sm p-0 me-2" disabled
+                [attr.aria-label]="'Checking ' + entry[1].name" ngbTooltip="Checking now">
+                <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+              </button>
+              } @else {
+              <button type="button" class="btn btn-link btn-sm p-0 me-2" (click)="checkSubscriptionNow(entry[0])"
+                [disabled]="downloads.loading" [attr.aria-label]="'Check now ' + entry[1].name" ngbTooltip="Check now">
+                <fa-icon [icon]="faRedoAlt" />
+              </button>
+              }
+              <button type="button" class="btn btn-link btn-sm p-0 me-2" (click)="toggleSubscriptionEnabled(entry[1])"
                 [disabled]="downloads.loading"
-                [attr.aria-label]="'Select subscription ' + entry[1].name" />
-            </td>
-            <td>{{ entry[1].name }}</td>
-            <td class="text-break"><a [href]="entry[1].url" target="_blank" rel="noopener">{{ entry[1].url }}</a></td>
-            <td>{{ entry[1].check_interval_minutes }}</td>
-            <td class="text-nowrap">
-              @if (entry[1].last_checked !== null) {
-                <span>{{ entry[1].last_checked! * 1000 | date:'yyyy-MM-dd HH:mm:ss' }}</span>
-              } @else {
-                <span class="text-muted">—</span>
-              }
-            </td>
-            <td>
-              @if (entry[1].error) {
-                <span class="text-danger small">{{ entry[1].error }}</span>
-              } @else if (entry[1].enabled) {
-                <span class="text-success">Active</span>
-              } @else {
-                <span class="text-secondary">Paused</span>
-              }
-            </td>
-            <td>
-              <div class="d-flex flex-wrap gap-1">
-                @if (isSubscriptionChecking(entry[0])) {
-                  <button type="button" class="btn btn-link btn-sm p-0 me-2"
-                    disabled
-                    [attr.aria-label]="'Checking ' + entry[1].name"
-                    ngbTooltip="Checking now">
-                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
-                  </button>
+                [attr.aria-label]="(entry[1].enabled ? 'Pause ' : 'Resume ') + entry[1].name"
+                [ngbTooltip]="entry[1].enabled ? 'Pause' : 'Resume'">
+                @if (entry[1].enabled) {
+                <fa-icon [icon]="faPause" />
                 } @else {
-                  <button type="button" class="btn btn-link btn-sm p-0 me-2"
-                    (click)="checkSubscriptionNow(entry[0])"
-                    [disabled]="downloads.loading"
-                    [attr.aria-label]="'Check now ' + entry[1].name"
-                    ngbTooltip="Check now">
-                    <fa-icon [icon]="faRedoAlt" />
-                  </button>
+                <fa-icon [icon]="faPlay" />
                 }
-                <button type="button" class="btn btn-link btn-sm p-0 me-2"
-                  (click)="toggleSubscriptionEnabled(entry[1])"
-                  [disabled]="downloads.loading"
-                  [attr.aria-label]="(entry[1].enabled ? 'Pause ' : 'Resume ') + entry[1].name"
-                  [ngbTooltip]="entry[1].enabled ? 'Pause' : 'Resume'">
-                  @if (entry[1].enabled) {
-                    <fa-icon [icon]="faPause" />
-                  } @else {
-                    <fa-icon [icon]="faPlay" />
-                  }
-                </button>
-                <button type="button" class="btn btn-link btn-sm p-0 text-danger"
-                  (click)="deleteSubscription(entry[0])"
-                  [disabled]="downloads.loading"
-                  [attr.aria-label]="'Delete subscription ' + entry[1].name">
-                  <fa-icon [icon]="faTrashAlt" />
-                </button>
-              </div>
-            </td>
-          </tr>
+              </button>
+              <button type="button" class="btn btn-link btn-sm p-0 text-danger" (click)="deleteSubscription(entry[0])"
+                [disabled]="downloads.loading" [attr.aria-label]="'Delete subscription ' + entry[1].name">
+                <fa-icon [icon]="faTrashAlt" />
+              </button>
+            </div>
+          </td>
+        </tr>
         }
       </tbody>
     </table>
@@ -1024,31 +925,31 @@
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
   <div class="container text-center">
     @if (ytDlpVersion && metubeVersion) {
-      <div class="footer-content">
-        <div class="version-item">
-          <span class="version-label">yt-dlp</span>
-          <span class="version-value">{{ytDlpVersion}}</span>
-        </div>
-        <div class="version-separator"></div>
-        <div class="version-item">
-          <span class="version-label">MeTube</span>
-          <span class="version-value">{{metubeVersion}}</span>
-        </div>
-        <div class="version-separator"></div>
-        @if (ytDlpOptionsUpdateTime) {
-          <div class="version-item">
-            <span class="version-label">yt-dlp-options</span>
-            <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
-          </div>
-        }
-        @if (ytDlpOptionsUpdateTime) {
-          <div class="version-separator"></div>
-        }
-        <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
-          <fa-icon [icon]="faGithub" />
-          <span>GitHub</span>
-        </a>
+    <div class="footer-content">
+      <div class="version-item">
+        <span class="version-label">yt-dlp</span>
+        <span class="version-value">{{ytDlpVersion}}</span>
       </div>
+      <div class="version-separator"></div>
+      <div class="version-item">
+        <span class="version-label">MeTube</span>
+        <span class="version-value">{{metubeVersion}}</span>
+      </div>
+      <div class="version-separator"></div>
+      @if (ytDlpOptionsUpdateTime) {
+      <div class="version-item">
+        <span class="version-label">yt-dlp-options</span>
+        <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
+      </div>
+      }
+      @if (ytDlpOptionsUpdateTime) {
+      <div class="version-separator"></div>
+      }
+      <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
+        <fa-icon [icon]="faGithub" />
+        <span>GitHub</span>
+      </a>
+    </div>
     }
   </div>
 </footer>
