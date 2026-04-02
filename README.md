@@ -41,7 +41,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __SUBSCRIPTION_MAX_SEEN_IDS__: Cap on stored video IDs per subscription to limit state file growth. Defaults to `50000`.
 * __CLEAR_COMPLETED_AFTER__: Number of seconds after which completed (and failed) downloads are automatically removed from the "Completed" list. Defaults to `0` (disabled).
 * __WEBSERVICE_ENABLED__: If `true`, call a webhook endpoint when a download completes. Defaults to `false`.
-* __WEBSERVICE_ENDPOINT__: Full webhook URL to call (for example `http://localhost:9995/api/hash-service/1`). Defaults to `http://localhost:9995/api/hash-service/1`.
+* __WEBSERVICE_ENDPOINT__: Full webhook URL to call (for example `"http://localhost:9876/api/web-service/"`). Defaults to `"http://localhost:9876/api/web-service/"`.
 * __WEBSERVICE_TIMEOUT_SEC__: Timeout (seconds) for webhook requests. Defaults to `20`.
 
 ### 📁 Storage & Directories
@@ -107,7 +107,7 @@ Example:
 ```json
 {
   "enabled": true,
-  "endpoint": "http://localhost:9995/api/hash-service/1",
+  "endpoint": "http://localhost:9876/api/web-service/",
   "timeout_sec": 20
 }
 ```

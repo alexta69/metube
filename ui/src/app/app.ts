@@ -108,7 +108,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
   webhookEnabled = false;
-  webhookEndpoint = 'http://localhost:9995/api/hash-service/1';
+  webhookEndpoint = 'http://localhost:9876/api/web-service/';
   webhookTimeoutSec = 20;
   webhookSettingsStatus = '';
   webhookTestStatus = '';
@@ -330,7 +330,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         }
         const settings = data as WebhookSettings;
         this.webhookEnabled = !!settings.enabled;
-        this.webhookEndpoint = String(settings.endpoint || 'http://localhost:9995/api/hash-service/1');
+        this.webhookEndpoint = String(settings.endpoint || 'http://localhost:9876/api/web-service/');
         this.webhookTimeoutSec = Math.max(1, Number(settings.timeout_sec || 20));
         this.webhookSettingsStatus = '';
         this.cdr.markForCheck();

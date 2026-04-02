@@ -71,7 +71,7 @@ class Config:
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',
         'WEBSERVICE_ENABLED': 'false',
-        'WEBSERVICE_ENDPOINT': 'http://localhost:9995/api/hash-service/1',
+        'WEBSERVICE_ENDPOINT': 'http://localhost:9876/api/web-service/',
         'WEBSERVICE_TIMEOUT_SEC': '20',
     }
 
