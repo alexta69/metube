@@ -13,7 +13,6 @@ import logging
 import re
 import types
 from typing import Any, Optional
-from functools import lru_cache
 
 import yt_dlp.networking.impersonate
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
@@ -22,13 +21,6 @@ from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 
 log = logging.getLogger('ytdl')
-
-
-@lru_cache(maxsize=None)
-def _compile_outtmpl_pattern(field: str) -> re.Pattern:
-    """Compile a regex pattern to match a specific field in an output template, including optional format specifiers."""
-    conversion_types = f"[{re.escape(STR_FORMAT_TYPES)}]"
-    return re.compile(STR_FORMAT_RE_TMPL.format(re.escape(field), conversion_types))
 
 
 # Characters that are invalid in Windows/NTFS path components. These are pre-
@@ -41,44 +33,51 @@ def _sanitize_path_component(value: Any) -> Any:
     """Replace characters that are invalid in Windows path components with '_'.
 
     Non-string values (int, float, None, …) are passed through unchanged so
-    that ``_outtmpl_substitute_field`` can still coerce them with format specs
-    (e.g. ``%(playlist_index)02d``).  Only string values are sanitised because
-    Windows-invalid characters are only a concern for human-readable strings
-    (titles, channel names, etc.) that may end up as directory names.
+    that numeric format specs (e.g. ``%(playlist_index)02d``) still work.
+    Only string values are sanitised because Windows-invalid characters are
+    only a concern for human-readable strings (titles, channel names, etc.)
+    that may end up as directory names.
     """
     if not isinstance(value, str):
         return value
     return _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
 
 
-def _outtmpl_substitute_field(template: str, field: str, value: Any) -> str:
-    """Substitute a single field in an output template, applying any format specifiers to the value."""
-    pattern = _compile_outtmpl_pattern(field)
+# Regex matching yt-dlp output-template field references, e.g. ``%(title)s``
+# or ``%(playlist_index)03d``.  Built from yt-dlp's own ``STR_FORMAT_RE_TMPL``
+# so that it stays in sync with upstream changes to the template syntax.
+_OUTTMPL_FIELD_RE = re.compile(
+    STR_FORMAT_RE_TMPL.format('[^)]+', f'[{STR_FORMAT_TYPES}ljhqBUDS]')
+)
 
-    def replacement(match: re.Match) -> str:
-        if match.group("has_key") is None:
-            return match.group(0)
 
-        prefix = match.group("prefix") or ""
-        format_spec = match.group("format")
+def _resolve_outtmpl_fields(template: str, info_dict: dict, prefixes: tuple[str, ...]) -> str:
+    """Resolve specific fields in an output template using yt-dlp's template engine.
 
-        if not format_spec:
-            return f"{prefix}{value}"
+    Only field references whose root name starts with one of *prefixes* are
+    evaluated.  All other references are left untouched so that yt-dlp can
+    resolve them later during the actual download.
 
-        conversion_type = format_spec[-1]
-        try:
-            if conversion_type in "diouxX":
-                coerced_value = int(value)
-            elif conversion_type in "eEfFgG":
-                coerced_value = float(value)
-            else:
-                coerced_value = value
+    This delegates to ``YoutubeDL.evaluate_outtmpl`` for each targeted field
+    reference, giving access to the full yt-dlp template syntax (defaults,
+    conditional formatting, math operations, datetime formatting, etc.).
+    """
+    matches = list(_OUTTMPL_FIELD_RE.finditer(template))
+    if not matches:
+        return template
 
-            return f"{prefix}{('%' + format_spec) % coerced_value}"
-        except (ValueError, TypeError):
-            return f"{prefix}{value}"
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        for match in reversed(matches):
+            key = match.group('key')
+            if key is None:
+                continue
+            root = re.match(r'\w+', key)
+            if root is None or not root.group(0).startswith(prefixes):
+                continue
+            resolved = ydl.evaluate_outtmpl(match.group(0), info_dict)
+            template = template[:match.start()] + resolved + template[match.end():]
 
-    return pattern.sub(replacement, template)
+    return template
 
 _MAX_ENTRY_SANITIZE_DEPTH = 64
 
@@ -296,13 +295,16 @@ _PERSISTED_DOWNLOAD_FIELDS = (
 )
 
 
+_COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index"))
+
+
 def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
     if not isinstance(entry, dict):
         return None
     compact = {
         key: value
         for key, value in entry.items()
-        if key.startswith("playlist") or key.startswith("channel")
+        if key.startswith("playlist") or key.startswith("channel") or key in _COMPACT_ENTRY_EXTRA_KEYS
     }
     return compact or None
 
@@ -818,15 +820,13 @@ class DownloadQueue:
         if entry is not None and entry.get('playlist_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
-            for property, value in entry.items():
-                if property.startswith("playlist"):
-                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
+            sanitized = {k: _sanitize_path_component(v) for k, v in entry.items()}
+            output = _resolve_outtmpl_fields(output, sanitized, ('playlist',))
         if entry is not None and entry.get('channel_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_CHANNEL):
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
-            for property, value in entry.items():
-                if property.startswith("channel"):
-                    output = _outtmpl_substitute_field(output, property, _sanitize_path_component(value))
+            sanitized = {k: _sanitize_path_component(v) for k, v in entry.items()}
+            output = _resolve_outtmpl_fields(output, sanitized, ('channel',))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
@@ -896,8 +896,9 @@ class DownloadQueue:
             # Convert generator to list if needed (for len() and slicing operations)
             if isinstance(entries, types.GeneratorType):
                 entries = list(entries)
-            log.info(f'{etype} detected with {len(entries)} entries')
-            index_digits = len(str(len(entries)))
+            total_entries = len(entries)
+            log.info(f'{etype} detected with {total_entries} entries')
+            index_digits = len(str(total_entries))
             results = []
             if playlist_item_limit > 0:
                 log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
@@ -909,6 +910,12 @@ class DownloadQueue:
                 etr["_type"] = "video"
                 etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
+                etr[f"{etype}_count"] = total_entries
+                etr[f"{etype}_autonumber"] = index
+                # n_entries: standard yt-dlp field for total count (used by template engine)
+                # __last_playlist_index: yt-dlp internal field for auto-padding autonumber
+                etr["n_entries"] = total_entries
+                etr["__last_playlist_index"] = total_entries
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"{etype}_{property}"] = entry[property]
