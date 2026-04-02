@@ -221,7 +221,19 @@ main
   .webhook-integration
     .webhook-control-row
       grid-template-columns: 150px minmax(0, 1fr) 200px
-      column-gap: 0.75rem
+      column-gap: 0.125rem
+
+    .webhook-control-endpoint
+      margin-left: -10px
+
+    .webhook-timeout-group
+      justify-content: flex-start
+
+    .webhook-timeout-input
+      width: 65px
+      min-width: 65px
+      max-width: 65px
+      flex: 0 0 65px
 
 .webhook-action-row
   display: flex
