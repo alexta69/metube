@@ -3,13 +3,39 @@
 from __future__ import annotations
 
 import pickle
+import sys
 import tempfile
 import threading
+import types
 import unittest
 from pathlib import Path
 
+fake_yt_dlp = types.ModuleType("yt_dlp")
+fake_networking = types.ModuleType("yt_dlp.networking")
+fake_impersonate = types.ModuleType("yt_dlp.networking.impersonate")
+fake_utils = types.ModuleType("yt_dlp.utils")
+
+
+class _ImpersonateTarget:
+    @staticmethod
+    def from_str(value):
+        return value
+
+
+fake_impersonate.ImpersonateTarget = _ImpersonateTarget
+fake_networking.impersonate = fake_impersonate
+fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>{})\)(?P<format>[-0-9.]*{})"
+fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
+fake_yt_dlp.networking = fake_networking
+fake_yt_dlp.utils = fake_utils
+sys.modules.setdefault("yt_dlp", fake_yt_dlp)
+sys.modules.setdefault("yt_dlp.networking", fake_networking)
+sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
+sys.modules.setdefault("yt_dlp.utils", fake_utils)
+
 from ytdl import (
     DownloadInfo,
+    _compact_persisted_entry,
     _convert_srt_to_txt_file,
     _outtmpl_substitute_field,
     _sanitize_entry_for_pickle,
@@ -166,6 +192,53 @@ class DownloadInfoSetstateTests(unittest.TestCase):
         di = DownloadInfo.__new__(DownloadInfo)
         di.__setstate__(state)
         self.assertEqual(di.subtitle_files, [])
+
+    def test_missing_optional_fields_are_defaulted(self):
+        state = self._base_state(
+            download_type="video",
+            codec="auto",
+            format="any",
+            quality="best",
+        )
+        state.pop("folder")
+        state.pop("custom_name_prefix")
+        state.pop("playlist_item_limit")
+        state.pop("split_by_chapters")
+        state.pop("chapter_template")
+        di = DownloadInfo.__new__(DownloadInfo)
+        di.__setstate__(state)
+        self.assertEqual(di.folder, "")
+        self.assertEqual(di.custom_name_prefix, "")
+        self.assertEqual(di.playlist_item_limit, 0)
+        self.assertFalse(di.split_by_chapters)
+        self.assertEqual(di.chapter_template, "")
+
+
+class CompactPersistedEntryTests(unittest.TestCase):
+    def test_keeps_only_playlist_and_channel_keys(self):
+        entry = {
+            "playlist_index": "01",
+            "playlist_title": "Playlist",
+            "channel_index": "02",
+            "channel_title": "Channel",
+            "formats": [{"id": "huge"}],
+            "description": "big blob",
+        }
+
+        compact = _compact_persisted_entry(entry)
+
+        self.assertEqual(
+            compact,
+            {
+                "playlist_index": "01",
+                "playlist_title": "Playlist",
+                "channel_index": "02",
+                "channel_title": "Channel",
+            },
+        )
+
+    def test_returns_none_when_no_restart_relevant_keys_exist(self):
+        self.assertIsNone(_compact_persisted_entry({"id": "x", "title": "y"}))
 
 
 if __name__ == "__main__":

@@ -144,3 +144,34 @@ async def test_start_pending_moves_to_queue(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
         await dq.start_pending([url])
     assert not dq.pending.exists(url)
+
+
+@pytest.mark.asyncio
+async def test_add_entry_queues_single_video_without_reextracting(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    entry = {
+        "_type": "video",
+        "id": "vid1",
+        "title": "Test Video",
+        "url": "https://example.com/watch?v=1",
+        "webpage_url": "https://example.com/watch?v=1",
+        "playlist_index": "01",
+        "playlist_title": "Playlist",
+    }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")):
+        result = await dq.add_entry(
+            entry,
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    assert dq.pending.exists("https://example.com/watch?v=1")

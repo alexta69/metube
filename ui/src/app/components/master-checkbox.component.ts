@@ -33,7 +33,7 @@ export class SelectAllCheckboxComponent {
       return;
     let checked = 0;
     this.list().forEach(item => { if(item.checked) checked++ });
-    this.selected = checked > 0 && checked == this.list().size;
+    this.selected = checked > 0 && checked === this.list().size;
     masterCheckbox.nativeElement.indeterminate = checked > 0 && checked < this.list().size;
     this.changed.emit(checked);
   }

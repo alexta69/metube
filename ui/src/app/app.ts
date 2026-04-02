@@ -1,16 +1,18 @@
-import { AsyncPipe, DatePipe, KeyValuePipe } from '@angular/common';
+import { AsyncPipe, DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, map, distinctUntilChanged, auditTime } from 'rxjs';
+import { Observable, Subscription, map, distinctUntilChanged, finalize, auditTime } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService, HasharrSettings, HasharrServiceTestResponse } from './services/downloads.service';
+import { SubscriptionsService } from './services/subscriptions.service';
+import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
 import {
   Download,
@@ -36,6 +38,7 @@ import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
         FormsModule,
+        NgTemplateOutlet,
         KeyValuePipe,
         AsyncPipe,
         DatePipe,
@@ -53,6 +56,7 @@ import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/
 })
 export class App implements AfterViewInit, OnInit, OnDestroy {
   downloads = inject(DownloadsService);
+  subscriptionsSvc = inject(SubscriptionsService);
   private cookieService = inject(CookieService);
   private http = inject(HttpClient);
   private cdr = inject(ChangeDetectorRef);
@@ -81,6 +85,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   subtitleMode: string;
   addInProgress = false;
   cancelRequested = false;
+  subscribeInProgress = false;
+  checkIntervalMinutes = 60;
+  cachedSubs: [string, SubscriptionRow][] = [];
+  selectedSubscriptionIds = new Set<string>();
+  checkingSubscriptionIds = new Set<string>();
+  checkingAllSubscriptions = false;
+  checkingSelectedSubscriptions = false;
   hasCookies = false;
   cookieUploadInProgress = false;
   themes: Theme[] = Themes;
@@ -108,6 +119,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   cachedSortedDone: [string, Download][] = [];
   lastCopiedErrorId: string | null = null;
   private previousDownloadType = 'video';
+  private addRequestSub?: Subscription;
   private selectionsByType: Record<string, {
     codec: string;
     format: string;
@@ -162,6 +174,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faChevronRight = faChevronRight;
   faChevronDown = faChevronDown;
   faUpload = faUpload;
+  faPause = faPause;
+  faPlay = faPlay;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -245,6 +259,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.saveSelection(this.downloadType);
     this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
 
+    const ci = parseInt(this.cookieService.get('metube_check_interval') || '', 10);
+    if (!Number.isNaN(ci) && ci >= 1) {
+      this.checkIntervalMinutes = ci;
+    }
     this.activeTheme = this.getPreferredTheme(this.cookieService);
 
     // Subscribe to download updates
@@ -265,6 +283,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     )
     .subscribe(() => {
       this.updateMetrics();
+      this.cdr.markForCheck();
+    });
+
+    this.subscriptionsSvc.subscriptionsChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
+      this.rebuildCachedSubs();
       this.cdr.markForCheck();
     });
   }
@@ -387,6 +410,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngOnDestroy() {
+    this.addRequestSub?.unsubscribe();
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
   }
 
@@ -481,7 +505,235 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         if (!this.chapterTemplate) {
           this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
         }
+        if (!this.cookieService.check('metube_check_interval')) {
+          const dci = parseInt(String(config['SUBSCRIPTION_DEFAULT_CHECK_INTERVAL'] ?? 60), 10);
+          if (!Number.isNaN(dci) && dci >= 1) {
+            this.checkIntervalMinutes = dci;
+          }
+        }
         this.cdr.markForCheck();
+      }
+    });
+  }
+
+  private rebuildCachedSubs() {
+    this.cachedSubs = Array.from(this.subscriptionsSvc.subscriptions.entries());
+    const validIds = new Set(this.cachedSubs.map(([id]) => id));
+    for (const id of [...this.selectedSubscriptionIds]) {
+      if (!validIds.has(id)) {
+        this.selectedSubscriptionIds.delete(id);
+      }
+    }
+  }
+
+  checkIntervalChanged() {
+    this.cookieService.set('metube_check_interval', String(this.checkIntervalMinutes), {
+      expires: this.settingsCookieExpiryDays,
+    });
+  }
+
+  private getStatusError(res: unknown): string | null {
+    const status = res as { status?: string; msg?: string };
+    return status?.status === 'error' ? status.msg || null : null;
+  }
+
+  private refreshSubscriptionsWithAlert() {
+    this.subscriptionsSvc.refreshList().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((refreshRes) => {
+      const error = this.getStatusError(refreshRes);
+      if (error) {
+        alert(error || 'Refresh subscriptions failed');
+        return;
+      }
+      this.cdr.markForCheck();
+    });
+  }
+
+  isSubSelected(id: string): boolean {
+    return this.selectedSubscriptionIds.has(id);
+  }
+
+  toggleSubSelected(id: string) {
+    if (this.selectedSubscriptionIds.has(id)) {
+      this.selectedSubscriptionIds.delete(id);
+    } else {
+      this.selectedSubscriptionIds.add(id);
+    }
+    this.cdr.markForCheck();
+  }
+
+  toggleSubMaster(event: Event) {
+    const checked = (event.target as HTMLInputElement).checked;
+    this.selectedSubscriptionIds.clear();
+    if (checked) {
+      for (const [id] of this.cachedSubs) {
+        this.selectedSubscriptionIds.add(id);
+      }
+    }
+    this.cdr.markForCheck();
+  }
+
+  allSubsSelected(): boolean {
+    if (this.cachedSubs.length === 0) {
+      return false;
+    }
+    return this.cachedSubs.every(([id]) => this.selectedSubscriptionIds.has(id));
+  }
+
+  addSubscription() {
+    if (this.subscribeInProgress) {
+      return;
+    }
+    const payload = this.buildAddPayload();
+    if (!payload.url?.trim()) {
+      alert('Please enter a URL');
+      return;
+    }
+    if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
+      alert('Chapter template must include %(section_number)');
+      return;
+    }
+    this.subscribeInProgress = true;
+    this.subscriptionsSvc
+      .subscribe({
+        ...payload,
+        checkIntervalMinutes: this.checkIntervalMinutes,
+      })
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.subscribeInProgress = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe({
+        next: (res) => {
+          const r = res as { status?: string; msg?: string };
+          if (r.status === 'error') {
+            alert(r.msg || 'Subscribe failed');
+          } else {
+            this.addUrl = '';
+          }
+        },
+      });
+  }
+
+  deleteSubscription(id: string) {
+    this.subscriptionsSvc.delete([id]).subscribe((res) => {
+      const error = this.getStatusError(res);
+      if (error) {
+        alert(error || 'Delete subscription failed');
+        return;
+      }
+      this.selectedSubscriptionIds.delete(id);
+      this.cdr.markForCheck();
+    });
+  }
+
+  deleteSelectedSubscriptions() {
+    const ids = Array.from(this.selectedSubscriptionIds);
+    if (!ids.length) {
+      return;
+    }
+    this.subscriptionsSvc.delete(ids).subscribe((res) => {
+      const error = this.getStatusError(res);
+      if (error) {
+        alert(error || 'Delete subscriptions failed');
+        return;
+      }
+      this.selectedSubscriptionIds.clear();
+      this.cdr.markForCheck();
+    });
+  }
+
+  checkSubscriptionNow(id: string) {
+    if (this.checkingSubscriptionIds.has(id)) {
+      return;
+    }
+    this.checkingSubscriptionIds.add(id);
+    this.cdr.markForCheck();
+    this.subscriptionsSvc
+      .checkNow([id])
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.checkingSubscriptionIds.delete(id);
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe((res) => {
+        const error = this.getStatusError(res);
+        if (error) {
+          alert(error || 'Subscription check failed');
+          return;
+        }
+        this.refreshSubscriptionsWithAlert();
+      });
+  }
+
+  isSubscriptionChecking(id: string): boolean {
+    return this.checkingSubscriptionIds.has(id);
+  }
+
+  private runBulkSubscriptionCheck(ids: string[] | undefined, mode: 'all' | 'selected') {
+    const targetIds = ids ?? this.cachedSubs.filter(([, row]) => row.enabled).map(([id]) => id);
+    if (!targetIds.length) {
+      return;
+    }
+
+    const checkedIds = new Set(targetIds);
+    for (const id of checkedIds) {
+      this.checkingSubscriptionIds.add(id);
+    }
+    if (mode === 'all') {
+      this.checkingAllSubscriptions = true;
+    } else {
+      this.checkingSelectedSubscriptions = true;
+    }
+    this.cdr.markForCheck();
+
+    this.subscriptionsSvc
+      .checkNow(ids)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          for (const id of checkedIds) {
+            this.checkingSubscriptionIds.delete(id);
+          }
+          if (mode === 'all') {
+            this.checkingAllSubscriptions = false;
+          } else {
+            this.checkingSelectedSubscriptions = false;
+          }
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe((res) => {
+        const error = this.getStatusError(res);
+        if (error) {
+          alert(error || 'Subscription check failed');
+          return;
+        }
+        this.refreshSubscriptionsWithAlert();
+      });
+  }
+
+  checkSelectedSubscriptions() {
+    const ids = Array.from(this.selectedSubscriptionIds);
+    if (!ids.length) {
+      return;
+    }
+    this.runBulkSubscriptionCheck(ids, 'selected');
+  }
+
+  checkAllSubscriptions() {
+    this.runBulkSubscriptionCheck(undefined, 'all');
+  }
+
+  toggleSubscriptionEnabled(row: SubscriptionRow) {
+    this.subscriptionsSvc.update(row.id, { enabled: !row.enabled }).subscribe((res) => {
+      const error = this.getStatusError(res);
+      if (error) {
+        alert(error || 'Update subscription failed');
       }
     });
   }
@@ -575,13 +827,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   queueSelectionChanged(checked: number) {
-    this.queueDelSelected().nativeElement.disabled = checked == 0;
-    this.queueDownloadSelected().nativeElement.disabled = checked == 0;
+    this.queueDelSelected().nativeElement.disabled = checked === 0;
+    this.queueDownloadSelected().nativeElement.disabled = checked === 0;
   }
 
   doneSelectionChanged(checked: number) {
-    this.doneDelSelected().nativeElement.disabled = checked == 0;
-    this.doneDownloadSelected().nativeElement.disabled = checked == 0;
+    this.doneDelSelected().nativeElement.disabled = checked === 0;
+    this.doneDownloadSelected().nativeElement.disabled = checked === 0;
   }
 
   private updateDoneActionButtons() {
@@ -758,24 +1010,36 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     console.debug('Downloading:', payload);
     this.addInProgress = true;
     this.cancelRequested = false;
-    this.downloads.add(payload).subscribe((status: Status) => {
+    this.addRequestSub?.unsubscribe();
+    this.addRequestSub = this.downloads.add(payload).subscribe((status: Status) => {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
         this.addUrl = '';
       }
-      this.addInProgress = false;
-      this.cancelRequested = false;
+      this.resetAddState();
     });
   }
 
   cancelAdding() {
     this.cancelRequested = true;
     this.downloads.cancelAdd().subscribe({
+      next: () => {
+        this.addRequestSub?.unsubscribe();
+        this.resetAddState();
+      },
       error: (err) => {
+        this.cancelRequested = false;
         console.error('Failed to cancel adding:', err?.message || err);
       }
     });
+  }
+
+  private resetAddState() {
+    this.addRequestSub = undefined;
+    this.addInProgress = false;
+    this.cancelRequested = false;
+    this.cdr.markForCheck();
   }
 
   downloadItemByKey(id: string) {

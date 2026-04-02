@@ -3,9 +3,9 @@ import shutil
 import yt_dlp
 import collections
 import collections.abc
+import copy
 import pickle
 from collections import OrderedDict
-import shelve
 import time
 import asyncio
 import multiprocessing
@@ -16,13 +16,14 @@ import dbm
 import subprocess
 import json
 from urllib import request as urlrequest
-from typing import Any
+from typing import Any, Optional
 from functools import lru_cache
 
 import yt_dlp.networking.impersonate
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
+from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 
 log = logging.getLogger('ytdl')
 
@@ -252,8 +253,100 @@ class DownloadInfo:
 
         if not getattr(self, "codec", None):
             self.codec = "auto"
+        if not hasattr(self, "folder"):
+            self.folder = ""
+        if not hasattr(self, "custom_name_prefix"):
+            self.custom_name_prefix = ""
+        if not hasattr(self, "playlist_item_limit"):
+            self.playlist_item_limit = 0
+        if not hasattr(self, "split_by_chapters"):
+            self.split_by_chapters = False
+        if not hasattr(self, "chapter_template"):
+            self.chapter_template = ""
+        if not hasattr(self, "subtitle_language"):
+            self.subtitle_language = "en"
+        if not hasattr(self, "subtitle_mode"):
+            self.subtitle_mode = "prefer_manual"
+        if not hasattr(self, "entry"):
+            self.entry = None
         if not hasattr(self, "subtitle_files"):
             self.subtitle_files = []
+        if not hasattr(self, "chapter_files"):
+            self.chapter_files = []
+
+
+_PERSISTED_DOWNLOAD_FIELDS = (
+    "id",
+    "title",
+    "url",
+    "quality",
+    "download_type",
+    "codec",
+    "format",
+    "folder",
+    "custom_name_prefix",
+    "playlist_item_limit",
+    "split_by_chapters",
+    "chapter_template",
+    "subtitle_language",
+    "subtitle_mode",
+    "status",
+    "timestamp",
+    "error",
+    "msg",
+    "filename",
+    "size",
+    "chapter_files",
+)
+
+
+def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
+    if not isinstance(entry, dict):
+        return None
+    compact = {
+        key: value
+        for key, value in entry.items()
+        if key.startswith("playlist") or key.startswith("channel")
+    }
+    return compact or None
+
+
+def _download_info_to_record(
+    info: DownloadInfo,
+    *,
+    include_entry: bool,
+) -> dict[str, Any]:
+    record: dict[str, Any] = {}
+    for key in _PERSISTED_DOWNLOAD_FIELDS:
+        if hasattr(info, key):
+            value = getattr(info, key)
+            if value is not None:
+                record[key] = to_json_compatible(value)
+    if include_entry:
+        compact_entry = _compact_persisted_entry(getattr(info, "entry", None))
+        if compact_entry is not None:
+            record["entry"] = to_json_compatible(compact_entry)
+    return record
+
+
+def _download_info_from_record(record: dict[str, Any]) -> DownloadInfo:
+    info = DownloadInfo.__new__(DownloadInfo)
+    info.__setstate__({key: from_json_compatible(value) for key, value in record.items()})
+    if not hasattr(info, "msg"):
+        info.msg = None
+    if not hasattr(info, "percent"):
+        info.percent = None
+    if not hasattr(info, "speed"):
+        info.speed = None
+    if not hasattr(info, "eta"):
+        info.eta = None
+    if not hasattr(info, "status"):
+        info.status = "pending"
+    if not hasattr(info, "size"):
+        info.size = None
+    if not hasattr(info, "error"):
+        info.error = None
+    return info
 
 class Download:
     manager = None
@@ -504,11 +597,9 @@ class PersistentQueue:
         pdir = os.path.dirname(path)
         if not os.path.isdir(pdir):
             os.mkdir(pdir)
-        with shelve.open(path, 'c'):
-            pass
-
-        self.path = path
-        self.repair()
+        self.legacy_path = path
+        self.path = f"{path}.json"
+        self.store = AtomicJsonStore(self.path, kind=f"persistent_queue:{name}")
         self.dict = OrderedDict()
 
     def load(self):
@@ -525,16 +616,75 @@ class PersistentQueue:
         return self.dict.items()
 
     def saved_items(self):
-        with shelve.open(self.path, 'r') as shelf:
-            return sorted(shelf.items(), key=lambda item: item[1].timestamp)
+        items = [
+            (item["key"], _download_info_from_record(item["info"]))
+            for item in self._load_state_items()
+        ]
+        return sorted(items, key=lambda item: item[1].timestamp)
+
+    def _should_persist_entry(self) -> bool:
+        return self.identifier != "completed"
+
+    def _serialize_items(self):
+        return [
+            {
+                "key": key,
+                "info": _download_info_to_record(
+                    download.info,
+                    include_entry=self._should_persist_entry(),
+                ),
+            }
+            for key, download in self.dict.items()
+        ]
+
+    def _save_dict(self):
+        self.store.save({"items": self._serialize_items()})
+
+    def _load_state_items(self):
+        payload = self.store.load()
+        if payload is not None:
+            items = payload.get("items")
+            if isinstance(items, list):
+                compact_items = [
+                    {
+                        "key": item["key"],
+                        "info": _download_info_to_record(
+                            _download_info_from_record(item["info"]),
+                            include_entry=self._should_persist_entry(),
+                        ),
+                    }
+                    for item in items
+                    if isinstance(item, dict) and "key" in item and "info" in item
+                ]
+                if payload.get("schema_version") != self.store.schema_version or compact_items != items:
+                    self.store.save({"items": compact_items})
+                return compact_items
+            log.warning("PersistentQueue:%s state file did not contain an items list", self.identifier)
+            return []
+
+        legacy_items = read_legacy_shelf(self.legacy_path)
+        if legacy_items is None:
+            return []
+
+        items = [
+            {
+                "key": key,
+                "info": _download_info_to_record(
+                    value,
+                    include_entry=self._should_persist_entry(),
+                ),
+            }
+            for key, value in sorted(legacy_items, key=lambda item: item[1].timestamp)
+        ]
+        self.store.save({"items": items})
+        return items
 
     def put(self, value):
         key = value.info.url
         old = self.dict.get(key)
         self.dict[key] = value
         try:
-            with shelve.open(self.path, 'w') as shelf:
-                shelf[key] = value.info
+            self._save_dict()
         except Exception:
             if old is None:
                 del self.dict[key]
@@ -544,9 +694,13 @@ class PersistentQueue:
 
     def delete(self, key):
         if key in self.dict:
+            old = self.dict[key]
             del self.dict[key]
-            with shelve.open(self.path, 'w') as shelf:
-                shelf.pop(key, None)
+            try:
+                self._save_dict()
+            except Exception:
+                self.dict[key] = old
+                raise
 
     def next(self):
         k, v = next(iter(self.dict.items()))
@@ -554,90 +708,6 @@ class PersistentQueue:
 
     def empty(self):
         return not bool(self.dict)
-
-    def repair(self):
-        # check DB format
-        type_check = subprocess.run(
-            ["file", self.path],
-            capture_output=True,
-            text=True
-        )
-        db_type = type_check.stdout.lower()
-
-        # create backup (<queue>.old)
-        try:
-            shutil.copy2(self.path, f"{self.path}.old")
-        except Exception as e:
-            # if we cannot backup then its not safe to attempt a repair
-            #  since it could be due to a filesystem error
-            log.debug(f"PersistentQueue:{self.identifier} backup failed, skipping repair")
-            return
-
-        if "gnu dbm" in db_type:
-            # perform gdbm repair
-            log_prefix = f"PersistentQueue:{self.identifier} repair (dbm/file)"
-            log.debug(f"{log_prefix} started")
-            try:
-                result = subprocess.run(
-                    ["gdbmtool", self.path],
-                    input="recover verbose summary\n",
-                    text=True,
-                    capture_output=True,
-                    timeout=60
-                )
-                log.debug(f"{log_prefix} {result.stdout}")
-                if result.stderr:
-                    log.debug(f"{log_prefix} failed: {result.stderr}")
-            except FileNotFoundError:
-                log.debug(f"{log_prefix} failed: 'gdbmtool' was not found")
-
-            # perform null key cleanup
-            log_prefix = f"PersistentQueue:{self.identifier} repair (null keys)"
-            log.debug(f"{log_prefix} started")
-            deleted = 0
-            try:
-                with dbm.open(self.path, "w") as db:
-                    for key in list(db.keys()):
-                        if len(key) > 0 and all(b == 0x00 for b in key):
-                            log.debug(f"{log_prefix} deleting key of length {len(key)} (all NUL bytes)")
-                            del db[key]
-                            deleted += 1
-                log.debug(f"{log_prefix} done - deleted {deleted} key(s)")
-            except dbm.error:
-                log.debug(f"{log_prefix} failed: db type is dbm.gnu, but the module is not available (dbm.error; module support may be missing or the file may be corrupted)")
-
-        elif "sqlite" in db_type:
-            # perform sqlite3 recovery
-            log_prefix = f"PersistentQueue:{self.identifier} repair (sqlite3/file)"
-            log.debug(f"{log_prefix} started")
-            try:
-                recover_proc = subprocess.Popen(
-                    ["sqlite3", self.path, ".recover"],
-                    stdout=subprocess.PIPE,
-                    stderr=subprocess.PIPE,
-                    text=True,
-                )
-                run_result = subprocess.run(
-                    ["sqlite3", f"{self.path}.tmp"],
-                    stdin=recover_proc.stdout,
-                    capture_output=True,
-                    text=True,
-                    timeout=60,
-                )
-                if recover_proc.stdout is not None:
-                    recover_proc.stdout.close()
-                recover_stderr = recover_proc.stderr.read() if recover_proc.stderr is not None else ""
-                recover_proc.wait(timeout=60)
-                if run_result.stderr or recover_stderr:
-                    error_text = " ".join(part for part in [recover_stderr.strip(), run_result.stderr.strip()] if part)
-                    log.debug(f"{log_prefix} failed: {error_text}")
-                else:
-                    shutil.move(f"{self.path}.tmp", self.path)
-                    log.debug(f"{log_prefix}{run_result.stdout or ' was successful, no output'}")
-            except FileNotFoundError:
-                log.debug(f"{log_prefix} failed: 'sqlite3' was not found")
-            except subprocess.TimeoutExpired:
-                log.debug(f"{log_prefix} failed: sqlite recovery timed out")
 
 class DownloadQueue:
     def __init__(self, config, notifier):
@@ -1000,6 +1070,42 @@ class DownloadQueue:
             subtitle_mode,
             already,
             _add_gen,
+        )
+
+    async def add_entry(
+        self,
+        entry,
+        download_type,
+        codec,
+        format,
+        quality,
+        folder,
+        custom_name_prefix,
+        playlist_item_limit,
+        auto_start=True,
+        split_by_chapters=False,
+        chapter_template=None,
+        subtitle_language="en",
+        subtitle_mode="prefer_manual",
+    ):
+        normalized_entry = copy.deepcopy(entry) if isinstance(entry, dict) else entry
+        already = set()
+        return await self.__add_entry(
+            normalized_entry,
+            download_type,
+            codec,
+            format,
+            quality,
+            folder,
+            custom_name_prefix,
+            playlist_item_limit,
+            auto_start,
+            split_by_chapters,
+            chapter_template,
+            subtitle_language,
+            subtitle_mode,
+            already,
+            None,
         )
 
     async def start_pending(self, ids):
