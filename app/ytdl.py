@@ -766,7 +766,7 @@ class DownloadQueue:
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
-                asyncio.create_task(self._notify_hasharr(download.info))
+                asyncio.create_task(self._notify_webhook(download.info))
                 try:
                     clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
                 except ValueError:
@@ -776,12 +776,13 @@ class DownloadQueue:
                     task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
                     task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
 
-    async def _notify_hasharr(self, info):
-        if not getattr(self.config, 'HASHARR_ENABLED', False):
+    async def _notify_webhook(self, info):
+        if not getattr(self.config, 'WEBSERVICE_ENABLED', False):
             return
-        base_url = str(getattr(self.config, 'HASHARR_URL', 'http://hasharr:9995')).rstrip('/')
-        service_id = int(getattr(self.config, 'HASHARR_SERVICE_ID', 1))
-        timeout_sec = int(getattr(self.config, 'HASHARR_TIMEOUT_SEC', 20))
+        endpoint = str(getattr(self.config, 'WEBSERVICE_ENDPOINT', '')).strip()
+        timeout_sec = int(getattr(self.config, 'WEBSERVICE_TIMEOUT_SEC', 20))
+        if not endpoint:
+            return
         files = []
         if getattr(info, 'filename', None):
             files.append(info.filename)
@@ -811,7 +812,7 @@ class DownloadQueue:
             }
             data = json.dumps(payload).encode('utf-8')
             req = urlrequest.Request(
-                f"{base_url}/api/hash-service/{service_id}",
+                endpoint,
                 data=data,
                 headers={"Content-Type": "application/json"},
                 method="POST",
@@ -822,9 +823,9 @@ class DownloadQueue:
         for rel_name in dedup:
             try:
                 status = await asyncio.get_running_loop().run_in_executor(None, _post_one, rel_name)
-                log.info(f"hasharr callback status={status} file={rel_name}")
+                log.info(f"webhook callback status={status} file={rel_name}")
             except Exception as exc:
-                log.warning(f"hasharr callback failed for {rel_name}: {exc}")
+                log.warning(f"webhook callback failed for {rel_name}: {exc}")
 
     async def __auto_clear_after_delay(self, url, delay_seconds):
         await asyncio.sleep(delay_seconds)

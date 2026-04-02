@@ -20,6 +20,7 @@ from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo
+from state_store import AtomicJsonStore
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
@@ -70,13 +71,12 @@ class Config:
         'MAX_CONCURRENT_DOWNLOADS': '3',
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',
-        'HASHARR_ENABLED': 'false',
-        'HASHARR_URL': 'http://hasharr:9995',
-        'HASHARR_SERVICE_ID': '1',
-        'HASHARR_TIMEOUT_SEC': '20',
+        'WEBSERVICE_ENABLED': 'false',
+        'WEBSERVICE_ENDPOINT': 'http://localhost:9876/api/web-service/',
+        'WEBSERVICE_TIMEOUT_SEC': '20',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'HASHARR_ENABLED')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'WEBSERVICE_ENABLED')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -124,10 +124,9 @@ class Config:
         'PUBLIC_HOST_URL',
         'PUBLIC_HOST_AUDIO_URL',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
-        'HASHARR_ENABLED',
-        'HASHARR_URL',
-        'HASHARR_SERVICE_ID',
-        'HASHARR_TIMEOUT_SEC',
+        'WEBSERVICE_ENABLED',
+        'WEBSERVICE_ENDPOINT',
+        'WEBSERVICE_TIMEOUT_SEC',
         'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL',
     )
 
@@ -171,6 +170,43 @@ class Config:
         return (True, '')
 
 config = Config()
+
+_webhook_settings_store = AtomicJsonStore(
+    os.path.join(config.STATE_DIR, 'webhook_settings.json'),
+    kind='webhook_settings',
+)
+
+
+def _load_persisted_webhook_settings() -> None:
+    """Apply webhook endpoint settings saved under STATE_DIR (survives container restarts)."""
+    payload = _webhook_settings_store.load()
+    if not payload:
+        return
+    try:
+        if 'endpoint' in payload:
+            ep = str(payload['endpoint'] or '').strip()
+            if ep:
+                config.WEBSERVICE_ENDPOINT = ep
+        if 'timeout_sec' in payload:
+            ts = int(payload['timeout_sec'])
+            if ts > 0:
+                config.WEBSERVICE_TIMEOUT_SEC = ts
+        if 'enabled' in payload:
+            config.WEBSERVICE_ENABLED = bool(payload['enabled'])
+    except (TypeError, ValueError) as exc:
+        log.warning('Ignoring invalid persisted webhook settings: %s', exc)
+
+
+def _save_persisted_webhook_settings() -> None:
+    _webhook_settings_store.save({
+        'enabled': bool(config.WEBSERVICE_ENABLED),
+        'endpoint': str(config.WEBSERVICE_ENDPOINT),
+        'timeout_sec': int(config.WEBSERVICE_TIMEOUT_SEC),
+    })
+
+
+_load_persisted_webhook_settings()
+
 # Align root logger level with Config (keeps a single source of truth).
 # This re-applies the log level after Config loads, in case LOGLEVEL was
 # overridden by config file settings or differs from the environment variable.
@@ -693,92 +729,91 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
-@routes.get(config.URL_PREFIX + 'hasharr-settings')
-async def get_hasharr_settings(request):
+@routes.get(config.URL_PREFIX + 'webhook-settings')
+async def get_webhook_settings(request):
     return web.Response(text=serializer.encode({
-        'enabled': bool(config.HASHARR_ENABLED),
-        'url': str(config.HASHARR_URL),
-        'service_id': int(config.HASHARR_SERVICE_ID),
-        'timeout_sec': int(config.HASHARR_TIMEOUT_SEC),
+        'enabled': bool(config.WEBSERVICE_ENABLED),
+        'endpoint': str(config.WEBSERVICE_ENDPOINT),
+        'timeout_sec': int(config.WEBSERVICE_TIMEOUT_SEC),
     }), content_type='application/json')
 
-@routes.post(config.URL_PREFIX + 'hasharr-settings')
-async def set_hasharr_settings(request):
+@routes.post(config.URL_PREFIX + 'webhook-settings')
+async def set_webhook_settings(request):
     post = await _read_json_request(request)
-    enabled = bool(post.get('enabled', config.HASHARR_ENABLED))
-    url = str(post.get('url', config.HASHARR_URL)).strip()
-    service_id = int(post.get('service_id', config.HASHARR_SERVICE_ID))
-    timeout_sec = int(post.get('timeout_sec', config.HASHARR_TIMEOUT_SEC))
-    if not url:
-        raise web.HTTPBadRequest(reason='url is required')
-    if service_id <= 0:
-        raise web.HTTPBadRequest(reason='service_id must be > 0')
+    enabled = bool(post.get('enabled', config.WEBSERVICE_ENABLED))
+    endpoint = str(post.get('endpoint', config.WEBSERVICE_ENDPOINT)).strip()
+    timeout_sec = int(post.get('timeout_sec', config.WEBSERVICE_TIMEOUT_SEC))
+    if not endpoint:
+        raise web.HTTPBadRequest(reason='endpoint is required')
     if timeout_sec <= 0:
         raise web.HTTPBadRequest(reason='timeout_sec must be > 0')
-    config.HASHARR_ENABLED = enabled
-    config.HASHARR_URL = url
-    config.HASHARR_SERVICE_ID = service_id
-    config.HASHARR_TIMEOUT_SEC = timeout_sec
+    config.WEBSERVICE_ENABLED = enabled
+    config.WEBSERVICE_ENDPOINT = endpoint
+    config.WEBSERVICE_TIMEOUT_SEC = timeout_sec
+    try:
+        _save_persisted_webhook_settings()
+    except OSError as exc:
+        log.exception('Failed to persist webhook settings to %s', _webhook_settings_store.path)
+        raise web.HTTPInternalServerError(reason=f'could not persist webhook settings: {exc}') from exc
     return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
 
-@routes.post(config.URL_PREFIX + 'hasharr-settings/test')
-async def test_hasharr_settings(request):
+@routes.post(config.URL_PREFIX + 'webhook-settings/test')
+async def test_webhook_settings(request):
     post = await _read_json_request(request)
-    url = str(post.get('url', config.HASHARR_URL)).strip()
-    service_id = int(post.get('service_id', config.HASHARR_SERVICE_ID))
-    timeout_sec = int(post.get('timeout_sec', config.HASHARR_TIMEOUT_SEC))
-    if not url:
-        raise web.HTTPBadRequest(reason='url is required')
-    if service_id <= 0:
-        raise web.HTTPBadRequest(reason='service_id must be > 0')
+    endpoint = str(post.get('endpoint', config.WEBSERVICE_ENDPOINT)).strip()
+    timeout_sec = int(post.get('timeout_sec', config.WEBSERVICE_TIMEOUT_SEC))
+    if not endpoint:
+        raise web.HTTPBadRequest(reason='endpoint is required')
     if timeout_sec <= 0:
         raise web.HTTPBadRequest(reason='timeout_sec must be > 0')
 
-    base_url = url.rstrip('/')
-    profile_url = f"{base_url}/v1/hash-service-profiles/{service_id}"
+    payload = {
+        'filePath': '',
+        'source': 'metube',
+        'jobId': '',
+    }
+    body = json.dumps(payload).encode('utf-8')
 
-    def _fetch_profile():
-        req = urlrequest.Request(profile_url, method='GET')
+    def _call_endpoint():
+        req = urlrequest.Request(endpoint, data=body, headers={'Content-Type': 'application/json'}, method='POST')
         with urlrequest.urlopen(req, timeout=timeout_sec) as resp:
-            body = resp.read().decode('utf-8', errors='replace')
-            return resp.status, body
+            raw = resp.read().decode('utf-8', errors='replace')
+            return resp.status, raw
 
     try:
-        status, body = await asyncio.get_running_loop().run_in_executor(None, _fetch_profile)
-        if status != 200:
-            return web.json_response({
-                'status': 'error',
-                'reachable': True,
-                'valid_service_id': False,
-                'message': f'hasharr responded with status {status}',
-            }, status=502)
-        profile = json.loads(body)
+        status, raw = await asyncio.get_running_loop().run_in_executor(None, _call_endpoint)
+        if not raw:
+            response_obj = {}
+        else:
+            try:
+                response_obj = json.loads(raw)
+            except json.JSONDecodeError:
+                response_obj = {'raw': raw}
         return web.json_response({
             'status': 'ok',
-            'reachable': True,
-            'valid_service_id': True,
-            'profile': profile,
+            'message': f'Endpoint returned HTTP {status}.',
+            'status_code': status,
+            'response': response_obj,
         })
     except urlerror.HTTPError as exc:
-        if exc.code == 404:
-            return web.json_response({
-                'status': 'ok',
-                'reachable': True,
-                'valid_service_id': False,
-                'message': f'Service ID {service_id} was not found in hasharr.',
-            })
+        raw = exc.read().decode('utf-8', errors='replace')
+        if not raw:
+            response_obj = {}
+        else:
+            try:
+                response_obj = json.loads(raw)
+            except json.JSONDecodeError:
+                response_obj = {'raw': raw}
         return web.json_response({
             'status': 'error',
-            'reachable': True,
-            'valid_service_id': False,
-            'message': f'hasharr returned HTTP {exc.code}',
+            'message': f'Endpoint returned HTTP {exc.code}.',
+            'status_code': int(exc.code),
+            'response': response_obj,
         }, status=502)
     except Exception as exc:
         return web.json_response({
             'status': 'error',
-            'reachable': False,
-            'valid_service_id': False,
-            'message': f'Could not reach hasharr: {exc}',
+            'message': f'Could not reach endpoint: {exc}',
         }, status=502)
 
 @sio.event
@@ -911,6 +946,8 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/delete', add_
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/check', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'webhook-settings', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'webhook-settings/test', add_cors)
 
 async def on_prepare(request, response):
     if 'Origin' in request.headers:

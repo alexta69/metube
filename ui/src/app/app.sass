@@ -197,25 +197,86 @@ main
   &.active
     color: var(--bs-success-text-emphasis)
 
-.hasharr-integration
+.webhook-integration
   .input-group
     margin-bottom: 0
 
-.hasharr-action-row
+  .webhook-control-row
+    display: grid
+    row-gap: 0.75rem
+
+  .webhook-control-endpoint
+    min-width: 0
+
+  .webhook-timeout-group
+    flex-wrap: nowrap
+
+  .webhook-timeout-input
+    width: 3.4em
+    min-width: 3.4em
+    max-width: 3.4em
+    flex: 0 0 3.4em
+
+@media (min-width: 768px)
+  .webhook-integration
+    .webhook-control-row
+      grid-template-columns: 150px minmax(0, 1fr) 200px
+      column-gap: 0.125rem
+
+    .webhook-control-endpoint
+      margin-left: -10px
+
+    .webhook-timeout-group
+      justify-content: flex-start
+
+    .webhook-timeout-input
+      width: 65px
+      min-width: 65px
+      max-width: 65px
+      flex: 0 0 65px
+
+.webhook-action-row
   display: flex
   flex-wrap: wrap
   gap: 0.5rem
 
-.hasharr-status-block
+.webhook-status-block
   min-height: 2.5rem
   display: flex
   flex-direction: column
   justify-content: center
   text-align: left
 
-.hasharr-profile-result
+.webhook-response-block
   margin-top: 0.25rem
   padding: 0.5rem 0.75rem
   border: 1px solid var(--bs-border-color)
   border-radius: 0.375rem
   background: var(--bs-tertiary-bg)
+  white-space: pre-wrap
+  word-break: break-word
+
+.webhook-response-view-toggle
+  display: inline-flex
+  gap: 0.35rem
+  margin-top: 0.25rem
+
+.webhook-response-pretty
+  table
+    margin: 0
+
+  th,
+  td
+    padding: 0
+    border: 0
+    vertical-align: top
+    line-height: 1.5
+
+  th
+    width: 170px
+    font-weight: 700
+    color: var(--bs-emphasis-color)
+
+  td
+    font-weight: 400
+    color: var(--bs-emphasis-color)
