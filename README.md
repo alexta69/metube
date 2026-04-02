@@ -3,7 +3,12 @@
 ![Build Status](https://github.com/alexta69/metube/actions/workflows/main.yml/badge.svg)
 ![Docker Pulls](https://img.shields.io/docker/pulls/alexta69/metube.svg)
 
-Web GUI for youtube-dl (using the [yt-dlp](https://github.com/yt-dlp/yt-dlp) fork) with playlist support. Allows you to download videos from YouTube and [dozens of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
+MeTube is a self-hosted web UI for `yt-dlp`, for downloading media from YouTube and [dozens of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
+
+Key capabilities:
+* Download videos, audio, captions, and thumbnails from a browser UI.
+* Download playlists and channels, with configurable output and download options.
+* Subscribe to channels and playlists, periodically check for new items, and queue new uploads automatically.
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
 
