@@ -142,6 +142,9 @@ describe('App', () => {
 
     const presetWrapper = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.col-12');
     expect(presetWrapper?.classList.contains('col-md-6')).toBe(false);
+
+    const presetRow = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.row');
+    expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
   });
 
   it('shows manual override input when enabled', () => {
@@ -156,6 +159,10 @@ describe('App', () => {
 
     const presetWrapper = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.col-12');
     expect(presetWrapper?.classList.contains('col-md-6')).toBe(true);
+
+    const presetRow = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.row');
+    expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
+    expect(presetRow?.querySelector('input[name="ytdlOptionsOverrides"]')).not.toBeNull();
   });
 
   it('does not submit manual overrides when disabled', () => {
