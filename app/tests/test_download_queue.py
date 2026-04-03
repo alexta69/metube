@@ -25,6 +25,7 @@ def dq_env():
         cfg.TEMP_DIR = dl
         cfg.MAX_CONCURRENT_DOWNLOADS = "3"
         cfg.YTDL_OPTIONS = {}
+        cfg.YTDL_OPTIONS_PRESETS = {}
         cfg.CUSTOM_DIRS = True
         cfg.CREATE_CUSTOM_DIRS = True
         cfg.CLEAR_COMPLETED_AFTER = "0"
@@ -175,3 +176,42 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 
     assert result["status"] == "ok"
     assert dq.pending.exists("https://example.com/watch?v=1")
+
+
+@pytest.mark.asyncio
+async def test_add_merges_global_preset_and_override_options(dq_env):
+    notifier = AsyncMock()
+    dq_env.YTDL_OPTIONS = {"writesubtitles": False, "cookiefile": "/tmp/global.txt"}
+    dq_env.YTDL_OPTIONS_PRESETS = {"Preset A": {"writesubtitles": True, "proxy": "http://preset"}}
+
+    def fake_extract(self, url):
+        return {
+            "_type": "video",
+            "id": "vid2",
+            "title": "Preset Video",
+            "url": url,
+            "webpage_url": url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://example.com/preset",
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=False,
+            ytdl_options_preset="Preset A",
+            ytdl_options_overrides={"proxy": "http://override", "embed_thumbnail": True},
+        )
+
+    assert result["status"] == "ok"
+    queued = dq.pending.get("https://example.com/preset")
+    assert queued.ytdl_opts["cookiefile"] == "/tmp/global.txt"
+    assert queued.ytdl_opts["writesubtitles"] is True
+    assert queued.ytdl_opts["proxy"] == "http://override"
+    assert queued.ytdl_opts["embed_thumbnail"] is True

@@ -39,6 +39,8 @@ function basePayload(): AddDownloadPayload {
     chapterTemplate: '',
     subtitleLanguage: 'en',
     subtitleMode: 'prefer_manual',
+    ytdlOptionsPreset: '',
+    ytdlOptionsOverrides: '',
   };
 }
 
@@ -79,9 +81,20 @@ describe('DownloadsService', () => {
         chapter_template: '',
         subtitle_language: 'en',
         subtitle_mode: 'prefer_manual',
+        ytdl_options_preset: '',
+        ytdl_options_overrides: '',
       }),
     );
     req.flush({ status: 'ok' });
+  });
+
+  it('getPresets() fetches configured preset names', () => {
+    service.getPresets().subscribe((result) => {
+      expect(result).toEqual({ presets: ['Preset A'] });
+    });
+    const req = httpMock.expectOne('presets');
+    expect(req.request.method).toBe('GET');
+    req.flush({ presets: ['Preset A'] });
   });
 
   it('cancelAdd posts to cancel-add', () => {

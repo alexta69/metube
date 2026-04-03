@@ -311,20 +311,10 @@
       <div class="row">
         <div class="col-12">
           <div class="collapse show" id="advancedOptions" [ngbCollapse]="!isAdvancedOpen">
-            <div class="py-2">
-              <!-- Advanced Settings -->
-              <div class="row g-3 mb-2">
-                <div class="col-md-6">
-                  <div class="input-group">
-                    <span class="input-group-text">Auto Start</span>
-                    <select class="form-select" name="autoStart" [(ngModel)]="autoStart" (change)="autoStartChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Automatically start downloads when added">
-                      <option [ngValue]="true">Yes</option>
-                      <option [ngValue]="false">No</option>
-                    </select>
-                  </div>
-                </div>
+            <div class="pt-1 pb-2">
+              <!-- Output -->
+              <div class="settings-section-label">Output</div>
+              <div class="row g-3">
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Download Folder</span>
@@ -336,7 +326,6 @@
                       ngbTooltip="Choose where to save downloads. Type to create a new folder." />
                     }
                   </div>
-
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
@@ -345,6 +334,48 @@
                       [(ngModel)]="customNamePrefix"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Add a prefix to downloaded filenames">
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="row g-2 align-items-center">
+                    <div class="col-auto">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
+                          name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                          ngbTooltip="Split video into separate files by chapters">
+                        <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
+                      </div>
+                    </div>
+                    @if (splitByChapters) {
+                    <div class="col">
+                      <div class="input-group">
+                        <span class="input-group-text">Template</span>
+                        <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
+                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                          ngbTooltip="Output template for chapter files">
+                      </div>
+                    </div>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Behavior -->
+              <div class="settings-section-label">Behavior</div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Auto Start</span>
+                    <select class="form-select"
+                      name="autoStart"
+                      [(ngModel)]="autoStart"
+                      (change)="autoStartChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Automatically start downloads when added">
+                      <option [ngValue]="true">Yes</option>
+                      <option [ngValue]="false">No</option>
+                    </select>
                   </div>
                 </div>
                 <div class="col-md-6">
@@ -366,183 +397,201 @@
                       ngbTooltip="How often to poll subscriptions for new videos">
                   </div>
                 </div>
+
+              </div>
+
+              <div class="settings-section-label">Webhook</div>
+              <div class="row g-3 mb-3 webhook-integration">
                 <div class="col-12">
-                  <div class="row g-2 align-items-center">
-                    <div class="col-auto">
-                      <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
-                          name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Split video into separate files by chapters">
-                        <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
+                  <div class="webhook-control-row">
+                    <div class="webhook-control-enabled d-flex align-items-center">
+                      <div class="form-check form-switch mb-0">
+                        <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
+                          name="webhookEnabled" [(ngModel)]="webhookEnabled"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                        <label class="form-check-label" for="webhookEnabled">Enabled</label>
                       </div>
                     </div>
-                    @if (splitByChapters) {
-                    <div class="col">
+                    <div class="webhook-control-endpoint">
                       <div class="input-group">
-                        <span class="input-group-text">Template</span>
-                        <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
-                          (change)="chapterTemplateChanged()"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Output template for chapter files">
+                        <span class="input-group-text">Endpoint</span>
+                        <input type="text" class="form-control" placeholder="https://example.com/webhook"
+                          name="webhookEndpoint" [(ngModel)]="webhookEndpoint"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
                     </div>
+                    <div class="webhook-control-timeout">
+                      <div class="input-group webhook-timeout-group">
+                        <span class="input-group-text">Timeout</span>
+                        <input type="number" min="1" class="form-control webhook-timeout-input" name="webhookTimeoutSec"
+                          [(ngModel)]="webhookTimeoutSec"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div class="col-12 col-md-7">
+                  <div class="webhook-action-row">
+                    <button type="button" class="btn btn-secondary" (click)="saveWebhookSettings()">
+                      Save Webhook
+                    </button>
+                    <button type="button" class="btn btn-outline-secondary" (click)="testWebhookService()">
+                      Test Service
+                    </button>
+                  </div>
+                </div>
+                <div class="col-12 col-md-5">
+                  <div class="webhook-status-block">
+                    @if (webhookSettingsStatus) {
+                    <small class="text-muted d-block">{{ webhookSettingsStatus }}</small>
+                    }
+                    @if (webhookTestStatus) {
+                    <small class="text-muted d-block">{{ webhookTestStatus }}</small>
                     }
                   </div>
                 </div>
+                @if (webhookTestResponsePretty) {
+                <div class="col-12">
+                  <div class="webhook-response-view-toggle">
+                    <button type="button" class="btn btn-sm"
+                      [class.btn-secondary]="webhookTestViewMode === 'pretty'"
+                      [class.btn-outline-secondary]="webhookTestViewMode !== 'pretty'"
+                      (click)="setWebhookTestViewMode('pretty')">
+                      Pretty
+                    </button>
+                    <button type="button" class="btn btn-sm"
+                      [class.btn-secondary]="webhookTestViewMode === 'raw'"
+                      [class.btn-outline-secondary]="webhookTestViewMode !== 'raw'"
+                      (click)="setWebhookTestViewMode('raw')">
+                      Raw
+                    </button>
+                  </div>
+
+                  @if (webhookTestViewMode === 'pretty') {
+                  <div class="webhook-response-block webhook-response-pretty">
+                    <table class="table table-sm table-borderless mb-0">
+                      <tbody>
+                        @for (entry of webhookTestResponseEntries; track entry.key) {
+                        <tr>
+                          <th scope="row">{{ entry.key }}:</th>
+                          <td>{{ entry.value }}</td>
+                        </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                  } @else {
+                  <pre class="webhook-response-block">{{ webhookTestResponseRaw }}</pre>
+                  }
+                </div>
+                }
               </div>
 
-              <!-- Advanced Actions -->
-              <div class="row">
-                <div class="col-12">
-                  <hr class="my-3">
-                  <div class="row g-3 mb-3 webhook-integration">
-                    <div class="col-12">
-                      <div class="action-group-label">Webhook Integration</div>
-                    </div>
-                    <div class="col-12">
-                      <div class="webhook-control-row">
-                        <div class="webhook-control-enabled d-flex align-items-center">
-                          <div class="form-check form-switch mb-0">
-                            <input class="form-check-input" type="checkbox" role="switch" id="webhookEnabled"
-                              name="webhookEnabled" [(ngModel)]="webhookEnabled"
-                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                            <label class="form-check-label" for="webhookEnabled">Enabled</label>
-                          </div>
-                        </div>
-                        <div class="webhook-control-endpoint">
-                          <div class="input-group">
-                            <span class="input-group-text">Endpoint</span>
-                            <input type="text" class="form-control" placeholder="http://localhost:9995/api/hash-service/1"
-                              name="webhookEndpoint" [(ngModel)]="webhookEndpoint"
-                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                          </div>
-                        </div>
-                        <div class="webhook-control-timeout">
-                          <div class="input-group webhook-timeout-group">
-                            <span class="input-group-text">Timeout</span>
-                            <input type="number" min="1" class="form-control webhook-timeout-input" name="webhookTimeoutSec"
-                              [(ngModel)]="webhookTimeoutSec"
-                              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                    <div class="col-12 col-md-7">
-                      <div class="webhook-action-row">
-                        <button type="button" class="btn btn-secondary" (click)="saveWebhookSettings()">
-                          Save Webhook
-                        </button>
-                        <button type="button" class="btn btn-outline-secondary" (click)="testWebhookService()">
-                          Test Service
-                        </button>
-                      </div>
-                    </div>
-                    <div class="col-12 col-md-5">
-                      <div class="webhook-status-block">
-                        @if (webhookSettingsStatus) {
-                        <small class="text-muted d-block">{{ webhookSettingsStatus }}</small>
-                        }
-                        @if (webhookTestStatus) {
-                        <small class="text-muted d-block">{{ webhookTestStatus }}</small>
-                        }
-                      </div>
-                    </div>
-                    @if (webhookTestResponsePretty) {
-                    <div class="col-12">
-                      <div class="webhook-response-view-toggle">
-                        <button
-                          type="button"
-                          class="btn btn-sm"
-                          [class.btn-secondary]="webhookTestViewMode === 'pretty'"
-                          [class.btn-outline-secondary]="webhookTestViewMode !== 'pretty'"
-                          (click)="setWebhookTestViewMode('pretty')">
-                          Pretty
-                        </button>
-                        <button
-                          type="button"
-                          class="btn btn-sm"
-                          [class.btn-secondary]="webhookTestViewMode === 'raw'"
-                          [class.btn-outline-secondary]="webhookTestViewMode !== 'raw'"
-                          (click)="setWebhookTestViewMode('raw')">
-                          Raw
-                        </button>
-                      </div>
-
-                      @if (webhookTestViewMode === 'pretty') {
-                      <div class="webhook-response-block webhook-response-pretty">
-                        <table class="table table-sm table-borderless mb-0">
-                          <tbody>
-                            @for (entry of webhookTestResponseEntries; track entry.key) {
-                            <tr>
-                              <th scope="row">{{ entry.key }}:</th>
-                              <td>{{ entry.value }}</td>
-                            </tr>
-                            }
-                          </tbody>
-                        </table>
-                      </div>
-                      } @else {
-                      <pre class="webhook-response-block">{{ webhookTestResponseRaw }}</pre>
+              <!-- yt-dlp -->
+              <div class="settings-section-label">yt-dlp</div>
+              <div class="row g-3">
+                <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
+                  <div class="input-group">
+                    <span class="input-group-text">Option Preset</span>
+                    <select class="form-select"
+                      name="ytdlOptionsPreset"
+                      [(ngModel)]="ytdlOptionsPreset"
+                      (change)="ytdlOptionsPresetChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Choose a named yt-dlp option preset configured on the server">
+                      <option value="">Default</option>
+                      @for (preset of ytdlOptionPresetNames; track preset) {
+                      <option [value]="preset">{{ preset }}</option>
                       }
-                    </div>
+                    </select>
+                  </div>
+                </div>
+                @if (allowYtdlOptionsOverrides()) {
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Custom yt-dlp Options</span>
+                    <input type="text"
+                      class="form-control"
+                      placeholder='e.g. {"writesubtitles": true}'
+                      name="ytdlOptionsOverrides"
+                      [(ngModel)]="ytdlOptionsOverrides"
+                      (change)="ytdlOptionsOverridesChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Optional per-download yt-dlp overrides as a JSON object">
+                  </div>
+                </div>
+                }
+              </div>
+
+              <!-- Tools -->
+              <div class="settings-section-label">Tools</div>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <div class="action-group-label">Cookies</div>
+                  <input type="file" id="cookie-upload" class="d-none" accept=".txt"
+                    (change)="onCookieFileSelect($event)"
+                    [disabled]="cookieUploadInProgress || addInProgress">
+                  <div class="btn-group w-100" role="group">
+                    <label class="btn mb-0"
+                      [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
+                      [class.disabled]="cookieUploadInProgress || addInProgress"
+                      for="cookie-upload"
+                      ngbTooltip="Upload a cookies.txt file for authenticated downloads">
+                      @if (cookieUploadInProgress) {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      } @else {
+                        <fa-icon [icon]="faUpload" class="me-2" />
+                      }
+                      {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
+                    </label>
+                    @if (hasCookies) {
+                      <button type="button" class="btn btn-outline-danger"
+                        (click)="deleteCookies()"
+                        [disabled]="cookieUploadInProgress || addInProgress"
+                        ngbTooltip="Remove uploaded cookies">
+                        <fa-icon [icon]="faTrashAlt" />
+                      </button>
                     }
                   </div>
-                  <div class="row g-3">
-                    <div class="col-md-4">
-                      <div class="action-group-label">Cookies</div>
-                      <input type="file" id="cookie-upload" class="d-none" accept=".txt"
-                        (change)="onCookieFileSelect($event)" [disabled]="cookieUploadInProgress || addInProgress">
-                      <div class="btn-group w-100" role="group">
-                        <label class="btn mb-0"
-                          [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
-                          [class.disabled]="cookieUploadInProgress || addInProgress" for="cookie-upload"
-                          ngbTooltip="Upload a cookies.txt file for authenticated downloads">
-                          @if (cookieUploadInProgress) {
-                          <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                          } @else {
-                          <fa-icon [icon]="faUpload" class="me-2" />
-                          }
-                          {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
-                        </label>
-                        @if (hasCookies) {
-                        <button type="button" class="btn btn-outline-danger" (click)="deleteCookies()"
-                          [disabled]="cookieUploadInProgress || addInProgress" ngbTooltip="Remove uploaded cookies">
-                          <fa-icon [icon]="faTrashAlt" />
-                        </button>
-                        }
-                      </div>
-                      <div class="cookie-status" [class.active]="hasCookies">
-                        @if (hasCookies) {
-                        <fa-icon [icon]="faCheckCircle" class="me-1" />
-                        Cookies active
-                        } @else {
-                        No cookies configured
-                        }
-                      </div>
+                  <div class="cookie-status" [class.active]="hasCookies">
+                    @if (hasCookies) {
+                      <fa-icon [icon]="faCheckCircle" class="me-1" />
+                      Cookies active
+                    } @else {
+                      No cookies configured
+                    }
+                  </div>
+                </div>
+                <div class="col-md-8">
+                  <div class="action-group-label">Bulk Actions</div>
+                  <div class="row g-2">
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="openBatchImportModal()">
+                        <fa-icon [icon]="faFileImport" class="me-2" />
+                        Import URLs
+                      </button>
                     </div>
-                    <div class="col-md-8">
-                      <div class="action-group-label">Bulk Actions</div>
-                      <div class="row g-2">
-                        <div class="col-4">
-                          <button type="button" class="btn btn-secondary w-100" (click)="openBatchImportModal()">
-                            <fa-icon [icon]="faFileImport" class="me-2" />
-                            Import URLs
-                          </button>
-                        </div>
-                        <div class="col-4">
-                          <button type="button" class="btn btn-secondary w-100" (click)="exportBatchUrls('all')">
-                            <fa-icon [icon]="faFileExport" class="me-2" />
-                            Export URLs
-                          </button>
-                        </div>
-                        <div class="col-4">
-                          <button type="button" class="btn btn-secondary w-100" (click)="copyBatchUrls('all')">
-                            <fa-icon [icon]="faCopy" class="me-2" />
-                            Copy URLs
-                          </button>
-                        </div>
-                      </div>
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="exportBatchUrls('all')">
+                        <fa-icon [icon]="faFileExport" class="me-2" />
+                        Export URLs
+                      </button>
+                    </div>
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="copyBatchUrls('all')">
+                        <fa-icon [icon]="faCopy" class="me-2" />
+                        Copy URLs
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
                     </div>
                   </div>
                 </div>

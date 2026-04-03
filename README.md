@@ -3,7 +3,12 @@
 ![Build Status](https://github.com/alexta69/metube/actions/workflows/main.yml/badge.svg)
 ![Docker Pulls](https://img.shields.io/docker/pulls/alexta69/metube.svg)
 
-Web GUI for youtube-dl (using the [yt-dlp](https://github.com/yt-dlp/yt-dlp) fork) with playlist support. Allows you to download videos from YouTube and [dozens of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
+MeTube is a self-hosted web UI for `yt-dlp`, for downloading media from YouTube and [dozens of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md).
+
+Key capabilities:
+* Download videos, audio, captions, and thumbnails from a browser UI.
+* Download playlists and channels, with configurable output and download options.
+* Subscribe to channels and playlists, periodically check for new items, and queue new uploads automatically.
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
 
@@ -66,6 +71,9 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __OUTPUT_TEMPLATE_CHANNEL__: The template for the filenames of the downloaded videos when downloaded as a channel. Defaults to `%(channel)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
 * __YTDL_OPTIONS__: Additional options to pass to yt-dlp in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L222). They roughly correspond to command-line options, though some do not have exact equivalents here. For example, `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores. You may find [this script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) helpful for converting from command-line options to `YTDL_OPTIONS`.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence. The file will be monitored for changes and reloaded automatically when changes are detected.
+* __YTDL_OPTIONS_PRESETS__: A JSON object mapping preset names to yt-dlp option objects. These preset names are exposed in the web UI's Advanced Options panel so users can pick per-download overrides without changing the global `YTDL_OPTIONS`.
+* __YTDL_OPTIONS_PRESETS_FILE__: A path to a JSON file containing `YTDL_OPTIONS_PRESETS`. If both are specified, values from `YTDL_OPTIONS_PRESETS_FILE` are merged into `YTDL_OPTIONS_PRESETS`.
+* __ALLOW_YTDL_OPTIONS_OVERRIDES__: Whether to show the web UI field for manual per-download `ytdl_options_overrides`. Defaults to `false`. Enabling this allows arbitrary yt-dlp API options to be supplied by UI users, which may enable arbitrary command execution inside the container depending on the options used. Enable only if you understand and accept that risk.
 
 ### 🌐 Web Server & URLs
 

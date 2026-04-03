@@ -33,6 +33,16 @@ class ConfigTests(unittest.TestCase):
             c = Config()
         self.assertEqual(c.YTDL_OPTIONS["quiet"], True)
 
+    def test_ytdl_option_presets_json_loaded(self):
+        presets = {"Audio extras": {"embed_thumbnail": True}}
+        with patch.dict(
+            os.environ,
+            _base_env(YTDL_OPTIONS_PRESETS=json.dumps(presets)),
+            clear=False,
+        ):
+            c = Config()
+        self.assertEqual(c.YTDL_OPTIONS_PRESETS["Audio extras"]["embed_thumbnail"], True)
+
     def test_invalid_ytdl_options_exits(self):
         with patch.dict(os.environ, _base_env(YTDL_OPTIONS="not-json"), clear=False):
             with self.assertRaises(SystemExit):
@@ -49,6 +59,12 @@ class ConfigTests(unittest.TestCase):
         safe = c.frontend_safe()
         self.assertNotIn("YTDL_OPTIONS", safe)
         self.assertNotIn("HOST", safe)
+        self.assertEqual(safe["ALLOW_YTDL_OPTIONS_OVERRIDES"], False)
+
+    def test_allow_ytdl_options_overrides_boolean_loaded(self):
+        with patch.dict(os.environ, _base_env(ALLOW_YTDL_OPTIONS_OVERRIDES="true"), clear=False):
+            c = Config()
+        self.assertTrue(c.ALLOW_YTDL_OPTIONS_OVERRIDES)
 
     def test_runtime_override_roundtrip(self):
         with patch.dict(os.environ, _base_env(), clear=False):
@@ -70,6 +86,21 @@ class ConfigTests(unittest.TestCase):
             ):
                 c = Config()
             self.assertIn("extractor_args", c.YTDL_OPTIONS)
+        finally:
+            os.unlink(path)
+
+    def test_ytdl_option_presets_file_merges(self):
+        with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
+            json.dump({"With subtitles": {"writesubtitles": True}}, f)
+            path = f.name
+        try:
+            with patch.dict(
+                os.environ,
+                _base_env(YTDL_OPTIONS_PRESETS="{}", YTDL_OPTIONS_PRESETS_FILE=path),
+                clear=False,
+            ):
+                c = Config()
+            self.assertIn("With subtitles", c.YTDL_OPTIONS_PRESETS)
         finally:
             os.unlink(path)
 

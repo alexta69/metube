@@ -60,6 +60,9 @@ class Config:
         'CLEAR_COMPLETED_AFTER': '0',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
+        'YTDL_OPTIONS_PRESETS': '{}',
+        'YTDL_OPTIONS_PRESETS_FILE': '',
+        'ALLOW_YTDL_OPTIONS_OVERRIDES': 'false',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
@@ -76,7 +79,16 @@ class Config:
         'WEBSERVICE_TIMEOUT_SEC': '20',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'WEBSERVICE_ENABLED')
+    _BOOLEAN = (
+        'DOWNLOAD_DIRS_INDEXABLE',
+        'CUSTOM_DIRS',
+        'CREATE_CUSTOM_DIRS',
+        'DELETE_FILE_ON_TRASHCAN',
+        'HTTPS',
+        'ENABLE_ACCESSLOG',
+        'ALLOW_YTDL_OPTIONS_OVERRIDES',
+        'WEBSERVICE_ENABLED',
+    )
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -97,10 +109,15 @@ class Config:
         # Convert relative addresses to absolute addresses to prevent the failure of file address comparison
         if self.YTDL_OPTIONS_FILE and self.YTDL_OPTIONS_FILE.startswith('.'):
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
+        if self.YTDL_OPTIONS_PRESETS_FILE and self.YTDL_OPTIONS_PRESETS_FILE.startswith('.'):
+            self.YTDL_OPTIONS_PRESETS_FILE = str(Path(self.YTDL_OPTIONS_PRESETS_FILE).resolve())
 
         self._runtime_overrides = {}
 
         success,_ = self.load_ytdl_options()
+        if not success:
+            sys.exit(1)
+        success,_ = self.load_ytdl_option_presets()
         if not success:
             sys.exit(1)
 
@@ -128,6 +145,7 @@ class Config:
         'WEBSERVICE_ENDPOINT',
         'WEBSERVICE_TIMEOUT_SEC',
         'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL',
+        'ALLOW_YTDL_OPTIONS_OVERRIDES',
     )
 
     def frontend_safe(self) -> dict:
@@ -167,6 +185,37 @@ class Config:
 
         self.YTDL_OPTIONS.update(opts)
         self._apply_runtime_overrides()
+        return (True, '')
+
+    def load_ytdl_option_presets(self) -> tuple[bool, str]:
+        try:
+            self.YTDL_OPTIONS_PRESETS = json.loads(os.environ.get('YTDL_OPTIONS_PRESETS', '{}'))
+            assert isinstance(self.YTDL_OPTIONS_PRESETS, dict)
+            assert all(isinstance(name, str) and isinstance(options, dict) for name, options in self.YTDL_OPTIONS_PRESETS.items())
+        except (json.decoder.JSONDecodeError, AssertionError):
+            msg = 'Environment variable YTDL_OPTIONS_PRESETS is invalid'
+            log.error(msg)
+            return (False, msg)
+
+        if not self.YTDL_OPTIONS_PRESETS_FILE:
+            return (True, '')
+
+        log.info(f'Loading yt-dlp option presets from "{self.YTDL_OPTIONS_PRESETS_FILE}"')
+        if not os.path.exists(self.YTDL_OPTIONS_PRESETS_FILE):
+            msg = f'File "{self.YTDL_OPTIONS_PRESETS_FILE}" not found'
+            log.error(msg)
+            return (False, msg)
+        try:
+            with open(self.YTDL_OPTIONS_PRESETS_FILE) as json_data:
+                opts = json.load(json_data)
+            assert isinstance(opts, dict)
+            assert all(isinstance(name, str) and isinstance(options, dict) for name, options in opts.items())
+        except (json.decoder.JSONDecodeError, AssertionError):
+            msg = 'YTDL_OPTIONS_PRESETS_FILE contents is invalid'
+            log.error(msg)
+            return (False, msg)
+
+        self.YTDL_OPTIONS_PRESETS.update(opts)
         return (True, '')
 
 config = Config()
@@ -240,6 +289,23 @@ VALID_VIDEO_CODECS = {'auto', 'h264', 'h265', 'av1', 'vp9'}
 VALID_VIDEO_FORMATS = {'any', 'mp4', 'ios'}
 VALID_AUDIO_FORMATS = {'m4a', 'mp3', 'opus', 'wav', 'flac'}
 VALID_THUMBNAIL_FORMATS = {'jpg'}
+def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
+    if value is None or value == '':
+        return {}
+
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise web.HTTPBadRequest(reason='ytdl_options_overrides must be valid JSON') from exc
+
+    if not isinstance(value, dict):
+        raise web.HTTPBadRequest(reason='ytdl_options_overrides must be a JSON object')
+
+    if value and not enabled:
+        raise web.HTTPBadRequest(reason='ytdl_options_overrides are disabled')
+
+    return value
 
 
 def _migrate_legacy_request(post: dict) -> dict:
@@ -430,6 +496,8 @@ def parse_download_options(post: dict) -> dict:
     chapter_template = post.get('chapter_template')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
+    ytdl_options_preset = post.get('ytdl_options_preset')
+    ytdl_options_overrides = post.get('ytdl_options_overrides')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -447,12 +515,19 @@ def parse_download_options(post: dict) -> dict:
         subtitle_language = 'en'
     if subtitle_mode is None:
         subtitle_mode = 'prefer_manual'
+    if ytdl_options_preset is None:
+        ytdl_options_preset = ''
     download_type = str(download_type).strip().lower()
     codec = str(codec or 'auto').strip().lower()
     format = str(format or '').strip().lower()
     quality = str(quality).strip().lower()
     subtitle_language = str(subtitle_language).strip()
     subtitle_mode = str(subtitle_mode).strip()
+    ytdl_options_preset = str(ytdl_options_preset).strip()
+    ytdl_options_overrides = _parse_ytdl_options_overrides(
+        ytdl_options_overrides,
+        enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
+    )
 
     if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
         raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')
@@ -460,6 +535,8 @@ def parse_download_options(post: dict) -> dict:
         raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
     if subtitle_mode not in VALID_SUBTITLE_MODES:
         raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
+    if ytdl_options_preset and ytdl_options_preset not in config.YTDL_OPTIONS_PRESETS:
+        raise web.HTTPBadRequest(reason='ytdl_options_preset must match a configured preset')
 
     if download_type not in VALID_DOWNLOAD_TYPES:
         raise web.HTTPBadRequest(reason=f'download_type must be one of {sorted(VALID_DOWNLOAD_TYPES)}')
@@ -512,6 +589,8 @@ def parse_download_options(post: dict) -> dict:
         'chapter_template': chapter_template,
         'subtitle_language': subtitle_language,
         'subtitle_mode': subtitle_mode,
+        'ytdl_options_preset': ytdl_options_preset,
+        'ytdl_options_overrides': ytdl_options_overrides,
     }
 
 
@@ -546,8 +625,18 @@ async def add(request):
         o['chapter_template'],
         o['subtitle_language'],
         o['subtitle_mode'],
+        o['ytdl_options_preset'],
+        o['ytdl_options_overrides'],
     )
     return web.Response(text=serializer.encode(status))
+
+
+@routes.get(config.URL_PREFIX + 'presets')
+async def presets(request):
+    return web.Response(
+        text=serializer.encode({'presets': sorted(config.YTDL_OPTIONS_PRESETS.keys())}),
+        content_type='application/json',
+    )
 
 @routes.post(config.URL_PREFIX + 'cancel-add')
 async def cancel_add(request):
@@ -587,6 +676,8 @@ async def subscribe(request):
         chapter_template=o['chapter_template'],
         subtitle_language=o['subtitle_language'],
         subtitle_mode=o['subtitle_mode'],
+        ytdl_options_preset=o['ytdl_options_preset'],
+        ytdl_options_overrides=o['ytdl_options_overrides'],
     )
     return web.Response(text=serializer.encode(result))
 
