@@ -68,6 +68,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __OUTPUT_TEMPLATE_CHANNEL__: The template for the filenames of the downloaded videos when downloaded as a channel. Defaults to `%(channel)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
 * __YTDL_OPTIONS__: Additional options to pass to yt-dlp in JSON format. [See available options here](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L222). They roughly correspond to command-line options, though some do not have exact equivalents here. For example, `--recode-video` has to be specified via `postprocessors`. Also note that dashes are replaced with underscores. You may find [this script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) helpful for converting from command-line options to `YTDL_OPTIONS`.
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence. The file will be monitored for changes and reloaded automatically when changes are detected.
+* __YTDL_OPTIONS_PRESETS__: A JSON object mapping preset names to yt-dlp option objects. These preset names are exposed in the web UI's Advanced Options panel so users can pick per-download overrides without changing the global `YTDL_OPTIONS`.
+* __YTDL_OPTIONS_PRESETS_FILE__: A path to a JSON file containing `YTDL_OPTIONS_PRESETS`. If both are specified, values from `YTDL_OPTIONS_PRESETS_FILE` are merged into `YTDL_OPTIONS_PRESETS`.
 
 ### 🌐 Web Server & URLs
 

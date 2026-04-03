@@ -20,6 +20,8 @@ export interface AddDownloadPayload {
   chapterTemplate: string;
   subtitleLanguage: string;
   subtitleMode: string;
+  ytdlOptionsPreset: string;
+  ytdlOptionsOverrides: string;
 }
 @Injectable({
   providedIn: 'root'
@@ -141,8 +143,16 @@ export class DownloadsService {
       chapter_template: payload.chapterTemplate,
       subtitle_language: payload.subtitleLanguage,
       subtitle_mode: payload.subtitleMode,
+      ytdl_options_preset: payload.ytdlOptionsPreset,
+      ytdl_options_overrides: payload.ytdlOptionsOverrides,
     }).pipe(
       catchError(this.handleHTTPError)
+    );
+  }
+
+  public getPresets() {
+    return this.http.get<{ presets: string[] }>('presets').pipe(
+      catchError(() => of({ presets: [] }))
     );
   }
 

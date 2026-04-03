@@ -94,6 +94,8 @@ export class SubscriptionsService {
         chapter_template: payload.chapterTemplate,
         subtitle_language: payload.subtitleLanguage,
         subtitle_mode: payload.subtitleMode,
+        ytdl_options_preset: payload.ytdlOptionsPreset,
+        ytdl_options_overrides: payload.ytdlOptionsOverrides,
         check_interval_minutes: payload.checkIntervalMinutes,
       })
       .pipe(catchError((err) => this.handleHTTPError(err)));

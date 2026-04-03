@@ -83,6 +83,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   chapterTemplate: string;
   subtitleLanguage: string;
   subtitleMode: string;
+  ytdlOptionsPreset: string;
+  ytdlOptionsOverrides: string;
+  ytdlOptionPresetNames: string[] = [];
   addInProgress = false;
   cancelRequested = false;
   subscribeInProgress = false;
@@ -231,6 +234,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
+    this.ytdlOptionsPreset = this.cookieService.get('metube_ytdl_options_preset') || '';
+    this.ytdlOptionsOverrides = this.cookieService.get('metube_ytdl_options_overrides') || '';
     const allowedDownloadTypes = new Set(this.downloadTypes.map(t => t.id));
     const allowedVideoCodecs = new Set(this.videoCodecs.map(c => c.id));
     if (!allowedDownloadTypes.has(this.downloadType)) {
@@ -287,6 +292,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
+    this.getYtdlOptionPresets();
     this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
@@ -415,6 +421,39 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
+  getYtdlOptionPresets() {
+    this.downloads.getPresets().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
+      next: (data) => {
+        this.ytdlOptionPresetNames = Array.isArray(data?.presets)
+          ? data.presets.filter((preset): preset is string => typeof preset === 'string')
+          : [];
+        if (this.ytdlOptionsPreset && !this.ytdlOptionPresetNames.includes(this.ytdlOptionsPreset)) {
+          this.ytdlOptionsPreset = '';
+          this.ytdlOptionsPresetChanged();
+        }
+        this.cdr.markForCheck();
+      },
+    });
+  }
+
+  private validateYtdlOptionsOverrides(value: string): boolean {
+    const trimmed = value?.trim() || '';
+    if (!trimmed) {
+      return true;
+    }
+    try {
+      const parsed = JSON.parse(trimmed);
+      if (!parsed || Array.isArray(parsed) || typeof parsed !== 'object') {
+        alert('Custom yt-dlp options must be a JSON object');
+        return false;
+      }
+    } catch {
+      alert('Custom yt-dlp options must be valid JSON');
+      return false;
+    }
+    return true;
+  }
+
   private rebuildCachedSubs() {
     this.cachedSubs = Array.from(this.subscriptionsSvc.subscriptions.entries());
     const validIds = new Set(this.cachedSubs.map(([id]) => id));
@@ -489,6 +528,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
       alert('Chapter template must include %(section_number)');
+      return;
+    }
+    if (!this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides)) {
       return;
     }
     this.subscribeInProgress = true;
@@ -695,6 +737,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.saveSelection(this.downloadType);
   }
 
+  ytdlOptionsPresetChanged() {
+    this.cookieService.set('metube_ytdl_options_preset', this.ytdlOptionsPreset, { expires: this.settingsCookieExpiryDays });
+  }
+
+  ytdlOptionsOverridesChanged() {
+    this.cookieService.set('metube_ytdl_options_overrides', this.ytdlOptionsOverrides, { expires: this.settingsCookieExpiryDays });
+  }
+
   isVideoType() {
     return this.downloadType === 'video';
   }
@@ -894,6 +944,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       chapterTemplate: overrides.chapterTemplate ?? this.chapterTemplate,
       subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
       subtitleMode: overrides.subtitleMode ?? this.subtitleMode,
+      ytdlOptionsPreset: overrides.ytdlOptionsPreset ?? this.ytdlOptionsPreset,
+      ytdlOptionsOverrides: overrides.ytdlOptionsOverrides ?? this.ytdlOptionsOverrides,
     };
   }
 
@@ -903,6 +955,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Validate chapter template if chapter splitting is enabled
     if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
       alert('Chapter template must include %(section_number)');
+      return;
+    }
+    if (!this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides)) {
       return;
     }
 
@@ -960,6 +1015,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       chapterTemplate: download.chapter_template,
       subtitleLanguage: download.subtitle_language,
       subtitleMode: download.subtitle_mode,
+      ytdlOptionsPreset: download.ytdl_options_preset || '',
+      ytdlOptionsOverrides: download.ytdl_options_overrides ? JSON.stringify(download.ytdl_options_overrides) : '',
     });
     this.downloads.delById('done', [key]).subscribe();
   }

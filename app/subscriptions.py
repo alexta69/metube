@@ -145,6 +145,8 @@ class SubscriptionInfo:
     chapter_template: str = ""
     subtitle_language: str = "en"
     subtitle_mode: str = "prefer_manual"
+    ytdl_options_preset: str = ""
+    ytdl_options_overrides: dict[str, Any] = field(default_factory=dict)
     last_checked: Optional[float] = None
     seen_ids: list[str] = field(default_factory=list)
     error: Optional[str] = None
@@ -190,6 +192,8 @@ def _subscription_to_record(sub: SubscriptionInfo) -> dict[str, Any]:
         "chapter_template": sub.chapter_template,
         "subtitle_language": sub.subtitle_language,
         "subtitle_mode": sub.subtitle_mode,
+        "ytdl_options_preset": sub.ytdl_options_preset,
+        "ytdl_options_overrides": sub.ytdl_options_overrides,
         "last_checked": sub.last_checked,
         "seen_ids": list(sub.seen_ids),
         "error": sub.error,
@@ -311,6 +315,8 @@ class SubscriptionManager:
         chapter_template: str,
         subtitle_language: str,
         subtitle_mode: str,
+        ytdl_options_preset: str = "",
+        ytdl_options_overrides: Optional[dict[str, Any]] = None,
     ) -> tuple[list[str], list[str]]:
         queued_ids: list[str] = []
         queue_errors: list[str] = []
@@ -336,6 +342,8 @@ class SubscriptionManager:
                 chapter_template or None,
                 subtitle_language,
                 subtitle_mode,
+                ytdl_options_preset,
+                ytdl_options_overrides,
             )
             if isinstance(result, dict) and result.get("status") == "error":
                 msg = str(result.get("msg") or f"Queueing failed for {vurl}")
@@ -403,6 +411,8 @@ class SubscriptionManager:
         chapter_template: str,
         subtitle_language: str,
         subtitle_mode: str,
+        ytdl_options_preset: str = "",
+        ytdl_options_overrides: Optional[dict[str, Any]] = None,
     ) -> dict:
         url = self._normalize_url(url)
         if not url:
@@ -460,6 +470,8 @@ class SubscriptionManager:
                 chapter_template=chapter_template or "",
                 subtitle_language=subtitle_language,
                 subtitle_mode=subtitle_mode,
+                ytdl_options_preset=ytdl_options_preset,
+                ytdl_options_overrides=dict(ytdl_options_overrides or {}),
                 last_checked=time.time(),
                 seen_ids=list(dict.fromkeys(all_ids)),
                 error=None,
@@ -608,6 +620,8 @@ class SubscriptionManager:
             dl_chapter = cur.chapter_template
             dl_sublang = cur.subtitle_language
             dl_submode = cur.subtitle_mode
+            dl_ytdl_preset = cur.ytdl_options_preset
+            dl_ytdl_overrides = dict(cur.ytdl_options_overrides)
 
         new_entries: list[dict] = []
         new_ids: list[str] = []
@@ -632,6 +646,8 @@ class SubscriptionManager:
             chapter_template=dl_chapter or "",
             subtitle_language=dl_sublang,
             subtitle_mode=dl_submode,
+            ytdl_options_preset=dl_ytdl_preset,
+            ytdl_options_overrides=dl_ytdl_overrides,
         )
         log.info(
             "Subscription check finished for %s: %d new, %d queued, %d failed",

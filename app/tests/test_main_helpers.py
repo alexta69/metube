@@ -101,5 +101,49 @@ class FrontendSafeTests(unittest.TestCase):
         self.assertNotIn("DOWNLOAD_DIR", safe)
 
 
+class ParseYtdlOverridesTests(unittest.TestCase):
+    def test_empty_override_string_returns_empty_dict(self):
+        self.assertEqual(main._parse_ytdl_options_overrides(""), {})
+
+    def test_rejects_non_object_json(self):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main._parse_ytdl_options_overrides('["bad"]')
+
+    def test_rejects_blocked_keys(self):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main._parse_ytdl_options_overrides('{"exec": "rm -rf /"}')
+
+
+class ParseDownloadOptionsTests(unittest.TestCase):
+    def test_accepts_known_preset_and_overrides(self):
+        previous = dict(main.config.YTDL_OPTIONS_PRESETS)
+        main.config.YTDL_OPTIONS_PRESETS = {"With subtitles": {"writesubtitles": True}}
+        try:
+            parsed = main.parse_download_options({
+                "url": "https://example.com/v",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "ytdl_options_preset": "With subtitles",
+                "ytdl_options_overrides": '{"writesubtitles": true}',
+            })
+        finally:
+            main.config.YTDL_OPTIONS_PRESETS = previous
+        self.assertEqual(parsed["ytdl_options_preset"], "With subtitles")
+        self.assertEqual(parsed["ytdl_options_overrides"], {"writesubtitles": True})
+
+    def test_rejects_unknown_preset(self):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main.parse_download_options({
+                "url": "https://example.com/v",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "ytdl_options_preset": "Missing preset",
+            })
+
+
 if __name__ == "__main__":
     unittest.main()

@@ -447,6 +447,35 @@
                       ngbTooltip="How often to poll subscriptions for new videos">
                   </div>
                 </div>
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Option Preset</span>
+                    <select class="form-select"
+                      name="ytdlOptionsPreset"
+                      [(ngModel)]="ytdlOptionsPreset"
+                      (change)="ytdlOptionsPresetChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Choose a named yt-dlp option preset configured on the server">
+                      <option value="">Default</option>
+                      @for (preset of ytdlOptionPresetNames; track preset) {
+                      <option [value]="preset">{{ preset }}</option>
+                      }
+                    </select>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Custom yt-dlp Options</span>
+                    <input type="text"
+                      class="form-control"
+                      placeholder='e.g. {"writesubtitles": true}'
+                      name="ytdlOptionsOverrides"
+                      [(ngModel)]="ytdlOptionsOverrides"
+                      (change)="ytdlOptionsOverridesChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Optional per-download yt-dlp overrides as a JSON object">
+                  </div>
+                </div>
                 <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
