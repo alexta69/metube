@@ -145,7 +145,7 @@ describe('App', () => {
   });
 
   it('shows manual override input when enabled', () => {
-    downloads.configuration.ALLOW_YTDL_OPTIONS_OVERRIDES = true;
+    downloads.configuration['ALLOW_YTDL_OPTIONS_OVERRIDES'] = true;
 
     const fixture = TestBed.createComponent(App);
     fixture.componentInstance.isAdvancedOpen = true;
