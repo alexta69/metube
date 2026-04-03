@@ -13,12 +13,14 @@
                 "env": {
                     "DOWNLOAD_DIR": "${env:USERPROFILE}/Downloads",
                     "STATE_DIR": "${env:TEMP}",
+                    "ALLOW_YTDL_OPTIONS_OVERRIDES": "true",
                 }
             },
             "osx": {
                 "env": {
                     "DOWNLOAD_DIR": "${env:HOME}/Downloads",
                     "STATE_DIR": "${env:TMPDIR}",
+                    "ALLOW_YTDL_OPTIONS_OVERRIDES": "true",
                 }
             },
             "console": "integratedTerminal"

@@ -369,23 +369,10 @@
       <div class="row">
         <div class="col-12">
           <div class="collapse show" id="advancedOptions" [ngbCollapse]="!isAdvancedOpen">
-            <div class="py-2">
-              <!-- Advanced Settings -->
-              <div class="row g-3 mb-2">
-                <div class="col-md-6">
-                  <div class="input-group">
-                    <span class="input-group-text">Auto Start</span>
-                    <select class="form-select"
-                      name="autoStart"
-                      [(ngModel)]="autoStart"
-                      (change)="autoStartChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Automatically start downloads when added">
-                      <option [ngValue]="true">Yes</option>
-                      <option [ngValue]="false">No</option>
-                    </select>
-                  </div>
-                </div>
+            <div class="pt-1 pb-2">
+              <!-- Output -->
+              <div class="settings-section-label">Output</div>
+              <div class="row g-3">
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Download Folder</span>
@@ -405,7 +392,6 @@
                       ngbTooltip="Choose where to save downloads. Type to create a new folder." />
                   }
                   </div>
-
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
@@ -417,6 +403,48 @@
                       [(ngModel)]="customNamePrefix"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Add a prefix to downloaded filenames">
+                  </div>
+                </div>
+                <div class="col-12">
+                  <div class="row g-2 align-items-center">
+                    <div class="col-auto">
+                      <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
+                          name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                          ngbTooltip="Split video into separate files by chapters">
+                        <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
+                      </div>
+                    </div>
+                    @if (splitByChapters) {
+                    <div class="col">
+                      <div class="input-group">
+                        <span class="input-group-text">Template</span>
+                        <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
+                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                          ngbTooltip="Output template for chapter files">
+                      </div>
+                    </div>
+                    }
+                  </div>
+                </div>
+              </div>
+
+              <!-- Behavior -->
+              <div class="settings-section-label">Behavior</div>
+              <div class="row g-3">
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text">Auto Start</span>
+                    <select class="form-select"
+                      name="autoStart"
+                      [(ngModel)]="autoStart"
+                      (change)="autoStartChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Automatically start downloads when added">
+                      <option [ngValue]="true">Yes</option>
+                      <option [ngValue]="false">No</option>
+                    </select>
                   </div>
                 </div>
                 <div class="col-md-6">
@@ -448,7 +476,10 @@
                   </div>
                 </div>
               </div>
-              <div class="row g-3 mb-2">
+
+              <!-- yt-dlp -->
+              <div class="settings-section-label">yt-dlp</div>
+              <div class="row g-3">
                 <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
                   <div class="input-group">
                     <span class="input-group-text">Option Preset</span>
@@ -481,101 +512,72 @@
                 </div>
                 }
               </div>
-              <div class="row g-3 mb-2">
-                <div class="col-12">
-                  <div class="row g-2 align-items-center">
-                    <div class="col-auto">
-                      <div class="form-check form-switch">
-                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
-                          name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Split video into separate files by chapters">
-                        <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
-                      </div>
-                    </div>
-                    @if (splitByChapters) {
-                    <div class="col">
-                      <div class="input-group">
-                        <span class="input-group-text">Template</span>
-                        <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
-                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Output template for chapter files">
-                      </div>
-                    </div>
+
+              <!-- Tools -->
+              <div class="settings-section-label">Tools</div>
+              <div class="row g-3">
+                <div class="col-md-4">
+                  <div class="action-group-label">Cookies</div>
+                  <input type="file" id="cookie-upload" class="d-none" accept=".txt"
+                    (change)="onCookieFileSelect($event)"
+                    [disabled]="cookieUploadInProgress || addInProgress">
+                  <div class="btn-group w-100" role="group">
+                    <label class="btn mb-0"
+                      [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
+                      [class.disabled]="cookieUploadInProgress || addInProgress"
+                      for="cookie-upload"
+                      ngbTooltip="Upload a cookies.txt file for authenticated downloads">
+                      @if (cookieUploadInProgress) {
+                        <span class="spinner-border spinner-border-sm me-2" role="status"></span>
+                      } @else {
+                        <fa-icon [icon]="faUpload" class="me-2" />
+                      }
+                      {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
+                    </label>
+                    @if (hasCookies) {
+                      <button type="button" class="btn btn-outline-danger"
+                        (click)="deleteCookies()"
+                        [disabled]="cookieUploadInProgress || addInProgress"
+                        ngbTooltip="Remove uploaded cookies">
+                        <fa-icon [icon]="faTrashAlt" />
+                      </button>
+                    }
+                  </div>
+                  <div class="cookie-status" [class.active]="hasCookies">
+                    @if (hasCookies) {
+                      <fa-icon [icon]="faCheckCircle" class="me-1" />
+                      Cookies active
+                    } @else {
+                      No cookies configured
                     }
                   </div>
                 </div>
-              </div>
-
-              <!-- Advanced Actions -->
-              <div class="row">
-                <div class="col-12">
-                  <hr class="my-3">
-                  <div class="row g-3">
-                    <div class="col-md-4">
-                      <div class="action-group-label">Cookies</div>
-                      <input type="file" id="cookie-upload" class="d-none" accept=".txt"
-                        (change)="onCookieFileSelect($event)"
-                        [disabled]="cookieUploadInProgress || addInProgress">
-                      <div class="btn-group w-100" role="group">
-                        <label class="btn mb-0"
-                          [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
-                          [class.disabled]="cookieUploadInProgress || addInProgress"
-                          for="cookie-upload"
-                          ngbTooltip="Upload a cookies.txt file for authenticated downloads">
-                          @if (cookieUploadInProgress) {
-                            <span class="spinner-border spinner-border-sm me-2" role="status"></span>
-                          } @else {
-                            <fa-icon [icon]="faUpload" class="me-2" />
-                          }
-                          {{ hasCookies ? 'Replace Cookies' : 'Upload Cookies' }}
-                        </label>
-                        @if (hasCookies) {
-                          <button type="button" class="btn btn-outline-danger"
-                            (click)="deleteCookies()"
-                            [disabled]="cookieUploadInProgress || addInProgress"
-                            ngbTooltip="Remove uploaded cookies">
-                            <fa-icon [icon]="faTrashAlt" />
-                          </button>
-                        }
-                      </div>
-                      <div class="cookie-status" [class.active]="hasCookies">
-                        @if (hasCookies) {
-                          <fa-icon [icon]="faCheckCircle" class="me-1" />
-                          Cookies active
-                        } @else {
-                          No cookies configured
-                        }
-                      </div>
+                <div class="col-md-8">
+                  <div class="action-group-label">Bulk Actions</div>
+                  <div class="row g-2">
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="openBatchImportModal()">
+                        <fa-icon [icon]="faFileImport" class="me-2" />
+                        Import URLs
+                      </button>
                     </div>
-                    <div class="col-md-8">
-                      <div class="action-group-label">Bulk Actions</div>
-                      <div class="row g-2">
-                        <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="openBatchImportModal()">
-                            <fa-icon [icon]="faFileImport" class="me-2" />
-                            Import URLs
-                          </button>
-                        </div>
-                        <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="exportBatchUrls('all')">
-                            <fa-icon [icon]="faFileExport" class="me-2" />
-                            Export URLs
-                          </button>
-                        </div>
-                        <div class="col-4">
-                          <button type="button"
-                            class="btn btn-secondary w-100"
-                            (click)="copyBatchUrls('all')">
-                            <fa-icon [icon]="faCopy" class="me-2" />
-                            Copy URLs
-                          </button>
-                        </div>
-                      </div>
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="exportBatchUrls('all')">
+                        <fa-icon [icon]="faFileExport" class="me-2" />
+                        Export URLs
+                      </button>
+                    </div>
+                    <div class="col-4">
+                      <button type="button"
+                        class="btn btn-secondary w-100"
+                        (click)="copyBatchUrls('all')">
+                        <fa-icon [icon]="faCopy" class="me-2" />
+                        Copy URLs
+                      </button>
                     </div>
                   </div>
                 </div>
