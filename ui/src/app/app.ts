@@ -356,6 +356,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return this.downloads.configuration['CUSTOM_DIRS'];
   }
 
+  allowYtdlOptionsOverrides() {
+    return this.downloads.configuration['ALLOW_YTDL_OPTIONS_OVERRIDES'] === true;
+  }
+
   allowCustomDir(tag: string) {
     if (this.downloads.configuration['CREATE_CUSTOM_DIRS']) {
       return tag;
@@ -437,6 +441,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   private validateYtdlOptionsOverrides(value: string): boolean {
+    if (!this.allowYtdlOptionsOverrides()) {
+      return true;
+    }
     const trimmed = value?.trim() || '';
     if (!trimmed) {
       return true;
@@ -930,6 +937,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   private buildAddPayload(overrides: Partial<AddDownloadPayload> = {}): AddDownloadPayload {
+    const allowYtdlOptionsOverrides = this.allowYtdlOptionsOverrides();
     return {
       url: overrides.url ?? this.addUrl,
       downloadType: overrides.downloadType ?? this.downloadType,
@@ -945,7 +953,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
       subtitleMode: overrides.subtitleMode ?? this.subtitleMode,
       ytdlOptionsPreset: overrides.ytdlOptionsPreset ?? this.ytdlOptionsPreset,
-      ytdlOptionsOverrides: overrides.ytdlOptionsOverrides ?? this.ytdlOptionsOverrides,
+      ytdlOptionsOverrides: allowYtdlOptionsOverrides
+        ? (overrides.ytdlOptionsOverrides ?? this.ytdlOptionsOverrides)
+        : '',
     };
   }
 

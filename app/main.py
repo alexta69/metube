@@ -59,6 +59,7 @@ class Config:
         'YTDL_OPTIONS_FILE': '',
         'YTDL_OPTIONS_PRESETS': '{}',
         'YTDL_OPTIONS_PRESETS_FILE': '',
+        'ALLOW_YTDL_OPTIONS_OVERRIDES': 'false',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
@@ -72,7 +73,7 @@ class Config:
         'ENABLE_ACCESSLOG': 'false',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'ALLOW_YTDL_OPTIONS_OVERRIDES')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -126,6 +127,7 @@ class Config:
         'PUBLIC_HOST_AUDIO_URL',
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
         'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL',
+        'ALLOW_YTDL_OPTIONS_OVERRIDES',
     )
 
     def frontend_safe(self) -> dict:
@@ -232,36 +234,7 @@ VALID_VIDEO_CODECS = {'auto', 'h264', 'h265', 'av1', 'vp9'}
 VALID_VIDEO_FORMATS = {'any', 'mp4', 'ios'}
 VALID_AUDIO_FORMATS = {'m4a', 'mp3', 'opus', 'wav', 'flac'}
 VALID_THUMBNAIL_FORMATS = {'jpg'}
-BLOCKED_YTDL_OVERRIDE_KEYS = frozenset({
-    'exec',
-    'exec_before_dl',
-    'exec_cmd',
-    'external_downloader',
-    'external_downloader_args',
-    'format',
-    'ignore_no_formats_error',
-    'no_color',
-    'outtmpl',
-    'paths',
-    'postprocessor_hooks',
-    'progress_hooks',
-    'quiet',
-    'socket_timeout',
-    'verbose',
-})
-
-
-def _iter_nested_keys(value):
-    if isinstance(value, dict):
-        for key, nested in value.items():
-            yield str(key)
-            yield from _iter_nested_keys(nested)
-    elif isinstance(value, list):
-        for item in value:
-            yield from _iter_nested_keys(item)
-
-
-def _parse_ytdl_options_overrides(value) -> dict:
+def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
     if value is None or value == '':
         return {}
 
@@ -274,9 +247,8 @@ def _parse_ytdl_options_overrides(value) -> dict:
     if not isinstance(value, dict):
         raise web.HTTPBadRequest(reason='ytdl_options_overrides must be a JSON object')
 
-    blocked_keys = sorted({key for key in _iter_nested_keys(value) if key in BLOCKED_YTDL_OVERRIDE_KEYS})
-    if blocked_keys:
-        raise web.HTTPBadRequest(reason=f'ytdl_options_overrides contains disallowed keys: {blocked_keys}')
+    if value and not enabled:
+        raise web.HTTPBadRequest(reason='ytdl_options_overrides are disabled')
 
     return value
 
@@ -497,7 +469,10 @@ def parse_download_options(post: dict) -> dict:
     subtitle_language = str(subtitle_language).strip()
     subtitle_mode = str(subtitle_mode).strip()
     ytdl_options_preset = str(ytdl_options_preset).strip()
-    ytdl_options_overrides = _parse_ytdl_options_overrides(ytdl_options_overrides)
+    ytdl_options_overrides = _parse_ytdl_options_overrides(
+        ytdl_options_overrides,
+        enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
+    )
 
     if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
         raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')

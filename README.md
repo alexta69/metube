@@ -70,6 +70,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __YTDL_OPTIONS_FILE__: A path to a JSON file that will be loaded and used for populating `YTDL_OPTIONS` above. Please note that if both `YTDL_OPTIONS_FILE` and `YTDL_OPTIONS` are specified, the options in `YTDL_OPTIONS` take precedence. The file will be monitored for changes and reloaded automatically when changes are detected.
 * __YTDL_OPTIONS_PRESETS__: A JSON object mapping preset names to yt-dlp option objects. These preset names are exposed in the web UI's Advanced Options panel so users can pick per-download overrides without changing the global `YTDL_OPTIONS`.
 * __YTDL_OPTIONS_PRESETS_FILE__: A path to a JSON file containing `YTDL_OPTIONS_PRESETS`. If both are specified, values from `YTDL_OPTIONS_PRESETS_FILE` are merged into `YTDL_OPTIONS_PRESETS`.
+* __ALLOW_YTDL_OPTIONS_OVERRIDES__: Whether to show the web UI field for manual per-download `ytdl_options_overrides`. Defaults to `false`. Enabling this allows arbitrary yt-dlp API options to be supplied by UI users, which may enable arbitrary command execution inside the container depending on the options used. Enable only if you understand and accept that risk.
 
 ### 🌐 Web Server & URLs
 

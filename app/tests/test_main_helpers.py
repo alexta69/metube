@@ -99,25 +99,34 @@ class FrontendSafeTests(unittest.TestCase):
             self.assertIn(key, safe)
         self.assertNotIn("YTDL_OPTIONS", safe)
         self.assertNotIn("DOWNLOAD_DIR", safe)
+        self.assertIn("ALLOW_YTDL_OPTIONS_OVERRIDES", safe)
 
 
 class ParseYtdlOverridesTests(unittest.TestCase):
     def test_empty_override_string_returns_empty_dict(self):
-        self.assertEqual(main._parse_ytdl_options_overrides(""), {})
+        self.assertEqual(main._parse_ytdl_options_overrides("", enabled=False), {})
 
     def test_rejects_non_object_json(self):
         with self.assertRaises(main.web.HTTPBadRequest):
-            main._parse_ytdl_options_overrides('["bad"]')
+            main._parse_ytdl_options_overrides('["bad"]', enabled=True)
 
-    def test_rejects_blocked_keys(self):
+    def test_rejects_non_empty_overrides_when_disabled(self):
         with self.assertRaises(main.web.HTTPBadRequest):
-            main._parse_ytdl_options_overrides('{"exec": "rm -rf /"}')
+            main._parse_ytdl_options_overrides('{"exec": "rm -rf /"}', enabled=False)
+
+    def test_allows_any_keys_when_enabled(self):
+        self.assertEqual(
+            main._parse_ytdl_options_overrides('{"exec": "rm -rf /"}', enabled=True),
+            {"exec": "rm -rf /"},
+        )
 
 
 class ParseDownloadOptionsTests(unittest.TestCase):
     def test_accepts_known_preset_and_overrides(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
+        previous_allow = main.config.ALLOW_YTDL_OPTIONS_OVERRIDES
         main.config.YTDL_OPTIONS_PRESETS = {"With subtitles": {"writesubtitles": True}}
+        main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = True
         try:
             parsed = main.parse_download_options({
                 "url": "https://example.com/v",
@@ -130,6 +139,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
+            main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = previous_allow
         self.assertEqual(parsed["ytdl_options_preset"], "With subtitles")
         self.assertEqual(parsed["ytdl_options_overrides"], {"writesubtitles": True})
 

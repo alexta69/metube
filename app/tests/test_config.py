@@ -59,6 +59,12 @@ class ConfigTests(unittest.TestCase):
         safe = c.frontend_safe()
         self.assertNotIn("YTDL_OPTIONS", safe)
         self.assertNotIn("HOST", safe)
+        self.assertEqual(safe["ALLOW_YTDL_OPTIONS_OVERRIDES"], False)
+
+    def test_allow_ytdl_options_overrides_boolean_loaded(self):
+        with patch.dict(os.environ, _base_env(ALLOW_YTDL_OPTIONS_OVERRIDES="true"), clear=False):
+            c = Config()
+        self.assertTrue(c.ALLOW_YTDL_OPTIONS_OVERRIDES)
 
     def test_runtime_override_roundtrip(self):
         with patch.dict(os.environ, _base_env(), clear=False):

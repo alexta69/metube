@@ -64,6 +64,7 @@ async def test_add_ok(mock_dqueue):
 @pytest.mark.asyncio
 async def test_add_passes_preset_and_overrides(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.config, "YTDL_OPTIONS_PRESETS", {"Preset A": {"writesubtitles": True}})
+    monkeypatch.setattr(main.config, "ALLOW_YTDL_OPTIONS_OVERRIDES", True)
     req = _json_request(
         _valid_video_add_body(
             ytdl_options_preset="Preset A",
@@ -151,10 +152,21 @@ async def test_add_invalid_ytdl_options_override_json(mock_dqueue):
 
 
 @pytest.mark.asyncio
-async def test_add_blocked_ytdl_options_override_key(mock_dqueue):
+async def test_add_rejects_ytdl_options_overrides_when_disabled(mock_dqueue):
     req = _json_request(_valid_video_add_body(ytdl_options_overrides='{"exec": "rm -rf /"}'))
     with pytest.raises(web.HTTPBadRequest):
         await main.add(req)
+
+
+@pytest.mark.asyncio
+async def test_add_allows_any_ytdl_options_override_key_when_enabled(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.config, "ALLOW_YTDL_OPTIONS_OVERRIDES", True)
+    req = _json_request(_valid_video_add_body(ytdl_options_overrides='{"exec": "echo hi"}'))
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call is not None
+    assert call.args[14] == {"exec": "echo hi"}
 
 
 @pytest.mark.asyncio

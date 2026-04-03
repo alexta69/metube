@@ -447,7 +447,7 @@
                       ngbTooltip="How often to poll subscriptions for new videos">
                   </div>
                 </div>
-                <div class="col-md-6">
+                <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
                   <div class="input-group">
                     <span class="input-group-text">Option Preset</span>
                     <select class="form-select"
@@ -463,6 +463,7 @@
                     </select>
                   </div>
                 </div>
+                @if (allowYtdlOptionsOverrides()) {
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text">Custom yt-dlp Options</span>
@@ -476,6 +477,7 @@
                       ngbTooltip="Optional per-download yt-dlp overrides as a JSON object">
                   </div>
                 </div>
+                }
                 <div class="col-12">
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
