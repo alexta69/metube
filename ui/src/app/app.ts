@@ -1,7 +1,7 @@
 import { AsyncPipe, DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, Subscription, map, distinctUntilChanged, finalize, auditTime } from 'rxjs';
+import { Observable, Subscription, map, distinctUntilChanged, finalize } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
@@ -120,8 +120,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   webhookTestResponsePretty = '';
   webhookTestResponseRaw = '';
   settingsModalOpen = false;
-  focusedRefreshMs = 3000;
-  backgroundRefreshMs = 30000;
+  /** 0 = stock mainline: refresh on every progress event. */
+  focusedRefreshMs = 0;
+  backgroundRefreshMs = 0;
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
@@ -278,11 +279,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     const focusedCookie = parseInt(this.cookieService.get(this.focusedRefreshCookie) || '', 10);
     if (!Number.isNaN(focusedCookie)) {
-      this.focusedRefreshMs = this.clampRefreshMs(focusedCookie, 500, 10000);
+      this.focusedRefreshMs = this.clampRefreshMs(focusedCookie, 0, 10000);
     }
     const backgroundCookie = parseInt(this.cookieService.get(this.backgroundRefreshCookie) || '', 10);
     if (!Number.isNaN(backgroundCookie)) {
-      this.backgroundRefreshMs = this.clampRefreshMs(backgroundCookie, 2000, 120000);
+      this.backgroundRefreshMs = this.clampRefreshMs(backgroundCookie, 0, 120000);
     }
     this.downloads.setRefreshCadence(this.focusedRefreshMs, this.backgroundRefreshMs);
     this.activeTheme = this.getPreferredTheme(this.cookieService);
@@ -297,13 +298,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.rebuildSortedDone();
       this.cdr.markForCheck();
     });
-    // Subscribe to real-time updates (throttled to reduce CPU on large queues).
-    this.downloads.updated
-    .pipe(
-      auditTime(200),
-      takeUntilDestroyed(this.destroyRef)
-    )
-    .subscribe(() => {
+    this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
       this.cdr.markForCheck();
     });
@@ -471,8 +466,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   saveRefreshSettings(): void {
-    this.focusedRefreshMs = this.clampRefreshMs(this.focusedRefreshMs, 500, 10000);
-    this.backgroundRefreshMs = this.clampRefreshMs(this.backgroundRefreshMs, 2000, 120000);
+    this.focusedRefreshMs = this.clampRefreshMs(this.focusedRefreshMs, 0, 10000);
+    this.backgroundRefreshMs = this.clampRefreshMs(this.backgroundRefreshMs, 0, 120000);
     this.downloads.setRefreshCadence(this.focusedRefreshMs, this.backgroundRefreshMs);
     this.cookieService.set(this.focusedRefreshCookie, String(this.focusedRefreshMs), { expires: this.settingsCookieExpiryDays });
     this.cookieService.set(this.backgroundRefreshCookie, String(this.backgroundRefreshMs), { expires: this.settingsCookieExpiryDays });

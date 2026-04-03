@@ -52,8 +52,10 @@ export class DownloadsService {
   configurationChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
   private updateRefreshScheduled = false;
-  private foregroundRefreshMs = 3000;
-  private backgroundRefreshMs = 30000;
+  /** 0 = emit on every socket progress event (stock mainline behavior). */
+  private foregroundRefreshMs = 0;
+  /** 0 = emit on every socket progress event when the tab is in the background. */
+  private backgroundRefreshMs = 0;
 
   configuration: Record<string, unknown> = {};
   customDirs: Record<string, string[]> = {};
@@ -136,25 +138,24 @@ export class DownloadsService {
   }
 
   private scheduleUpdatedRefresh() {
-    // Coalesce high-frequency download progress events into a capped refresh rate.
-    // requestAnimationFrame (~60fps) is smooth but expensive remotely and on large queues.
-    // We trade a little smoothness for much lower CPU:
-    // - foreground: 1 per 3 seconds
-    // - background: 1 per 30 seconds
+    const delay = document.hidden
+      ? this.backgroundRefreshMs
+      : this.foregroundRefreshMs;
+    // Match stock mainline when interval is 0: notify on every socket `updated` event.
+    if (delay <= 0) {
+      this.updated.next();
+      return;
+    }
+    // Optional coalesce: merge bursty progress events into at most one UI refresh per interval.
     if (this.updateRefreshScheduled) {
       return;
     }
     this.updateRefreshScheduled = true;
-
     const flush = () => {
       this.updateRefreshScheduled = false;
       this.updated.next();
     };
-
-    const delay = document.hidden
-      ? this.backgroundRefreshMs
-      : this.foregroundRefreshMs;
-    setTimeout(() => flush(), delay);
+    setTimeout(flush, delay);
   }
 
   setRefreshCadence(focusedMs: number, backgroundMs: number) {

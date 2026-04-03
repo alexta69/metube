@@ -645,18 +645,22 @@
           <button type="button" class="btn-close" aria-label="Close" (click)="closeSettingsModal()"></button>
         </div>
         <div class="modal-body">
+          <p class="small text-muted mb-3">
+            <strong>0 ms</strong> matches stock MeTube: the queue repaints on every download progress event.
+            Set higher values to coalesce updates and reduce CPU (helpful for large queues or slow devices).
+          </p>
           <div class="row g-3">
             <div class="col-12">
               <div class="input-group">
                 <span class="input-group-text">Focused Refresh (ms)</span>
-                <input type="number" min="500" max="10000" class="form-control" [(ngModel)]="focusedRefreshMs"
+                <input type="number" min="0" max="10000" class="form-control" [(ngModel)]="focusedRefreshMs"
                   [ngModelOptions]="{standalone: true}">
               </div>
             </div>
             <div class="col-12">
               <div class="input-group">
                 <span class="input-group-text">Background Refresh (ms)</span>
-                <input type="number" min="2000" max="120000" class="form-control" [(ngModel)]="backgroundRefreshMs"
+                <input type="number" min="0" max="120000" class="form-control" [(ngModel)]="backgroundRefreshMs"
                   [ngModelOptions]="{standalone: true}">
               </div>
             </div>
