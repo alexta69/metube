@@ -39,7 +39,7 @@ function basePayload(): AddDownloadPayload {
     chapterTemplate: '',
     subtitleLanguage: 'en',
     subtitleMode: 'prefer_manual',
-    ytdlOptionsPreset: '',
+    ytdlOptionsPresets: [],
     ytdlOptionsOverrides: '',
   };
 }
@@ -81,7 +81,7 @@ describe('DownloadsService', () => {
         chapter_template: '',
         subtitle_language: 'en',
         subtitle_mode: 'prefer_manual',
-        ytdl_options_preset: '',
+        ytdl_options_presets: [],
         ytdl_options_overrides: '',
       }),
     );

@@ -83,7 +83,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   chapterTemplate: string;
   subtitleLanguage: string;
   subtitleMode: string;
-  ytdlOptionsPreset: string;
+  ytdlOptionsPresets: string[] = [];
   ytdlOptionsOverrides: string;
   ytdlOptionPresetNames: string[] = [];
   addInProgress = false;
@@ -234,7 +234,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
     this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
-    this.ytdlOptionsPreset = this.cookieService.get('metube_ytdl_options_preset') || '';
+    this.ytdlOptionsPresets = this.loadYtdlOptionsPresetsFromCookie();
     this.ytdlOptionsOverrides = this.cookieService.get('metube_ytdl_options_overrides') || '';
     const allowedDownloadTypes = new Set(this.downloadTypes.map(t => t.id));
     const allowedVideoCodecs = new Set(this.videoCodecs.map(c => c.id));
@@ -431,13 +431,33 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         this.ytdlOptionPresetNames = Array.isArray(data?.presets)
           ? data.presets.filter((preset): preset is string => typeof preset === 'string')
           : [];
-        if (this.ytdlOptionsPreset && !this.ytdlOptionPresetNames.includes(this.ytdlOptionsPreset)) {
-          this.ytdlOptionsPreset = '';
-          this.ytdlOptionsPresetChanged();
+        if (this.ytdlOptionsPresets?.length) {
+          const valid = new Set(this.ytdlOptionPresetNames);
+          const filtered = this.ytdlOptionsPresets.filter((p) => valid.has(p));
+          if (filtered.length !== this.ytdlOptionsPresets.length) {
+            this.ytdlOptionsPresets = filtered;
+            this.ytdlOptionsPresetsChanged();
+          }
         }
         this.cdr.markForCheck();
       },
     });
+  }
+
+  private loadYtdlOptionsPresetsFromCookie(): string[] {
+    const jsonCookie = this.cookieService.get('metube_ytdl_options_presets');
+    if (jsonCookie) {
+      try {
+        const parsed = JSON.parse(jsonCookie) as unknown;
+        if (Array.isArray(parsed)) {
+          return parsed.filter((p): p is string => typeof p === 'string' && p.length > 0);
+        }
+      } catch {
+        // fall through to legacy cookie
+      }
+    }
+    const legacy = this.cookieService.get('metube_ytdl_options_preset')?.trim();
+    return legacy ? [legacy] : [];
   }
 
   private validateYtdlOptionsOverrides(value: string): boolean {
@@ -744,8 +764,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.saveSelection(this.downloadType);
   }
 
-  ytdlOptionsPresetChanged() {
-    this.cookieService.set('metube_ytdl_options_preset', this.ytdlOptionsPreset, { expires: this.settingsCookieExpiryDays });
+  ytdlOptionsPresetsChanged() {
+    this.cookieService.set(
+      'metube_ytdl_options_presets',
+      JSON.stringify(this.ytdlOptionsPresets ?? []),
+      { expires: this.settingsCookieExpiryDays },
+    );
   }
 
   ytdlOptionsOverridesChanged() {
@@ -952,7 +976,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       chapterTemplate: overrides.chapterTemplate ?? this.chapterTemplate,
       subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
       subtitleMode: overrides.subtitleMode ?? this.subtitleMode,
-      ytdlOptionsPreset: overrides.ytdlOptionsPreset ?? this.ytdlOptionsPreset,
+      ytdlOptionsPresets: overrides.ytdlOptionsPresets ?? [...this.ytdlOptionsPresets],
       ytdlOptionsOverrides: allowYtdlOptionsOverrides
         ? (overrides.ytdlOptionsOverrides ?? this.ytdlOptionsOverrides)
         : '',
@@ -1025,7 +1049,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       chapterTemplate: download.chapter_template,
       subtitleLanguage: download.subtitle_language,
       subtitleMode: download.subtitle_mode,
-      ytdlOptionsPreset: download.ytdl_options_preset || '',
+      ytdlOptionsPresets: download.ytdl_options_presets?.length
+        ? [...download.ytdl_options_presets]
+        : [],
       ytdlOptionsOverrides: download.ytdl_options_overrides ? JSON.stringify(download.ytdl_options_overrides) : '',
     });
     this.downloads.delById('done', [key]).subscribe();

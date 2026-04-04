@@ -253,6 +253,23 @@ def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
     return value
 
 
+def _parse_ytdl_options_presets(post: dict) -> list[str]:
+    """Normalize preset names from add/subscribe body; supports list or legacy singular string."""
+    raw = post.get('ytdl_options_presets')
+    if raw is None:
+        raw = post.get('ytdl_options_preset')
+    if raw is None:
+        return []
+    if isinstance(raw, list):
+        return [str(x).strip() for x in raw if str(x).strip()]
+    if isinstance(raw, str):
+        s = raw.strip()
+        return [s] if s else []
+    raise web.HTTPBadRequest(
+        reason='ytdl_options_presets must be a JSON array of strings (or legacy ytdl_options_preset string)',
+    )
+
+
 def _migrate_legacy_request(post: dict) -> dict:
     """
     BACKWARD COMPATIBILITY: Translate old API request schema into the new one.
@@ -441,7 +458,6 @@ def parse_download_options(post: dict) -> dict:
     chapter_template = post.get('chapter_template')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
-    ytdl_options_preset = post.get('ytdl_options_preset')
     ytdl_options_overrides = post.get('ytdl_options_overrides')
 
     if custom_name_prefix is None:
@@ -460,15 +476,13 @@ def parse_download_options(post: dict) -> dict:
         subtitle_language = 'en'
     if subtitle_mode is None:
         subtitle_mode = 'prefer_manual'
-    if ytdl_options_preset is None:
-        ytdl_options_preset = ''
     download_type = str(download_type).strip().lower()
     codec = str(codec or 'auto').strip().lower()
     format = str(format or '').strip().lower()
     quality = str(quality).strip().lower()
     subtitle_language = str(subtitle_language).strip()
     subtitle_mode = str(subtitle_mode).strip()
-    ytdl_options_preset = str(ytdl_options_preset).strip()
+    ytdl_options_presets = _parse_ytdl_options_presets(post)
     ytdl_options_overrides = _parse_ytdl_options_overrides(
         ytdl_options_overrides,
         enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
@@ -480,8 +494,9 @@ def parse_download_options(post: dict) -> dict:
         raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
     if subtitle_mode not in VALID_SUBTITLE_MODES:
         raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
-    if ytdl_options_preset and ytdl_options_preset not in config.YTDL_OPTIONS_PRESETS:
-        raise web.HTTPBadRequest(reason='ytdl_options_preset must match a configured preset')
+    for preset_name in ytdl_options_presets:
+        if preset_name not in config.YTDL_OPTIONS_PRESETS:
+            raise web.HTTPBadRequest(reason='ytdl_options_presets must only contain configured preset names')
 
     if download_type not in VALID_DOWNLOAD_TYPES:
         raise web.HTTPBadRequest(reason=f'download_type must be one of {sorted(VALID_DOWNLOAD_TYPES)}')
@@ -534,7 +549,7 @@ def parse_download_options(post: dict) -> dict:
         'chapter_template': chapter_template,
         'subtitle_language': subtitle_language,
         'subtitle_mode': subtitle_mode,
-        'ytdl_options_preset': ytdl_options_preset,
+        'ytdl_options_presets': ytdl_options_presets,
         'ytdl_options_overrides': ytdl_options_overrides,
     }
 
@@ -570,7 +585,7 @@ async def add(request):
         o['chapter_template'],
         o['subtitle_language'],
         o['subtitle_mode'],
-        o['ytdl_options_preset'],
+        o['ytdl_options_presets'],
         o['ytdl_options_overrides'],
     )
     return web.Response(text=serializer.encode(status))
@@ -621,7 +636,7 @@ async def subscribe(request):
         chapter_template=o['chapter_template'],
         subtitle_language=o['subtitle_language'],
         subtitle_mode=o['subtitle_mode'],
-        ytdl_options_preset=o['ytdl_options_preset'],
+        ytdl_options_presets=o['ytdl_options_presets'],
         ytdl_options_overrides=o['ytdl_options_overrides'],
     )
     return web.Response(text=serializer.encode(result))

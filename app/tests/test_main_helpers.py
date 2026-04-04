@@ -140,8 +140,43 @@ class ParseDownloadOptionsTests(unittest.TestCase):
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
             main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = previous_allow
-        self.assertEqual(parsed["ytdl_options_preset"], "With subtitles")
+        self.assertEqual(parsed["ytdl_options_presets"], ["With subtitles"])
         self.assertEqual(parsed["ytdl_options_overrides"], {"writesubtitles": True})
+
+    def test_accepts_multiple_presets_in_order(self):
+        previous = dict(main.config.YTDL_OPTIONS_PRESETS)
+        main.config.YTDL_OPTIONS_PRESETS = {
+            "A": {"writesubtitles": True},
+            "B": {"writesubtitles": False},
+        }
+        try:
+            parsed = main.parse_download_options({
+                "url": "https://example.com/v",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "ytdl_options_presets": ["A", "B"],
+            })
+        finally:
+            main.config.YTDL_OPTIONS_PRESETS = previous
+        self.assertEqual(parsed["ytdl_options_presets"], ["A", "B"])
+
+    def test_legacy_singular_preset_string_normalized_to_list(self):
+        previous = dict(main.config.YTDL_OPTIONS_PRESETS)
+        main.config.YTDL_OPTIONS_PRESETS = {"Solo": {}}
+        try:
+            parsed = main.parse_download_options({
+                "url": "https://example.com/v",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "ytdl_options_preset": "Solo",
+            })
+        finally:
+            main.config.YTDL_OPTIONS_PRESETS = previous
+        self.assertEqual(parsed["ytdl_options_presets"], ["Solo"])
 
     def test_rejects_unknown_preset(self):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -151,8 +186,24 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                 "codec": "auto",
                 "format": "any",
                 "quality": "best",
-                "ytdl_options_preset": "Missing preset",
+                "ytdl_options_presets": ["Missing preset"],
             })
+
+    def test_rejects_unknown_preset_in_list(self):
+        previous = dict(main.config.YTDL_OPTIONS_PRESETS)
+        main.config.YTDL_OPTIONS_PRESETS = {"Known": {}}
+        try:
+            with self.assertRaises(main.web.HTTPBadRequest):
+                main.parse_download_options({
+                    "url": "https://example.com/v",
+                    "download_type": "video",
+                    "codec": "auto",
+                    "format": "any",
+                    "quality": "best",
+                    "ytdl_options_presets": ["Known", "Nope"],
+                })
+        finally:
+            main.config.YTDL_OPTIONS_PRESETS = previous
 
 
 if __name__ == "__main__":

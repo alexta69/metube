@@ -182,7 +182,10 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 async def test_add_merges_global_preset_and_override_options(dq_env):
     notifier = AsyncMock()
     dq_env.YTDL_OPTIONS = {"writesubtitles": False, "cookiefile": "/tmp/global.txt"}
-    dq_env.YTDL_OPTIONS_PRESETS = {"Preset A": {"writesubtitles": True, "proxy": "http://preset"}}
+    dq_env.YTDL_OPTIONS_PRESETS = {
+        "Preset A": {"writesubtitles": True, "proxy": "http://preset-a"},
+        "Preset B": {"writesubtitles": False, "ratelimit": 1000},
+    }
 
     def fake_extract(self, url):
         return {
@@ -205,13 +208,14 @@ async def test_add_merges_global_preset_and_override_options(dq_env):
             "",
             0,
             auto_start=False,
-            ytdl_options_preset="Preset A",
+            ytdl_options_presets=["Preset A", "Preset B"],
             ytdl_options_overrides={"proxy": "http://override", "embed_thumbnail": True},
         )
 
     assert result["status"] == "ok"
     queued = dq.pending.get("https://example.com/preset")
     assert queued.ytdl_opts["cookiefile"] == "/tmp/global.txt"
-    assert queued.ytdl_opts["writesubtitles"] is True
+    assert queued.ytdl_opts["writesubtitles"] is False
+    assert queued.ytdl_opts["ratelimit"] == 1000
     assert queued.ytdl_opts["proxy"] == "http://override"
     assert queued.ytdl_opts["embed_thumbnail"] is True

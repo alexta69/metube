@@ -188,7 +188,7 @@ class DownloadInfo:
         chapter_template,
         subtitle_language="en",
         subtitle_mode="prefer_manual",
-        ytdl_options_preset="",
+        ytdl_options_presets=None,
         ytdl_options_overrides=None,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
@@ -212,7 +212,7 @@ class DownloadInfo:
         self.chapter_template = chapter_template
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
-        self.ytdl_options_preset = ytdl_options_preset
+        self.ytdl_options_presets = list(ytdl_options_presets or [])
         self.ytdl_options_overrides = dict(ytdl_options_overrides or {})
         self.subtitle_files = []
 
@@ -266,8 +266,14 @@ class DownloadInfo:
             self.subtitle_language = "en"
         if not hasattr(self, "subtitle_mode"):
             self.subtitle_mode = "prefer_manual"
-        if not hasattr(self, "ytdl_options_preset"):
-            self.ytdl_options_preset = ""
+        legacy_preset = self.__dict__.pop("ytdl_options_preset", None)
+        if "ytdl_options_presets" not in self.__dict__:
+            if isinstance(legacy_preset, str) and legacy_preset.strip():
+                self.ytdl_options_presets = [legacy_preset.strip()]
+            elif isinstance(legacy_preset, list):
+                self.ytdl_options_presets = [str(x).strip() for x in legacy_preset if str(x).strip()]
+            else:
+                self.ytdl_options_presets = []
         if not hasattr(self, "ytdl_options_overrides"):
             self.ytdl_options_overrides = {}
         if not hasattr(self, "entry"):
@@ -293,7 +299,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "chapter_template",
     "subtitle_language",
     "subtitle_mode",
-    "ytdl_options_preset",
+    "ytdl_options_presets",
     "ytdl_options_overrides",
     "status",
     "timestamp",
@@ -838,8 +844,7 @@ class DownloadQueue:
             sanitized = {k: _sanitize_path_component(v) for k, v in entry.items()}
             output = _resolve_outtmpl_fields(output, sanitized, ('channel',))
         ytdl_options = dict(self.config.YTDL_OPTIONS)
-        preset_name = getattr(dl, 'ytdl_options_preset', '')
-        if preset_name:
+        for preset_name in getattr(dl, 'ytdl_options_presets', None) or []:
             ytdl_options.update(self.config.YTDL_OPTIONS_PRESETS.get(preset_name, {}))
         ytdl_options.update(getattr(dl, 'ytdl_options_overrides', {}) or {})
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
@@ -869,7 +874,7 @@ class DownloadQueue:
         chapter_template,
         subtitle_language,
         subtitle_mode,
-        ytdl_options_preset,
+        ytdl_options_presets,
         ytdl_options_overrides,
         already,
         _add_gen=None,
@@ -903,7 +908,7 @@ class DownloadQueue:
                 chapter_template,
                 subtitle_language,
                 subtitle_mode,
-                ytdl_options_preset,
+                ytdl_options_presets,
                 ytdl_options_overrides,
                 already,
                 _add_gen,
@@ -952,7 +957,7 @@ class DownloadQueue:
                         chapter_template,
                         subtitle_language,
                         subtitle_mode,
-                        ytdl_options_preset,
+                        ytdl_options_presets,
                         ytdl_options_overrides,
                         already,
                         _add_gen,
@@ -985,7 +990,7 @@ class DownloadQueue:
                     chapter_template=chapter_template,
                     subtitle_language=subtitle_language,
                     subtitle_mode=subtitle_mode,
-                    ytdl_options_preset=ytdl_options_preset,
+                    ytdl_options_presets=ytdl_options_presets,
                     ytdl_options_overrides=ytdl_options_overrides,
                 )
                 await self.__add_download(dl, auto_start)
@@ -1007,15 +1012,17 @@ class DownloadQueue:
         chapter_template=None,
         subtitle_language="en",
         subtitle_mode="prefer_manual",
-        ytdl_options_preset="",
+        ytdl_options_presets=None,
         ytdl_options_overrides=None,
         already=None,
         _add_gen=None,
     ):
+        if ytdl_options_presets is None:
+            ytdl_options_presets = []
         log.info(
             f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_preset=}'
+            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -1044,7 +1051,7 @@ class DownloadQueue:
             chapter_template,
             subtitle_language,
             subtitle_mode,
-            ytdl_options_preset,
+            ytdl_options_presets,
             ytdl_options_overrides,
             already,
             _add_gen,
@@ -1065,9 +1072,11 @@ class DownloadQueue:
         chapter_template=None,
         subtitle_language="en",
         subtitle_mode="prefer_manual",
-        ytdl_options_preset="",
+        ytdl_options_presets=None,
         ytdl_options_overrides=None,
     ):
+        if ytdl_options_presets is None:
+            ytdl_options_presets = []
         normalized_entry = copy.deepcopy(entry) if isinstance(entry, dict) else entry
         already = set()
         return await self.__add_entry(
@@ -1084,7 +1093,7 @@ class DownloadQueue:
             chapter_template,
             subtitle_language,
             subtitle_mode,
-            ytdl_options_preset,
+            ytdl_options_presets,
             ytdl_options_overrides,
             already,
             None,

@@ -145,7 +145,7 @@ class SubscriptionInfo:
     chapter_template: str = ""
     subtitle_language: str = "en"
     subtitle_mode: str = "prefer_manual"
-    ytdl_options_preset: str = ""
+    ytdl_options_presets: list[str] = field(default_factory=list)
     ytdl_options_overrides: dict[str, Any] = field(default_factory=dict)
     last_checked: Optional[float] = None
     seen_ids: list[str] = field(default_factory=list)
@@ -192,12 +192,30 @@ def _subscription_to_record(sub: SubscriptionInfo) -> dict[str, Any]:
         "chapter_template": sub.chapter_template,
         "subtitle_language": sub.subtitle_language,
         "subtitle_mode": sub.subtitle_mode,
-        "ytdl_options_preset": sub.ytdl_options_preset,
+        "ytdl_options_presets": list(sub.ytdl_options_presets),
         "ytdl_options_overrides": sub.ytdl_options_overrides,
         "last_checked": sub.last_checked,
         "seen_ids": list(sub.seen_ids),
         "error": sub.error,
     }
+
+
+def _normalize_subscription_record(rec: dict[str, Any]) -> dict[str, Any]:
+    """Migrate legacy ytdl_options_preset (str) to ytdl_options_presets (list)."""
+    out = dict(rec)
+    if "ytdl_options_presets" not in out:
+        old = out.pop("ytdl_options_preset", None)
+        if old is None:
+            out["ytdl_options_presets"] = []
+        elif isinstance(old, list):
+            out["ytdl_options_presets"] = [str(x).strip() for x in old if str(x).strip()]
+        elif isinstance(old, str):
+            out["ytdl_options_presets"] = [old.strip()] if old.strip() else []
+        else:
+            out["ytdl_options_presets"] = []
+    else:
+        out.pop("ytdl_options_preset", None)
+    return out
 
 
 def _subscription_from_record(record: Any) -> Optional[SubscriptionInfo]:
@@ -206,7 +224,8 @@ def _subscription_from_record(record: Any) -> Optional[SubscriptionInfo]:
         return record
     if isinstance(record, dict):
         try:
-            return SubscriptionInfo(**{k: v for k, v in record.items() if k in field_names})
+            normalized = _normalize_subscription_record(dict(record))
+            return SubscriptionInfo(**{k: v for k, v in normalized.items() if k in field_names})
         except TypeError:
             return None
     return None
@@ -315,11 +334,12 @@ class SubscriptionManager:
         chapter_template: str,
         subtitle_language: str,
         subtitle_mode: str,
-        ytdl_options_preset: str = "",
+        ytdl_options_presets: Optional[list[str]] = None,
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
     ) -> tuple[list[str], list[str]]:
         queued_ids: list[str] = []
         queue_errors: list[str] = []
+        presets = list(ytdl_options_presets or [])
         for ent in entries:
             eid = _entry_id(ent)
             vurl = _entry_video_url(ent)
@@ -342,7 +362,7 @@ class SubscriptionManager:
                 chapter_template or None,
                 subtitle_language,
                 subtitle_mode,
-                ytdl_options_preset,
+                presets,
                 ytdl_options_overrides,
             )
             if isinstance(result, dict) and result.get("status") == "error":
@@ -411,7 +431,7 @@ class SubscriptionManager:
         chapter_template: str,
         subtitle_language: str,
         subtitle_mode: str,
-        ytdl_options_preset: str = "",
+        ytdl_options_presets: Optional[list[str]] = None,
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
     ) -> dict:
         url = self._normalize_url(url)
@@ -470,7 +490,7 @@ class SubscriptionManager:
                 chapter_template=chapter_template or "",
                 subtitle_language=subtitle_language,
                 subtitle_mode=subtitle_mode,
-                ytdl_options_preset=ytdl_options_preset,
+                ytdl_options_presets=list(ytdl_options_presets or []),
                 ytdl_options_overrides=dict(ytdl_options_overrides or {}),
                 last_checked=time.time(),
                 seen_ids=list(dict.fromkeys(all_ids)),
@@ -620,7 +640,7 @@ class SubscriptionManager:
             dl_chapter = cur.chapter_template
             dl_sublang = cur.subtitle_language
             dl_submode = cur.subtitle_mode
-            dl_ytdl_preset = cur.ytdl_options_preset
+            dl_ytdl_presets = list(cur.ytdl_options_presets)
             dl_ytdl_overrides = dict(cur.ytdl_options_overrides)
 
         new_entries: list[dict] = []
@@ -646,7 +666,7 @@ class SubscriptionManager:
             chapter_template=dl_chapter or "",
             subtitle_language=dl_sublang,
             subtitle_mode=dl_submode,
-            ytdl_options_preset=dl_ytdl_preset,
+            ytdl_options_presets=dl_ytdl_presets,
             ytdl_options_overrides=dl_ytdl_overrides,
         )
         log.info(

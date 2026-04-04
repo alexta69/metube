@@ -482,18 +482,18 @@
               <div class="row g-3">
                 <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
                   <div class="input-group">
-                    <span class="input-group-text">Option Preset</span>
-                    <select class="form-select"
-                      name="ytdlOptionsPreset"
-                      [(ngModel)]="ytdlOptionsPreset"
-                      (change)="ytdlOptionsPresetChanged()"
+                    <span class="input-group-text">Option Presets</span>
+                    <ng-select
+                      class="flex-grow-1"
+                      name="ytdlOptionsPresets"
+                      [items]="ytdlOptionPresetNames"
+                      [multiple]="true"
+                      [closeOnSelect]="false"
+                      placeholder="Default"
+                      [(ngModel)]="ytdlOptionsPresets"
+                      (ngModelChange)="ytdlOptionsPresetsChanged()"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Choose a named yt-dlp option preset configured on the server">
-                      <option value="">Default</option>
-                      @for (preset of ytdlOptionPresetNames; track preset) {
-                      <option [value]="preset">{{ preset }}</option>
-                      }
-                    </select>
+                      ngbTooltip="Choose one or more yt-dlp option presets configured on the server (applied in order)" />
                   </div>
                 </div>
                 @if (allowYtdlOptionsOverrides()) {

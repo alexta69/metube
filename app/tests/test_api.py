@@ -37,7 +37,7 @@ def _valid_video_add_body(**kwargs):
         "codec": "auto",
         "format": "any",
         "quality": "best",
-        "ytdl_options_preset": "",
+        "ytdl_options_presets": [],
         "ytdl_options_overrides": "",
     }
     base.update(kwargs)
@@ -67,7 +67,7 @@ async def test_add_passes_preset_and_overrides(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.config, "ALLOW_YTDL_OPTIONS_OVERRIDES", True)
     req = _json_request(
         _valid_video_add_body(
-            ytdl_options_preset="Preset A",
+            ytdl_options_presets=["Preset A"],
             ytdl_options_overrides='{"writesubtitles": true}',
         )
     )
@@ -75,8 +75,21 @@ async def test_add_passes_preset_and_overrides(mock_dqueue, monkeypatch):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.args[13] == "Preset A"
+    assert call.args[13] == ["Preset A"]
     assert call.args[14] == {"writesubtitles": True}
+
+
+@pytest.mark.asyncio
+async def test_add_legacy_string_preset_normalized(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.config, "YTDL_OPTIONS_PRESETS", {"Legacy": {}})
+    body = _valid_video_add_body()
+    del body["ytdl_options_presets"]
+    body["ytdl_options_preset"] = "Legacy"
+    req = _json_request(body)
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call.args[13] == ["Legacy"]
 
 
 @pytest.mark.asyncio
@@ -171,7 +184,7 @@ async def test_add_allows_any_ytdl_options_override_key_when_enabled(mock_dqueue
 
 @pytest.mark.asyncio
 async def test_add_unknown_ytdl_preset(mock_dqueue):
-    req = _json_request(_valid_video_add_body(ytdl_options_preset="Missing"))
+    req = _json_request(_valid_video_add_body(ytdl_options_presets=["Missing"]))
     with pytest.raises(web.HTTPBadRequest):
         await main.add(req)
 

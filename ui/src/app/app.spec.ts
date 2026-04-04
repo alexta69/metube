@@ -140,10 +140,10 @@ describe('App', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('input[name="ytdlOptionsOverrides"]')).toBeNull();
 
-    const presetWrapper = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.col-12');
+    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.col-12');
     expect(presetWrapper?.classList.contains('col-md-6')).toBe(false);
 
-    const presetRow = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.row');
+    const presetRow = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.row');
     expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
   });
 
@@ -157,10 +157,10 @@ describe('App', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('input[name="ytdlOptionsOverrides"]')).not.toBeNull();
 
-    const presetWrapper = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.col-12');
+    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.col-12');
     expect(presetWrapper?.classList.contains('col-md-6')).toBe(true);
 
-    const presetRow = root.querySelector('select[name="ytdlOptionsPreset"]')?.closest('.row');
+    const presetRow = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.row');
     expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
     expect(presetRow?.querySelector('input[name="ytdlOptionsOverrides"]')).not.toBeNull();
   });
