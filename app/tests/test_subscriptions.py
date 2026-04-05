@@ -386,6 +386,73 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sub.seen_ids[:2], ["v2", "v1"])
             self.assertEqual([entry["webpage_url"] for entry, _, _ in queue.entries], ["https://example.com/v2"])
 
+    async def test_update_subscription_parses_string_false_enabled(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                return_value=(
+                    {"_type": "channel", "title": "Channel"},
+                    [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                ),
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+
+            sub_id = result["subscription"]["id"]
+            update = await mgr.update_subscription(sub_id, {"enabled": "false"})
+            self.assertEqual(update["status"], "ok")
+            self.assertFalse(mgr.list_all()[0].enabled)
+
+    async def test_update_subscription_rejects_invalid_enabled_value(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                return_value=(
+                    {"_type": "channel", "title": "Channel"},
+                    [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                ),
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+
+            sub_id = result["subscription"]["id"]
+            with self.assertRaises(ValueError):
+                await mgr.update_subscription(sub_id, {"enabled": "maybe"})
+
 class ExtractFlatPlaylistTests(unittest.TestCase):
     def test_descends_one_level_when_root_entries_are_nested_collections(self):
         responses = iter(
