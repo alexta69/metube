@@ -231,6 +231,19 @@ def _subscription_from_record(record: Any) -> Optional[SubscriptionInfo]:
     return None
 
 
+def _coerce_bool(value: Any) -> bool:
+    """Accept JSON booleans and common string forms used by API clients."""
+    if isinstance(value, bool):
+        return value
+    if isinstance(value, str):
+        lowered = value.strip().lower()
+        if lowered in {"true", "1", "on"}:
+            return True
+        if lowered in {"false", "0", "off"}:
+            return False
+    raise ValueError("enabled must be a boolean")
+
+
 class SubscriptionNotifier:
     """Hook for Socket.IO / UI updates."""
 
@@ -546,7 +559,7 @@ class SubscriptionManager:
             old_enabled = sub.enabled
 
             if "enabled" in changes:
-                sub.enabled = bool(changes["enabled"])
+                sub.enabled = _coerce_bool(changes["enabled"])
             if "check_interval_minutes" in changes:
                 sub.check_interval_minutes = max(1, int(changes["check_interval_minutes"]))
             if "name" in changes and changes["name"]:
