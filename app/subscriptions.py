@@ -359,6 +359,8 @@ class SubscriptionManager:
             if not eid or not vurl:
                 continue
             queue_entry = dict(ent)
+            if "id" not in queue_entry:
+                queue_entry["id"] = eid
             queue_entry["_type"] = "video"
             queue_entry["webpage_url"] = vurl
             result = await self.dqueue.add_entry(

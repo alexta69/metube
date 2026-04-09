@@ -19,6 +19,7 @@ from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 from dl_formats import get_format, get_opts, AUDIO_FORMATS
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
+from subscriptions import _entry_id
 
 log = logging.getLogger('ytdl')
 
@@ -930,6 +931,8 @@ class DownloadQueue:
                 if _add_gen is not None and self._add_generation != _add_gen:
                     log.info(f'Playlist add canceled after processing {len(already)} entries')
                     return {'status': 'ok', 'msg': f'Canceled - added {len(already)} items before cancel'}
+                if "id" not in etr:
+                    etr["id"] = _entry_id(etr)
                 etr["_type"] = "video"
                 etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
