@@ -226,7 +226,7 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 
 ## 🔌 Browser extensions
 
-Browser extensions allow right-clicking videos and sending them directly to MeTube. Please note that if you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for the extensions to work.
+Browser extensions allow right-clicking videos and sending them directly to MeTube. If you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for extensions to work.
 
 __Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it from [Google Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or use developer mode and install [from sources](https://github.com/Rpsl/metube-browser-extension).
 
@@ -254,23 +254,15 @@ javascript:!function(){xhr=new XMLHttpRequest();xhr.open("POST","https://metube.
 javascript:(function(){xhr=new XMLHttpRequest();xhr.open("POST","https://metube.domain.com/add");xhr.send(JSON.stringify({"url":document.location.href,"quality":"best"}));xhr.onload=function(){if(xhr.status==200){alert("Sent to metube!")}else{alert("Send to metube failed. Check the javascript console for clues.")}}})();
 ```
 
-The above bookmarklets use `alert()` as a success/failure notification. The following will show a toast message instead:
-
-Chrome:
+The above bookmarklets use `alert()` for notifications. This variant shows a toast instead (Chrome — for Firefox, replace the `!function(){...}()` wrapper with `(function(){...})()`):
 
 ```javascript
 javascript:!function(){function notify(msg) {var sc = document.scrollingElement.scrollTop; var text = document.createElement('span');text.innerHTML=msg;var ts = text.style;ts.all = 'revert';ts.color = '#000';ts.fontFamily = 'Verdana, sans-serif';ts.fontSize = '15px';ts.backgroundColor = 'white';ts.padding = '15px';ts.border = '1px solid gainsboro';ts.boxShadow = '3px 3px 10px';ts.zIndex = '100';document.body.appendChild(text);ts.position = 'absolute'; ts.top = 50 + sc + 'px'; ts.left = (window.innerWidth / 2)-(text.offsetWidth / 2) + 'px'; setTimeout(function () { text.style.visibility = "hidden"; }, 1500);}xhr=new XMLHttpRequest();xhr.open("POST","https://metube.domain.com/add");xhr.send(JSON.stringify({"url":document.location.href,"quality":"best"}));xhr.onload=function() { if(xhr.status==200){notify("Sent to metube!")}else {notify("Send to metube failed. Check the javascript console for clues.")}}}();
 ```
 
-Firefox:
-
-```javascript
-javascript:(function(){function notify(msg) {var sc = document.scrollingElement.scrollTop; var text = document.createElement('span');text.innerHTML=msg;var ts = text.style;ts.all = 'revert';ts.color = '#000';ts.fontFamily = 'Verdana, sans-serif';ts.fontSize = '15px';ts.backgroundColor = 'white';ts.padding = '15px';ts.border = '1px solid gainsboro';ts.boxShadow = '3px 3px 10px';ts.zIndex = '100';document.body.appendChild(text);ts.position = 'absolute'; ts.top = 50 + sc + 'px'; ts.left = (window.innerWidth / 2)-(text.offsetWidth / 2) + 'px'; setTimeout(function () { text.style.visibility = "hidden"; }, 1500);}xhr=new XMLHttpRequest();xhr.open("POST","https://metube.domain.com/add");xhr.send(JSON.stringify({"url":document.location.href,"quality":"best"}));xhr.onload=function() { if(xhr.status==200){notify("Sent to metube!")}else {notify("Send to metube failed. Check the javascript console for clues.")}}})();
-```
-
 ## ⚡ Raycast extension
 
-[dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) that allows adding videos to MeTube directly from Raycast.
+[dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) for adding videos to MeTube directly from Raycast.
 
 ## 🔒 HTTPS support, and running behind a reverse proxy
 
@@ -294,11 +286,9 @@ services:
       - KEYFILE=/ssl/key.pem
 ```
 
-It's also possible to run MeTube behind a reverse proxy, in order to support authentication. HTTPS support can also be added in this way.
+MeTube can also run behind a reverse proxy for HTTPS termination or authentication. When serving under a subdirectory, set `URL_PREFIX` accordingly.
 
-When running behind a reverse proxy which remaps the URL (i.e. serves MeTube under a subdirectory and not under root), don't forget to set the URL_PREFIX environment variable to the correct value.
-
-If you're using the [linuxserver/swag](https://docs.linuxserver.io/general/swag) image for your reverse proxying needs (which I can heartily recommend), it already includes ready snippets for proxying MeTube both in [subfolder](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subfolder.conf.sample) and [subdomain](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subdomain.conf.sample) modes under the `nginx/proxy-confs` directory in the configuration volume. It also includes Authelia which can be used for authentication.
+The [linuxserver/swag](https://docs.linuxserver.io/general/swag) image includes ready-made snippets for MeTube in [subfolder](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subfolder.conf.sample) and [subdomain](https://github.com/linuxserver/reverse-proxy-confs/blob/master/metube.subdomain.conf.sample) modes, plus Authelia for authentication.
 
 ### 🌐 NGINX
 
@@ -350,28 +340,20 @@ example.com {
 
 ## 🔄 Updating yt-dlp
 
-The engine which powers the actual video downloads in MeTube is [yt-dlp](https://github.com/yt-dlp/yt-dlp). Since video sites regularly change their layouts, frequent updates of yt-dlp are required to keep up.
-
-There's an automatic nightly build of MeTube which looks for a new version of yt-dlp, and if one exists, the build pulls it and publishes an updated docker image. Therefore, in order to keep up with the changes, it's recommended that you update your MeTube container regularly with the latest image.
-
-I recommend installing and setting up [watchtower](https://github.com/nicholas-fedor/watchtower) for this purpose.
+MeTube is powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which requires frequent updates as video sites change their layouts. A nightly build automatically publishes a new Docker image whenever a new yt-dlp version is available, so keep your container up to date — [watchtower](https://github.com/nicholas-fedor/watchtower) works well for this.
 
 ## 🔧 Troubleshooting and submitting issues
 
-Before asking a question or submitting an issue for MeTube, please remember that MeTube is only a UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Any issues you might be experiencing with authentication to video websites, postprocessing, permissions, other `YTDL_OPTIONS` configurations which seem not to work, or anything else that concerns the workings of the underlying yt-dlp library, need not be opened on the MeTube project. In order to debug and troubleshoot them, it's advised to try using the yt-dlp binary directly first, bypassing the UI, and once that is working, importing the options that worked for you into `YTDL_OPTIONS`.
-
-In order to test with the yt-dlp command directly, you can either download it and run it locally, or for a better simulation of its actual conditions, you can run it within the MeTube container itself. Assuming your MeTube container is called `metube`, run the following on your Docker host to get a shell inside the container:
+MeTube is only a UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Issues with authentication, postprocessing, permissions, or `YTDL_OPTIONS` should be debugged with yt-dlp directly first — once working, import those options into MeTube. To test inside the container:
 
 ```bash
 docker exec -ti metube sh
 cd /downloads
 ```
 
-Once there, you can use the yt-dlp command freely.
-
 ## 💡 Submitting feature requests
 
-MeTube development relies on code contributions by the community. The program as it currently stands fits my own use cases, and is therefore feature-complete as far as I'm concerned. If your use cases are different and require additional features, please feel free to submit PRs that implement those features. It's advisable to create an issue first to discuss the planned implementation, because in an effort to reduce bloat, some PRs may not be accepted. However, note that opening a feature request when you don't intend to implement the feature will rarely result in the request being fulfilled.
+MeTube development relies on community contributions. If you need additional features, please submit a PR. Create an issue first to discuss the implementation — some PRs may not be accepted to reduce bloat. Feature requests without an accompanying PR are unlikely to be fulfilled.
 
 ## 🛠️ Building and running locally
 
