@@ -234,6 +234,12 @@ VALID_VIDEO_CODECS = {'auto', 'h264', 'h265', 'av1', 'vp9'}
 VALID_VIDEO_FORMATS = {'any', 'mp4', 'ios'}
 VALID_AUDIO_FORMATS = {'m4a', 'mp3', 'opus', 'wav', 'flac'}
 VALID_THUMBNAIL_FORMATS = {'jpg'}
+_BLOCKED_YTDL_OVERRIDE_KEYS = frozenset({
+    'exec_cmd', 'exec', 'postprocessors', 'post_hooks',
+    'external_downloader', 'external_downloader_args',
+    'cookiefile', 'cookiesfrombrowser',
+})
+
 def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
     if value is None or value == '':
         return {}
@@ -249,6 +255,10 @@ def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
 
     if value and not enabled:
         raise web.HTTPBadRequest(reason='ytdl_options_overrides are disabled')
+
+    blocked = set(value.keys()) & _BLOCKED_YTDL_OVERRIDE_KEYS
+    if blocked:
+        raise web.HTTPBadRequest(reason=f'ytdl_options_overrides contains blocked keys: {sorted(blocked)}')
 
     return value
 
