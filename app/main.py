@@ -60,6 +60,7 @@ class Config:
         'YTDL_OPTIONS_PRESETS': '{}',
         'YTDL_OPTIONS_PRESETS_FILE': '',
         'ALLOW_YTDL_OPTIONS_OVERRIDES': 'false',
+        'CORS_ALLOWED_ORIGINS': '',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
         'PORT': '8081',
@@ -223,7 +224,8 @@ class ObjectSerializer(json.JSONEncoder):
 
 serializer = ObjectSerializer()
 app = web.Application()
-sio = socketio.AsyncServer(cors_allowed_origins='*')
+_cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
+sio = socketio.AsyncServer(cors_allowed_origins=_cors_origins if _cors_origins else [])
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
 VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
@@ -912,8 +914,9 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 
 async def on_prepare(request, response):
-    if 'Origin' in request.headers:
-        response.headers['Access-Control-Allow-Origin'] = request.headers['Origin']
+    origin = request.headers.get('Origin')
+    if origin and _cors_origins and origin in _cors_origins:
+        response.headers['Access-Control-Allow-Origin'] = origin
         response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
 
 app.on_response_prepare.append(on_prepare)
