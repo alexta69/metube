@@ -483,6 +483,8 @@ class SubscriptionManager:
             seen_entries = [ent for ent in entries if _is_media_entry(ent)]
             all_ids: list[str] = []
             for ent in seen_entries:
+                if ent.get("live_status") == "is_upcoming":
+                    continue  # Don't mark scheduled streams as seen; queue them when they go live
                 eid = _entry_id(ent)
                 if eid:
                     all_ids.append(eid)
@@ -662,7 +664,9 @@ class SubscriptionManager:
         new_ids: list[str] = []
         for ent in entries:
             eid = _entry_id(ent)
-            if not eid or eid in seen:
+            if not eid:
+                continue
+            if eid in seen and ent.get("live_status") != "is_live":
                 continue
             new_entries.append(ent)
             new_ids.append(eid)
