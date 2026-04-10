@@ -106,9 +106,9 @@ When a download starts, these layers are combined in order. If the same option a
 
 ### Option format
 
-yt-dlp options in MeTube are expressed as JSON objects. The keys are yt-dlp API option names, which roughly correspond to command-line flags with dashes replaced by underscores. For example, the command-line flag `--embed-thumbnail` becomes `"embed_thumbnail": true` in JSON.
+yt-dlp options in MeTube are expressed as JSON objects. The keys are yt-dlp API option names, which roughly correspond to command-line flags with dashes replaced by underscores. For example, the command-line flag `--write-subs` becomes `"writesubtitles": true` in JSON.
 
-> **Tip:** Some command-line flags don't have a direct single-key equivalent — for instance, `--recode-video` must be expressed via `"postprocessors"`. A full list of available API options can be found [in the yt-dlp source](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L224), and [this conversion script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) can help translate command-line flags to their API equivalents.
+> **Tip:** Some command-line flags don't have a direct single-key equivalent — for instance, `--embed-thumbnail` and `--recode-video` must be expressed via `"postprocessors"`. A full list of available API options can be found [in the yt-dlp source](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L224), and [this conversion script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) can help translate command-line flags to their API equivalents.
 
 ### Global options
 
@@ -118,7 +118,7 @@ Global options form the baseline for every download. There are two ways to defin
 
 ```yaml
 environment:
-  - 'YTDL_OPTIONS={"writesubtitles": true, "subtitleslangs": ["en", "de"], "updatetime": false, "embed_thumbnail": true}'
+  - 'YTDL_OPTIONS={"writesubtitles": true, "subtitleslangs": ["en", "de"], "updatetime": false, "writethumbnail": true}'
 ```
 
 **Via a JSON file** (`YTDL_OPTIONS_FILE`) — mount a file into the container and point to it:
@@ -137,7 +137,7 @@ where `ytdl-options.json` contains:
   "writesubtitles": true,
   "subtitleslangs": ["en", "de"],
   "updatetime": false,
-  "embed_thumbnail": true
+  "writethumbnail": true
 }
 ```
 
