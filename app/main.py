@@ -4,6 +4,10 @@
 import os
 import sys
 import asyncio
+import secrets
+import time
+from collections.abc import Awaitable, Callable
+from dataclasses import dataclass, field
 from pathlib import Path
 from aiohttp import web
 from aiohttp.log import access_logger
@@ -67,6 +71,9 @@ class Config:
         'HTTPS': 'false',
         'CERTFILE': '',
         'KEYFILE': '',
+        'METUBE_PASSWORD': '',
+        'METUBE_PASSWORD_FILE': '',
+        'METUBE_SESSION_MAX_AGE': '86400',
         'BASE_DIR': '',
         'DEFAULT_THEME': 'auto',
         'MAX_CONCURRENT_DOWNLOADS': '3',
@@ -102,8 +109,20 @@ class Config:
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
         if self.YTDL_OPTIONS_PRESETS_FILE and self.YTDL_OPTIONS_PRESETS_FILE.startswith('.'):
             self.YTDL_OPTIONS_PRESETS_FILE = str(Path(self.YTDL_OPTIONS_PRESETS_FILE).resolve())
+        if self.METUBE_PASSWORD_FILE and self.METUBE_PASSWORD_FILE.startswith('.'):
+            self.METUBE_PASSWORD_FILE = str(Path(self.METUBE_PASSWORD_FILE).resolve())
 
         self._runtime_overrides = {}
+        self.METUBE_PASSWORD = self._load_optional_secret('METUBE_PASSWORD')
+
+        try:
+            self.METUBE_SESSION_MAX_AGE = int(self.METUBE_SESSION_MAX_AGE)
+        except (TypeError, ValueError):
+            log.error('Environment variable "METUBE_SESSION_MAX_AGE" must be an integer')
+            sys.exit(1)
+        if self.METUBE_SESSION_MAX_AGE < 0:
+            log.error('Environment variable "METUBE_SESSION_MAX_AGE" must be zero or greater')
+            sys.exit(1)
 
         success,_ = self.load_ytdl_options()
         if not success:
@@ -122,6 +141,31 @@ class Config:
 
     def _apply_runtime_overrides(self):
         self.YTDL_OPTIONS.update(self._runtime_overrides)
+
+    def _load_optional_secret(self, key: str) -> str:
+        value = getattr(self, key, '') or ''
+        file_key = f'{key}_FILE'
+        file_value = getattr(self, file_key, '') or ''
+
+        if value and file_value:
+            log.error(f'Only one of "{key}" or "{file_key}" may be set')
+            sys.exit(1)
+
+        if not file_value:
+            return value
+
+        try:
+            with open(file_value, encoding='utf-8') as secret_file:
+                secret = secret_file.read().rstrip('\r\n')
+        except OSError as exc:
+            log.error(f'Could not read "{file_key}" from "{file_value}": {exc}')
+            sys.exit(1)
+
+        if not secret:
+            log.error(f'File "{file_value}" referenced by "{file_key}" is empty')
+            sys.exit(1)
+
+        return secret
 
     # Keys sent to the browser. Sensitive or server-only keys (YTDL_OPTIONS,
     # paths, TLS config, etc.) are intentionally excluded.
@@ -212,6 +256,167 @@ config = Config()
 # overridden by config file settings or differs from the environment variable.
 logging.getLogger().setLevel(parseLogLevel(str(config.LOGLEVEL)) or logging.INFO)
 
+@dataclass
+class AuthSession:
+    expires_at: float | None
+    socket_ids: set[str] = field(default_factory=set)
+
+
+class AuthManager:
+    COOKIE_NAME = 'metube_session'
+
+    def __init__(self, password: str, *, cookie_path: str, secure_cookie: bool, session_max_age: int):
+        self.password = password
+        self.cookie_path = cookie_path or '/'
+        self.secure_cookie = secure_cookie
+        self.session_max_age = session_max_age
+        self._sessions: dict[str, AuthSession] = {}
+        self._sid_to_session: dict[str, str] = {}
+        self._expiry_tasks: dict[str, asyncio.Task[None]] = {}
+        self._disconnect_socket: Callable[[str], Awaitable[None]] | None = None
+
+    @property
+    def enabled(self) -> bool:
+        return bool(self.password)
+
+    def authenticate(self, password: str) -> bool:
+        return self.enabled and secrets.compare_digest(password, self.password)
+
+    def set_socket_disconnect_callback(self, callback: Callable[[str], Awaitable[None]]) -> None:
+        self._disconnect_socket = callback
+
+    def _expires_at(self) -> float | None:
+        if self.session_max_age <= 0:
+            return None
+        return time.time() + self.session_max_age
+
+    def _is_expired(self, session: AuthSession) -> bool:
+        return session.expires_at is not None and time.time() >= session.expires_at
+
+    def _get_session(self, session_id: str | None) -> AuthSession | None:
+        if not session_id:
+            return None
+        session = self._sessions.get(session_id)
+        if session is None:
+            return None
+        if self._is_expired(session):
+            self.revoke_session(session_id)
+            return None
+        return session
+
+    def _schedule_expiry(self, session_id: str) -> None:
+        if self.session_max_age <= 0:
+            return
+        try:
+            loop = asyncio.get_running_loop()
+        except RuntimeError:
+            return
+        task = self._expiry_tasks.pop(session_id, None)
+        if task is not None:
+            task.cancel()
+        self._expiry_tasks[session_id] = loop.create_task(self._expire_session_after(session_id, self.session_max_age))
+
+    async def _expire_session_after(self, session_id: str, delay: int) -> None:
+        try:
+            await asyncio.sleep(delay)
+        except asyncio.CancelledError:
+            return
+
+        self._expiry_tasks.pop(session_id, None)
+        sids = self.revoke_session(session_id, cancel_expiry=False)
+        if not sids:
+            return
+
+        log.info('Authentication session expired')
+        if self._disconnect_socket is None:
+            return
+        for sid in sids:
+            try:
+                await self._disconnect_socket(sid)
+            except Exception:
+                log.debug('Socket for expired session already disconnected: %s', sid)
+
+    def create_session(self) -> str:
+        session_id = secrets.token_urlsafe(32)
+        self._sessions[session_id] = AuthSession(expires_at=self._expires_at())
+        self._schedule_expiry(session_id)
+        return session_id
+
+    def get_session_id(self, request: web.Request | None) -> str | None:
+        if request is None:
+            return None
+        session_id = request.cookies.get(self.COOKIE_NAME)
+        return session_id if self._get_session(session_id) else None
+
+    def is_authenticated(self, request: web.Request | None) -> bool:
+        return self.get_session_id(request) is not None
+
+    def status_payload(self, request: web.Request | None) -> dict:
+        return {
+            'status': 'ok',
+            'enabled': self.enabled,
+            'authenticated': self.is_authenticated(request),
+        }
+
+    def set_cookie(self, response: web.StreamResponse, session_id: str) -> None:
+        response.set_cookie(
+            self.COOKIE_NAME,
+            session_id,
+            httponly=True,
+            samesite='Lax',
+            secure=self.secure_cookie,
+            path=self.cookie_path,
+            max_age=self.session_max_age if self.session_max_age > 0 else None,
+        )
+
+    def clear_cookie(self, response: web.StreamResponse) -> None:
+        response.del_cookie(
+            self.COOKIE_NAME,
+            httponly=True,
+            samesite='Lax',
+            secure=self.secure_cookie,
+            path=self.cookie_path,
+        )
+
+    def register_socket(self, sid: str, session_id: str | None) -> None:
+        session = self._get_session(session_id)
+        if session is None:
+            return
+        session.socket_ids.add(sid)
+        self._sid_to_session[sid] = session_id
+
+    def unregister_socket(self, sid: str) -> None:
+        session_id = self._sid_to_session.pop(sid, None)
+        if not session_id:
+            return
+        session = self._sessions.get(session_id)
+        if session is None:
+            return
+        session.socket_ids.discard(sid)
+
+    def revoke_session(self, session_id: str, *, cancel_expiry: bool = True) -> list[str]:
+        if cancel_expiry:
+            task = self._expiry_tasks.pop(session_id, None)
+            if task is not None:
+                task.cancel()
+
+        session = self._sessions.pop(session_id, None)
+        if session is None:
+            return []
+
+        sids = list(session.socket_ids)
+        for sid in sids:
+            self._sid_to_session.pop(sid, None)
+        return sids
+
+
+auth_manager = AuthManager(
+    config.METUBE_PASSWORD,
+    cookie_path=(config.URL_PREFIX if config.URL_PREFIX.startswith('/') else f'/{config.URL_PREFIX}'),
+    secure_cookie=config.HTTPS,
+    session_max_age=config.METUBE_SESSION_MAX_AGE,
+)
+
 class ObjectSerializer(json.JSONEncoder):
     def default(self, obj):
         # First try to use __dict__ for custom objects
@@ -228,10 +433,56 @@ class ObjectSerializer(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 serializer = ObjectSerializer()
-app = web.Application()
+_PROTECTED_PATHS = {
+    config.URL_PREFIX + 'add',
+    config.URL_PREFIX + 'presets',
+    config.URL_PREFIX + 'cancel-add',
+    config.URL_PREFIX + 'subscribe',
+    config.URL_PREFIX + 'subscriptions',
+    config.URL_PREFIX + 'subscriptions/update',
+    config.URL_PREFIX + 'subscriptions/delete',
+    config.URL_PREFIX + 'subscriptions/check',
+    config.URL_PREFIX + 'delete',
+    config.URL_PREFIX + 'start',
+    config.URL_PREFIX + 'upload-cookies',
+    config.URL_PREFIX + 'delete-cookies',
+    config.URL_PREFIX + 'cookie-status',
+    config.URL_PREFIX + 'history',
+    config.URL_PREFIX + 'version',
+}
+_PROTECTED_PREFIXES = (
+    config.URL_PREFIX + 'download',
+    config.URL_PREFIX + 'audio_download',
+    config.URL_PREFIX + 'socket.io',
+)
+
+
+def _requires_auth_for_path(path: str) -> bool:
+    if path in _PROTECTED_PATHS:
+        return True
+    return any(path.startswith(prefix) for prefix in _PROTECTED_PREFIXES)
+
+
+def _unauthorized_response(request: web.Request | None = None) -> web.Response:
+    response = web.json_response({'status': 'error', 'msg': 'Authentication required'}, status=401)
+    if request is not None and request.cookies.get(auth_manager.COOKIE_NAME):
+        auth_manager.clear_cookie(response)
+    return response
+
+
+@web.middleware
+async def auth_middleware(request: web.Request, handler):
+    if request.method == 'OPTIONS' or not auth_manager.enabled or not _requires_auth_for_path(request.path):
+        return await handler(request)
+    if auth_manager.is_authenticated(request):
+        return await handler(request)
+    return _unauthorized_response(request)
+
+app = web.Application(middlewares=[auth_middleware])
 _cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
 sio = socketio.AsyncServer(cors_allowed_origins=_cors_origins if _cors_origins else [])
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
+auth_manager.set_socket_disconnect_callback(sio.disconnect)
 routes = web.RouteTableDef()
 VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
 VALID_SUBTITLE_MODES = {'auto_only', 'manual_only', 'prefer_manual', 'prefer_auto'}
@@ -446,6 +697,21 @@ async def _read_json_request(request: web.Request) -> dict:
     return post
 
 
+async def _disconnect_auth_session(session_id: str) -> None:
+    for sid in auth_manager.revoke_session(session_id):
+        try:
+            await sio.disconnect(sid)
+        except Exception:
+            log.debug('Socket for revoked session already disconnected: %s', sid)
+
+
+def _auth_status_response(request: web.Request) -> web.Response:
+    response = web.json_response(auth_manager.status_payload(request))
+    if request.cookies.get(auth_manager.COOKIE_NAME) and not auth_manager.is_authenticated(request):
+        auth_manager.clear_cookie(response)
+    return response
+
+
 def parse_download_options(post: dict) -> dict:
     """Validate add/subscribe body; raise HTTPBadRequest on invalid input."""
     post = _migrate_legacy_request(dict(post))
@@ -596,6 +862,47 @@ async def add(request):
         o['ytdl_options_overrides'],
     )
     return web.Response(text=serializer.encode(status))
+
+
+@routes.get(config.URL_PREFIX + 'auth/status')
+async def auth_status(request):
+    return _auth_status_response(request)
+
+
+@routes.post(config.URL_PREFIX + 'auth/login')
+async def auth_login(request):
+    if not auth_manager.enabled:
+        return _auth_status_response(request)
+
+    post = await _read_json_request(request)
+    password = post.get('password')
+    if password is None:
+        password = ''
+    if not isinstance(password, str):
+        password = str(password)
+
+    if not auth_manager.authenticate(password):
+        log.warning('Rejected UI login with invalid password')
+        return web.json_response(
+            {'status': 'error', 'enabled': True, 'authenticated': False, 'msg': 'Invalid password'},
+            status=401,
+        )
+
+    session_id = auth_manager.create_session()
+    response = web.json_response({'status': 'ok', 'enabled': True, 'authenticated': True})
+    auth_manager.set_cookie(response, session_id)
+    log.info('Authenticated UI session created')
+    return response
+
+
+@routes.post(config.URL_PREFIX + 'auth/logout')
+async def auth_logout(request):
+    session_id = auth_manager.get_session_id(request)
+    if session_id:
+        await _disconnect_auth_session(session_id)
+    response = web.json_response({'status': 'ok', 'enabled': auth_manager.enabled, 'authenticated': False})
+    auth_manager.clear_cookie(response)
+    return response
 
 
 @routes.get(config.URL_PREFIX + 'presets')
@@ -789,6 +1096,12 @@ async def history(request):
 
 @sio.event
 async def connect(sid, environ):
+    request = environ.get('aiohttp.request')
+    session_id = auth_manager.get_session_id(request)
+    if auth_manager.enabled and not session_id:
+        log.info('Rejected socket connection for unauthenticated client: %s', sid)
+        raise ConnectionRefusedError('Authentication required')
+    auth_manager.register_socket(sid, session_id)
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
@@ -797,6 +1110,12 @@ async def connect(sid, environ):
         await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
     if config.YTDL_OPTIONS_FILE:
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
+
+
+@sio.event
+async def disconnect(sid):
+    auth_manager.unregister_socket(sid)
+    log.info('Client disconnected: %s', sid)
 
 def get_custom_dirs():
     cache_ttl_seconds = 5

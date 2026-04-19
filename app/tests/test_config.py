@@ -19,7 +19,7 @@ def _base_env(**overrides: str) -> dict[str, str]:
 
 class ConfigTests(unittest.TestCase):
     def test_url_prefix_gets_trailing_slash(self):
-        with patch.dict(os.environ, _base_env(URL_PREFIX="foo"), clear=False):
+        with patch.dict(os.environ, _base_env(URL_PREFIX="foo"), clear=True):
             c = Config()
         self.assertEqual(c.URL_PREFIX, "foo/")
 
@@ -69,7 +69,7 @@ class ConfigTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             _base_env(YTDL_OPTIONS=json.dumps(opts)),
-            clear=False,
+            clear=True,
         ):
             c = Config()
         self.assertEqual(c.YTDL_OPTIONS["quiet"], True)
@@ -79,36 +79,37 @@ class ConfigTests(unittest.TestCase):
         with patch.dict(
             os.environ,
             _base_env(YTDL_OPTIONS_PRESETS=json.dumps(presets)),
-            clear=False,
+            clear=True,
         ):
             c = Config()
         self.assertEqual(c.YTDL_OPTIONS_PRESETS["Audio extras"]["embed_thumbnail"], True)
 
     def test_invalid_ytdl_options_exits(self):
-        with patch.dict(os.environ, _base_env(YTDL_OPTIONS="not-json"), clear=False):
+        with patch.dict(os.environ, _base_env(YTDL_OPTIONS="not-json"), clear=True):
             with self.assertRaises(SystemExit):
                 Config()
 
     def test_invalid_boolean_env_exits(self):
-        with patch.dict(os.environ, _base_env(CUSTOM_DIRS="maybe"), clear=False):
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS="maybe"), clear=True):
             with self.assertRaises(SystemExit):
                 Config()
 
     def test_frontend_safe_excludes_secrets(self):
-        with patch.dict(os.environ, _base_env(), clear=False):
+        with patch.dict(os.environ, _base_env(), clear=True):
             c = Config()
         safe = c.frontend_safe()
         self.assertNotIn("YTDL_OPTIONS", safe)
         self.assertNotIn("HOST", safe)
+        self.assertNotIn("METUBE_PASSWORD", safe)
         self.assertEqual(safe["ALLOW_YTDL_OPTIONS_OVERRIDES"], False)
 
     def test_allow_ytdl_options_overrides_boolean_loaded(self):
-        with patch.dict(os.environ, _base_env(ALLOW_YTDL_OPTIONS_OVERRIDES="true"), clear=False):
+        with patch.dict(os.environ, _base_env(ALLOW_YTDL_OPTIONS_OVERRIDES="true"), clear=True):
             c = Config()
         self.assertTrue(c.ALLOW_YTDL_OPTIONS_OVERRIDES)
 
     def test_runtime_override_roundtrip(self):
-        with patch.dict(os.environ, _base_env(), clear=False):
+        with patch.dict(os.environ, _base_env(), clear=True):
             c = Config()
             c.set_runtime_override("cookiefile", "/tmp/c.txt")
             self.assertEqual(c.YTDL_OPTIONS.get("cookiefile"), "/tmp/c.txt")
@@ -123,7 +124,7 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 _base_env(YTDL_OPTIONS="{}", YTDL_OPTIONS_FILE=path),
-                clear=False,
+                clear=True,
             ):
                 c = Config()
             self.assertIn("extractor_args", c.YTDL_OPTIONS)
@@ -138,12 +139,49 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(
                 os.environ,
                 _base_env(YTDL_OPTIONS_PRESETS="{}", YTDL_OPTIONS_PRESETS_FILE=path),
-                clear=False,
+                clear=True,
             ):
                 c = Config()
             self.assertIn("With subtitles", c.YTDL_OPTIONS_PRESETS)
         finally:
             os.unlink(path)
+
+    def test_metube_password_loaded_from_env(self):
+        with patch.dict(os.environ, _base_env(METUBE_PASSWORD="secret"), clear=True):
+            c = Config()
+        self.assertEqual(c.METUBE_PASSWORD, "secret")
+
+    def test_metube_password_loaded_from_file(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("secret\n")
+            path = f.name
+        try:
+            with patch.dict(os.environ, _base_env(METUBE_PASSWORD_FILE=path), clear=True):
+                c = Config()
+            self.assertEqual(c.METUBE_PASSWORD, "secret")
+        finally:
+            os.unlink(path)
+
+    def test_metube_password_and_file_conflict_exits(self):
+        with tempfile.NamedTemporaryFile("w", delete=False) as f:
+            f.write("secret")
+            path = f.name
+        try:
+            with patch.dict(os.environ, _base_env(METUBE_PASSWORD="secret", METUBE_PASSWORD_FILE=path), clear=True):
+                with self.assertRaises(SystemExit):
+                    Config()
+        finally:
+            os.unlink(path)
+
+    def test_metube_session_max_age_loaded(self):
+        with patch.dict(os.environ, _base_env(METUBE_SESSION_MAX_AGE="300"), clear=True):
+            c = Config()
+        self.assertEqual(c.METUBE_SESSION_MAX_AGE, 300)
+
+    def test_invalid_metube_session_max_age_exits(self):
+        with patch.dict(os.environ, _base_env(METUBE_SESSION_MAX_AGE="soon"), clear=True):
+            with self.assertRaises(SystemExit):
+                Config()
 
 
 if __name__ == "__main__":

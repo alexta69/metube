@@ -12,6 +12,18 @@ export class MeTubeSocket extends Socket {
 
     const path =
       document.location.pathname.replace(/share-target/, '') + 'socket.io';
-    super({ url: '', options: { path } }, appRef);
+    super({ url: '', options: { path, autoConnect: false, withCredentials: true } }, appRef);
+  }
+
+  connectIfNeeded() {
+    if (!this.ioSocket.connected && !this.ioSocket.active) {
+      this.connect();
+    }
+  }
+
+  disconnectIfConnected() {
+    if (this.ioSocket.connected || this.ioSocket.active) {
+      this.disconnect();
+    }
   }
 }

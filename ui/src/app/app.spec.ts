@@ -1,9 +1,10 @@
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
-import { Subject, of } from 'rxjs';
+import { BehaviorSubject, Subject, of } from 'rxjs';
 import { App } from './app';
 import { DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
+import { AuthService, AuthState } from './services/auth.service';
 import { CookieService } from 'ngx-cookie-service';
 
 class DownloadsServiceStub {
@@ -77,6 +78,41 @@ class SubscriptionsServiceStub {
   }
 }
 
+class AuthServiceStub {
+  private stateSubject = new BehaviorSubject<AuthState>({
+    enabled: false,
+    authenticated: false,
+    loading: false,
+  });
+
+  state$ = this.stateSubject.asObservable();
+
+  setState(state: AuthState) {
+    this.stateSubject.next(state);
+  }
+
+  loadStatus() {
+    const state = this.stateSubject.value;
+    return of({ status: 'ok', enabled: state.enabled, authenticated: state.authenticated });
+  }
+
+  login() {
+    this.stateSubject.next({ enabled: true, authenticated: true, loading: false });
+    return of({ status: 'ok', enabled: true, authenticated: true });
+  }
+
+  logout() {
+    const state = this.stateSubject.value;
+    this.stateSubject.next({ ...state, authenticated: false, loading: false });
+    return of({ status: 'ok', enabled: state.enabled, authenticated: false });
+  }
+
+  markUnauthorized() {
+    const state = this.stateSubject.value;
+    this.stateSubject.next({ ...state, authenticated: false, loading: false });
+  }
+}
+
 class CookieServiceStub {
   private cookies = new Map<string, string>();
 
@@ -95,6 +131,7 @@ class CookieServiceStub {
 
 describe('App', () => {
   let downloads: DownloadsServiceStub;
+  let auth: AuthServiceStub;
 
   beforeEach(async () => {
     Object.defineProperty(window, 'matchMedia', {
@@ -110,11 +147,13 @@ describe('App', () => {
       })),
     });
     downloads = new DownloadsServiceStub();
+    auth = new AuthServiceStub();
     await TestBed.configureTestingModule({
       imports: [App],
       providers: [
         { provide: DownloadsService, useValue: downloads },
         { provide: SubscriptionsService, useClass: SubscriptionsServiceStub },
+        { provide: AuthService, useValue: auth },
         { provide: CookieService, useClass: CookieServiceStub },
         {
           provide: HttpClient,
@@ -130,6 +169,17 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('shows the login form when authentication is enabled and user is signed out', () => {
+    auth.setState({ enabled: true, authenticated: false, loading: false });
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.querySelector('#login-password')).not.toBeNull();
+    expect(root.querySelector('button[type="submit"]')?.textContent).toContain('Sign in');
   });
 
   it('hides manual override input when disabled', () => {

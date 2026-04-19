@@ -12,6 +12,7 @@ import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
+import { AuthService } from './services/auth.service';
 import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
 import {
@@ -59,6 +60,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   subscriptionsSvc = inject(SubscriptionsService);
   private cookieService = inject(CookieService);
   private http = inject(HttpClient);
+  private authSvc = inject(AuthService);
   private cdr = inject(ChangeDetectorRef);
   private destroyRef = inject(DestroyRef);
 
@@ -109,6 +111,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   ytDlpOptionsUpdateTime: string | null = null;
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
+  authEnabled = false;
+  isAuthenticated = false;
+  authStatusLoading = true;
+  loginPassword = '';
+  loginInProgress = false;
+  logoutInProgress = false;
+  authError: string | null = null;
   isAdvancedOpen = false;
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
@@ -125,6 +134,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }> = {};
   private readonly selectionCookiePrefix = 'metube_selection_';
   private readonly settingsCookieExpiryDays = 3650;
+  private canAccessApp = false;
   private lastFocusedElement: HTMLElement | null = null;
   private colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private onColorSchemeChanged = () => {
@@ -286,17 +296,42 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngOnInit() {
-    this.downloads.getCookieStatus().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
-      this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
+    this.authSvc.state$.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((state) => {
+      const canAccessApp = !state.loading && (!state.enabled || state.authenticated);
+      const becameAccessible = canAccessApp && !this.canAccessApp;
+
+      this.authEnabled = state.enabled;
+      this.isAuthenticated = state.authenticated;
+      this.authStatusLoading = state.loading;
+      this.canAccessApp = canAccessApp;
+
+      if (becameAccessible) {
+        this.authError = null;
+        this.loginPassword = '';
+        this.refreshProtectedData();
+      } else if (!canAccessApp) {
+        this.ytDlpVersion = null;
+        this.metubeVersion = null;
+        this.hasCookies = false;
+        this.activeDownloads = 0;
+        this.queuedDownloads = 0;
+        this.completedDownloads = 0;
+        this.failedDownloads = 0;
+        this.totalSpeed = 0;
+        this.hasCompletedDone = false;
+        this.hasFailedDone = false;
+      }
+
       this.cdr.markForCheck();
     });
+
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
-    this.getYtdlOptionPresets();
     this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
+    this.authSvc.loadStatus().pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
 
   ngAfterViewInit() {
@@ -311,12 +346,69 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
     // Initialize action button states for already-loaded entries.
     this.updateDoneActionButtons();
-    this.fetchVersionInfo();
   }
 
   ngOnDestroy() {
     this.addRequestSub?.unsubscribe();
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
+  }
+
+  submitLogin() {
+    if (this.loginInProgress || !this.authEnabled) {
+      return;
+    }
+    if (!this.loginPassword) {
+      this.authError = 'Please enter the configured password.';
+      return;
+    }
+
+    this.authError = null;
+    this.loginInProgress = true;
+    this.authSvc.login(this.loginPassword)
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.loginInProgress = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe((response) => {
+        if (response.status === 'error' || !response.authenticated) {
+          this.authError = this.formatErrorMessage(response.msg || 'Login failed');
+          return;
+        }
+        this.loginPassword = '';
+      });
+  }
+
+  logout() {
+    if (this.logoutInProgress) {
+      return;
+    }
+
+    this.logoutInProgress = true;
+    this.authError = null;
+    this.authSvc.logout()
+      .pipe(
+        takeUntilDestroyed(this.destroyRef),
+        finalize(() => {
+          this.logoutInProgress = false;
+          this.cdr.markForCheck();
+        }),
+      )
+      .subscribe((response) => {
+        if (response.status === 'error') {
+          alert(`Error logging out: ${this.formatErrorMessage(response.msg)}`);
+          return;
+        }
+        this.loginPassword = '';
+      });
+  }
+
+  private refreshProtectedData() {
+    this.refreshCookieStatus();
+    this.getYtdlOptionPresets();
+    this.fetchVersionInfo();
   }
 
   // workaround to allow fetching of Map values in the order they were inserted
@@ -428,9 +520,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   getYtdlOptionPresets() {
     this.downloads.getPresets().pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
       next: (data) => {
-        this.ytdlOptionPresetNames = Array.isArray(data?.presets)
-          ? data.presets.filter((preset): preset is string => typeof preset === 'string')
-          : [];
+        this.ytdlOptionPresetNames =
+          data &&
+          typeof data === 'object' &&
+          'presets' in data &&
+          Array.isArray(data.presets)
+            ? data.presets.filter((preset: unknown): preset is string => typeof preset === 'string')
+            : [];
         if (this.ytdlOptionsPresets?.length) {
           const valid = new Set(this.ytdlOptionPresetNames);
           const filtered = this.ytdlOptionsPresets.filter((p) => valid.has(p));
@@ -1314,7 +1410,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
           this.ytDlpVersion = data['yt-dlp'];
           this.metubeVersion = data.version;
         },
-        error: () => {
+        error: (error) => {
+          if (error?.status === 401) {
+            this.authSvc.markUnauthorized();
+          }
           this.ytDlpVersion = null;
           this.metubeVersion = null;
         }
@@ -1452,6 +1551,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private refreshCookieStatus() {
     this.downloads.getCookieStatus().subscribe(data => {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
+      this.cdr.markForCheck();
     });
   }
 

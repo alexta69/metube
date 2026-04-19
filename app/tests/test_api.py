@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import time
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
@@ -30,6 +31,23 @@ def mock_dqueue(monkeypatch):
     return d
 
 
+@pytest.fixture(autouse=True)
+def reset_auth_state(monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "")
+    monkeypatch.setattr(main.auth_manager, "session_max_age", 86400)
+    for task in list(main.auth_manager._expiry_tasks.values()):
+        task.cancel()
+    main.auth_manager._sessions.clear()
+    main.auth_manager._sid_to_session.clear()
+    main.auth_manager._expiry_tasks.clear()
+    yield
+    for task in list(main.auth_manager._expiry_tasks.values()):
+        task.cancel()
+    main.auth_manager._sessions.clear()
+    main.auth_manager._sid_to_session.clear()
+    main.auth_manager._expiry_tasks.clear()
+
+
 def _valid_video_add_body(**kwargs):
     base = {
         "url": "https://example.com/watch?v=1",
@@ -47,6 +65,15 @@ def _valid_video_add_body(**kwargs):
 def _json_request(body: dict | None):
     req = MagicMock(spec=web.Request)
     req.json = AsyncMock(return_value=body)
+    req.cookies = {}
+    req.path = "/"
+    return req
+
+
+def _request_with_cookies(cookies: dict[str, str] | None = None, *, path: str = "/"):
+    req = MagicMock(spec=web.Request)
+    req.cookies = cookies or {}
+    req.path = path
     return req
 
 
@@ -240,6 +267,93 @@ async def test_presets_endpoint_returns_names(mock_dqueue, monkeypatch):
     resp = await main.presets(req)
     assert resp.status == 200
     assert json.loads(resp.text) == {"presets": ["Preset A", "Preset B"]}
+
+
+@pytest.mark.asyncio
+async def test_auth_status_disabled_reports_disabled(mock_dqueue):
+    req = _request_with_cookies()
+    resp = await main.auth_status(req)
+    assert resp.status == 200
+    assert json.loads(resp.text) == {"status": "ok", "enabled": False, "authenticated": False}
+
+
+@pytest.mark.asyncio
+async def test_auth_login_and_logout_roundtrip(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "secret")
+    monkeypatch.setattr(main.auth_manager, "session_max_age", 300)
+
+    login_req = _json_request({"password": "secret"})
+    login_resp = await main.auth_login(login_req)
+    assert login_resp.status == 200
+    login_body = json.loads(login_resp.text)
+    assert login_body == {"status": "ok", "enabled": True, "authenticated": True}
+
+    cookie = login_resp.cookies[main.auth_manager.COOKIE_NAME]
+    session_id = cookie.value
+    assert cookie["max-age"] == "300"
+    status_req = _request_with_cookies({main.auth_manager.COOKIE_NAME: session_id})
+    status_resp = await main.auth_status(status_req)
+    assert json.loads(status_resp.text) == {"status": "ok", "enabled": True, "authenticated": True}
+
+    logout_req = _request_with_cookies({main.auth_manager.COOKIE_NAME: session_id})
+    logout_resp = await main.auth_logout(logout_req)
+    assert logout_resp.status == 200
+    assert json.loads(logout_resp.text) == {"status": "ok", "enabled": True, "authenticated": False}
+    assert session_id not in main.auth_manager._sessions
+
+
+@pytest.mark.asyncio
+async def test_auth_login_rejects_invalid_password(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "secret")
+    req = _json_request({"password": "wrong"})
+    resp = await main.auth_login(req)
+    assert resp.status == 401
+    assert json.loads(resp.text) == {
+        "status": "error",
+        "enabled": True,
+        "authenticated": False,
+        "msg": "Invalid password",
+    }
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_rejects_protected_requests_without_session(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "secret")
+    req = _request_with_cookies(path=main.config.URL_PREFIX + "history")
+    handler = AsyncMock(return_value=web.Response(text="ok"))
+    resp = await main.auth_middleware(req, handler)
+    assert resp.status == 401
+    handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_auth_middleware_rejects_expired_session_and_clears_cookie(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "secret")
+    monkeypatch.setattr(main.auth_manager, "session_max_age", 60)
+
+    session_id = main.auth_manager.create_session()
+    session = main.auth_manager._sessions[session_id]
+    session.expires_at = time.time() - 1
+
+    req = _request_with_cookies(
+        {main.auth_manager.COOKIE_NAME: session_id},
+        path=main.config.URL_PREFIX + "history",
+    )
+    handler = AsyncMock(return_value=web.Response(text="ok"))
+    resp = await main.auth_middleware(req, handler)
+
+    assert resp.status == 401
+    assert resp.cookies[main.auth_manager.COOKIE_NAME]["max-age"] == "0"
+    assert session_id not in main.auth_manager._sessions
+    handler.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_socket_connect_rejects_unauthenticated_client(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.auth_manager, "password", "secret")
+    req = _request_with_cookies()
+    with pytest.raises(ConnectionRefusedError):
+        await main.connect("sid-1", {"aiohttp.request": req})
 
 
 @pytest.mark.asyncio

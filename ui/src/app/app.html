@@ -48,7 +48,19 @@
       </ul>
     </div>
     -->
-    <div class="navbar-nav ms-auto">
+    <div class="navbar-nav ms-auto align-items-center gap-2">
+      @if (authEnabled && isAuthenticated) {
+        <button type="button" class="btn btn-outline-light btn-sm"
+          (click)="logout()"
+          [disabled]="logoutInProgress">
+          @if (logoutInProgress) {
+            <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+            Logging out...
+          } @else {
+            Logout
+          }
+        </button>
+      }
       <div class="nav-item dropdown" ngbDropdown placement="bottom-end">
         <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
           id="theme-select"
@@ -83,6 +95,50 @@
   </div>
 </nav>
 
+@if (authStatusLoading) {
+  <div class="auth-modal-backdrop">
+    <section class="auth-modal card shadow-lg" aria-live="polite" aria-busy="true">
+      <div class="card-body p-4 p-md-5 text-center">
+        <div class="spinner-border text-primary mb-3" role="status" aria-hidden="true"></div>
+        <h1 class="h4 mb-2">Loading MeTube</h1>
+        <p class="text-body-secondary mb-0">Checking authentication status...</p>
+      </div>
+    </section>
+  </div>
+} @else if (authEnabled && !isAuthenticated) {
+  <div class="auth-modal-backdrop">
+    <section class="auth-modal card shadow-lg" role="dialog" aria-modal="true" aria-labelledby="auth-modal-title">
+      <div class="card-body p-4 p-md-5">
+        <h1 id="auth-modal-title" class="h3 mb-2">Sign in</h1>
+        <p class="text-body-secondary mb-4">Enter the configured MeTube password to continue.</p>
+        @if (authError) {
+          <div class="alert alert-danger py-2" role="alert">{{authError}}</div>
+        }
+        <form (ngSubmit)="submitLogin()">
+          <div class="mb-3">
+            <label class="form-label" for="login-password">Password</label>
+            <input id="login-password"
+              name="password"
+              type="password"
+              autocomplete="current-password"
+              class="form-control form-control-lg"
+              [(ngModel)]="loginPassword"
+              [disabled]="loginInProgress">
+          </div>
+          <button class="btn btn-primary btn-lg w-100" type="submit"
+            [disabled]="loginInProgress || !loginPassword">
+            @if (loginInProgress) {
+              <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
+              Signing in...
+            } @else {
+              Sign in
+            }
+          </button>
+        </form>
+      </div>
+    </section>
+  </div>
+} @else {
 <main role="main" class="container container-xl">
   <form #f="ngForm">
     <div class="container add-url-box">
@@ -952,6 +1008,7 @@
     </table>
   </div>
 </main><!-- /.container -->
+}
 
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
   <div class="container text-center">

@@ -3,6 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket.service';
+import { AuthService } from './auth.service';
 import { Download, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
@@ -29,6 +30,7 @@ export interface AddDownloadPayload {
 export class DownloadsService {
   private http = inject(HttpClient);
   private socket = inject(MeTubeSocket);
+  private auth = inject(AuthService);
   loading = true;
   queue = new Map<string, Download>();
   done = new Map<string, Download>();
@@ -99,7 +101,7 @@ export class DownloadsService {
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data = JSON.parse(strdata);
-      console.debug("got configuration:", data);
+      console.debug('got configuration:', data);
       this.configuration = data;
       this.configurationChanged.next(data);
     });
@@ -107,7 +109,7 @@ export class DownloadsService {
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data = JSON.parse(strdata);
-      console.debug("got custom_dirs:", data);
+      console.debug('got custom_dirs:', data);
       this.customDirs = data;
       this.customDirsChanged.next(data);
     });
@@ -120,6 +122,9 @@ export class DownloadsService {
   }
 
   handleHTTPError(error: HttpErrorResponse) {
+    if (error.status === 401) {
+      this.auth.markUnauthorized();
+    }
     const msg = error.error instanceof ErrorEvent
       ? error.error.message
       : (typeof error.error === 'string'
@@ -146,18 +151,20 @@ export class DownloadsService {
       ytdl_options_presets: payload.ytdlOptionsPresets,
       ytdl_options_overrides: payload.ytdlOptionsOverrides,
     }).pipe(
-      catchError(this.handleHTTPError)
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 
   public getPresets() {
     return this.http.get<{ presets: string[] }>('presets').pipe(
-      catchError(() => of({ presets: [] }))
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 
   public startById(ids: string[]) {
-    return this.http.post('start', {ids: ids});
+    return this.http.post('start', {ids: ids}).pipe(
+      catchError(this.handleHTTPError.bind(this))
+    );
   }
 
   public delById(where: State, ids: string[]) {
@@ -170,7 +177,9 @@ export class DownloadsService {
         }
       }
     }
-    return this.http.post('delete', {where: where, ids: ids});
+    return this.http.post('delete', {where: where, ids: ids}).pipe(
+      catchError(this.handleHTTPError.bind(this))
+    );
   }
 
   public startByFilter(where: State, filter: (dl: Download) => boolean) {
@@ -186,7 +195,7 @@ export class DownloadsService {
   }
   public cancelAdd() {
     return this.http.post<Status>('cancel-add', {}).pipe(
-      catchError(this.handleHTTPError)
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 
@@ -194,19 +203,19 @@ export class DownloadsService {
     const formData = new FormData();
     formData.append('cookies', file);
     return this.http.post<{ status: string; msg?: string }>('upload-cookies', formData).pipe(
-      catchError(this.handleHTTPError)
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 
   deleteCookies() {
     return this.http.post<{ status: string; msg?: string }>('delete-cookies', {}).pipe(
-      catchError(this.handleHTTPError)
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 
   getCookieStatus() {
     return this.http.get<{ status: string; has_cookies: boolean }>('cookie-status').pipe(
-      catchError(this.handleHTTPError)
+      catchError(this.handleHTTPError.bind(this))
     );
   }
 }

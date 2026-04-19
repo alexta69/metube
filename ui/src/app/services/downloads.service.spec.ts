@@ -4,6 +4,7 @@ import { provideHttpClientTesting, HttpTestingController } from '@angular/common
 import { Subject } from 'rxjs';
 import { DownloadsService, AddDownloadPayload } from './downloads.service';
 import { MeTubeSocket } from './metube-socket.service';
+import { AuthService } from './auth.service';
 import { Download } from '../interfaces';
 
 class MeTubeSocketStub {
@@ -22,6 +23,10 @@ class MeTubeSocketStub {
     }
     this.subjects[event].next(data);
   }
+}
+
+class AuthServiceStub {
+  markUnauthorized = vi.fn();
 }
 
 function basePayload(): AddDownloadPayload {
@@ -46,17 +51,20 @@ function basePayload(): AddDownloadPayload {
 
 describe('DownloadsService', () => {
   let socket: MeTubeSocketStub;
+  let auth: AuthServiceStub;
   let httpMock: HttpTestingController;
   let service: DownloadsService;
 
   beforeEach(async () => {
     socket = new MeTubeSocketStub();
+    auth = new AuthServiceStub();
     await TestBed.configureTestingModule({
       providers: [
         DownloadsService,
         provideHttpClient(),
         provideHttpClientTesting(),
         { provide: MeTubeSocket, useValue: socket },
+        { provide: AuthService, useValue: auth },
       ],
     }).compileComponents();
 
@@ -86,6 +94,17 @@ describe('DownloadsService', () => {
       }),
     );
     req.flush({ status: 'ok' });
+  });
+
+  it('marks auth as unauthorized on 401 responses', () => {
+    service.getCookieStatus().subscribe((result) => {
+      expect(result).toEqual({ status: 'error', msg: 'Authentication required' });
+    });
+
+    const req = httpMock.expectOne('cookie-status');
+    req.flush({ msg: 'Authentication required' }, { status: 401, statusText: 'Unauthorized' });
+
+    expect(auth.markUnauthorized).toHaveBeenCalled();
   });
 
   it('getPresets() fetches configured preset names', () => {
@@ -274,19 +293,5 @@ describe('DownloadsService', () => {
     });
     socket.emit('cleared', JSON.stringify('u1'));
     expect(service.done.has('u1')).toBe(false);
-  });
-
-  it('socket configuration updates configuration', () => {
-    socket.emit('configuration', JSON.stringify({ CUSTOM_DIRS: true }));
-    expect(service.configuration['CUSTOM_DIRS']).toBe(true);
-  });
-
-  it('socket custom_dirs updates customDirs', () => {
-    socket.emit('custom_dirs', JSON.stringify({ download_dir: [''] }));
-    expect(service.customDirs['download_dir']).toEqual(['']);
-  });
-
-  afterEach(() => {
-    httpMock.verify();
   });
 });

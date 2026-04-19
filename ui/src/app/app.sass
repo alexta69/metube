@@ -208,3 +208,24 @@ main
 
   &.active
     color: var(--bs-success-text-emphasis)
+
+.auth-modal-backdrop
+  position: fixed
+  inset: 0
+  z-index: 1080
+  display: flex
+  align-items: center
+  justify-content: center
+  padding: 1.5rem
+  background: rgba(15, 23, 42, 0.48)
+  backdrop-filter: blur(10px)
+
+.auth-modal
+  width: min(100%, 28rem)
+  border: 1px solid var(--bs-border-color)
+  border-radius: 1rem
+  box-shadow: 0 1.5rem 3rem rgba(15, 23, 42, 0.24)
+
+@media (max-width: 575.98px)
+  .auth-modal-backdrop
+    padding: 1rem

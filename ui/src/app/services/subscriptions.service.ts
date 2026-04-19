@@ -4,6 +4,7 @@ import { of, Subject } from 'rxjs';
 import { catchError, tap } from 'rxjs/operators';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { MeTubeSocket } from './metube-socket.service';
+import { AuthService } from './auth.service';
 import { SubscriptionRow } from '../interfaces/subscription';
 import { Status } from '../interfaces';
 import { AddDownloadPayload } from './downloads.service';
@@ -18,6 +19,7 @@ export interface SubscribePayload extends AddDownloadPayload {
 export class SubscriptionsService {
   private http = inject(HttpClient);
   private socket = inject(MeTubeSocket);
+  private auth = inject(AuthService);
   private destroyRef = inject(DestroyRef);
 
   subscriptions = new Map<string, SubscriptionRow>();
@@ -69,6 +71,9 @@ export class SubscriptionsService {
   }
 
   handleHTTPError(error: HttpErrorResponse) {
+    if (error.status === 401) {
+      this.auth.markUnauthorized();
+    }
     const msg =
       error.error instanceof ErrorEvent
         ? error.error.message
@@ -118,7 +123,7 @@ export class SubscriptionsService {
   }
 
   fetchList() {
-    return this.http.get<SubscriptionRow[]>('subscriptions').pipe(catchError(() => of([])));
+    return this.http.get<SubscriptionRow[]>('subscriptions').pipe(catchError((err) => this.handleHTTPError(err)));
   }
 
   refreshList() {

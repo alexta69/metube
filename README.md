@@ -32,6 +32,8 @@ services:
       - /path/to/downloads:/downloads
 ```
 
+To require a password for MeTube, set `METUBE_PASSWORD`, or mount a Docker secret and point `METUBE_PASSWORD_FILE` to it, for example `/run/secrets/metube_password`.
+
 ## ⚙️ Configuration via environment variables
 
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in docker-compose.
@@ -91,6 +93,9 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __PGID__: Group under which MeTube will run. Defaults to `1000` (legacy `GID` also supported).
 * __UMASK__: Umask value used by MeTube. Defaults to `022`.
 * __DEFAULT_THEME__: Default theme to use for the UI, can be set to `light`, `dark`, or `auto`. Defaults to `auto`.
+* __METUBE_PASSWORD__: Password required to access MeTube. Leave empty to disable authentication. The password is validated server-side and is never exposed to browser clients. Defaults to empty.
+* __METUBE_PASSWORD_FILE__: Path to a file containing the MeTube password. Useful with Docker secrets. Mutually exclusive with `METUBE_PASSWORD`.
+* __METUBE_SESSION_MAX_AGE__: Session lifetime in seconds for the login cookie. Defaults to `86400` (24 hours). Set to `0` to use a browser-session cookie instead. Logging out always invalidates the current session immediately.
 * __LOGLEVEL__: Log level, can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, or `NONE`. Defaults to `INFO`. 
 * __ENABLE_ACCESSLOG__: Whether to enable access log. Defaults to `false`.
 
