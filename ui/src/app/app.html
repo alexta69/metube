@@ -279,13 +279,12 @@
           </div>
           <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
-              <span class="input-group-text">Format</span>
+              <span class="input-group-text">Format <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Subtitle output format for captions mode." triggers="click" autoClose="outside" container="body" /></span>
               <select class="form-select"
                 name="format"
                 [(ngModel)]="format"
                 (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                ngbTooltip="Subtitle output format for captions mode">
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                 @for (f of formatOptions; track f.id) {
                   <option [ngValue]="f.id">{{ f.text }}</option>
                 }
@@ -294,7 +293,7 @@
           </div>
           <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
-              <span class="input-group-text">Language</span>
+              <span class="input-group-text">Language <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Subtitle language (you can type any language code)." triggers="click" autoClose="outside" container="body" /></span>
               <input class="form-control"
                 type="text"
                 list="subtitleLanguageOptions"
@@ -302,8 +301,7 @@
                 [(ngModel)]="subtitleLanguage"
                 (change)="subtitleLanguageChanged()"
                 [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                placeholder="e.g. en, es, zh-Hans"
-                ngbTooltip="Subtitle language (you can type any language code)">
+                placeholder="e.g. en, es, zh-Hans">
               <datalist id="subtitleLanguageOptions">
                 @for (lang of subtitleLanguages; track lang.id) {
                   <option [value]="lang.id">{{ lang.text }}</option>
@@ -313,13 +311,12 @@
           </div>
           <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
-              <span class="input-group-text">Subtitle Source</span>
+              <span class="input-group-text">Subtitle Source <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Choose manual, auto, or fallback preference for captions mode." triggers="click" autoClose="outside" container="body" /></span>
               <select class="form-select"
                 name="subtitleMode"
                 [(ngModel)]="subtitleMode"
                 (change)="subtitleModeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                ngbTooltip="Choose manual, auto, or fallback preference for captions mode">
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                 @for (mode of subtitleModes; track mode.id) {
                   <option [ngValue]="mode.id">{{ mode.text }}</option>
                 }
@@ -375,34 +372,30 @@
               <div class="row g-3">
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Download Folder</span>
-                    @if (customDirs$ | async; as customDirs) {
-                    <ng-select [items]="customDirs"
+                    <span class="input-group-text">Download Folder <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Type to filter existing folders, or enter a new folder name." triggers="click" autoClose="outside" container="body" /></span>
+                    <input type="text"
+                      class="form-control"
                       placeholder="Default"
-                      [addTag]="allowCustomDir.bind(this)"
-                      addTagText="Create directory"
-                      bindLabel="folder"
+                      name="folder"
                       [(ngModel)]="folder"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      [virtualScroll]="true"
-                      [clearable]="true"
-                      [loading]="downloads.loading"
-                      [searchable]="true"
-                      [closeOnSelect]="true"
-                      ngbTooltip="Choose where to save downloads. Type to create a new folder." />
-                  }
+                      [ngbTypeahead]="searchFolder"
+                      [editable]="!!downloads.configuration['CREATE_CUSTOM_DIRS']"
+                      (focus)="folderFocus$.next($any($event.target).value)"
+                      (click)="folderClick$.next($any($event.target).value)"
+                      #folderTypeahead="ngbTypeahead"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Custom Name Prefix</span>
+                    <span class="input-group-text">Custom Name Prefix <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Add a prefix to downloaded filenames." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="text"
                       class="form-control"
                       placeholder="Default"
                       name="customNamePrefix"
                       [(ngModel)]="customNamePrefix"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Add a prefix to downloaded filenames">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 <div class="col-12">
@@ -411,18 +404,17 @@
                       <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
                           name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
-                          [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Split video into separate files by chapters">
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                         <label class="form-check-label" for="checkbox-split-chapters">Split by chapters</label>
+                        <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Split video into separate files by chapters." triggers="click" autoClose="outside" container="body" />
                       </div>
                     </div>
                     @if (splitByChapters) {
                     <div class="col">
                       <div class="input-group">
-                        <span class="input-group-text">Template</span>
+                        <span class="input-group-text">Template <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Output template for chapter files." triggers="click" autoClose="outside" container="body" /></span>
                         <input type="text" class="form-control" name="chapterTemplate" [(ngModel)]="chapterTemplate"
-                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                          ngbTooltip="Output template for chapter files">
+                          (change)="chapterTemplateChanged()" [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                       </div>
                     </div>
                     }
@@ -431,28 +423,26 @@
                 @if (downloadType === 'video' || downloadType === 'audio') {
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Clip start</span>
+                    <span class="input-group-text">Clip start <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Optional start time (seconds, M:SS, or H:MM:SS). Blank = from start or YouTube &t= in URL." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="text"
                       class="form-control"
                       name="clipStart"
                       [(ngModel)]="clipStart"
                       (change)="clipStartChanged()"
                       placeholder="e.g. 2:26"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Optional start time (seconds, M:SS, or H:MM:SS). Blank = from start or YouTube &t= in URL.">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Clip end</span>
+                    <span class="input-group-text">Clip end <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Optional end time. Blank = until end of media." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="text"
                       class="form-control"
                       name="clipEnd"
                       [(ngModel)]="clipEnd"
                       (change)="clipEndChanged()"
                       placeholder="e.g. 3:24"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Optional end time. Blank = until end of media.">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 }
@@ -461,23 +451,18 @@
               <!-- Behavior -->
               <div class="settings-section-label">Behavior</div>
               <div class="row g-3">
-                <div class="col-md-6">
-                  <div class="input-group">
-                    <span class="input-group-text">Auto Start</span>
-                    <select class="form-select"
-                      name="autoStart"
-                      [(ngModel)]="autoStart"
-                      (change)="autoStartChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Automatically start downloads when added">
-                      <option [ngValue]="true">Yes</option>
-                      <option [ngValue]="false">No</option>
-                    </select>
+                <div class="col-md-6 d-flex align-items-center">
+                  <div class="form-check form-switch">
+                    <input class="form-check-input" type="checkbox" role="switch" id="checkbox-auto-start"
+                      name="autoStart" [(ngModel)]="autoStart" (change)="autoStartChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                    <label class="form-check-label" for="checkbox-auto-start">Auto Start</label>
+                    <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Automatically start downloads when added." triggers="click" autoClose="outside" container="body" />
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Items Limit</span>
+                    <span class="input-group-text">Items Limit <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Maximum number of items to download from a playlist or channel (0 = no limit)." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="number"
                       min="0"
                       class="form-control"
@@ -485,13 +470,12 @@
                       name="playlistItemLimit"
                       (keydown)="isNumber($event)"
                       [(ngModel)]="playlistItemLimit"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Maximum number of items to download from a playlist or channel (0 = no limit)">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Subscription Check (min)</span>
+                    <span class="input-group-text">Subscription Check (min) <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="How often to poll subscriptions for new videos." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="number"
                       min="1"
                       class="form-control"
@@ -499,29 +483,27 @@
                       (keydown)="isNumber($event)"
                       [(ngModel)]="checkIntervalMinutes"
                       (ngModelChange)="checkIntervalChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="How often to poll subscriptions for new videos">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Subscription Title Filter</span>
+                    <span class="input-group-text">Subscription Title Filter <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="In subscriptions, only titles matching this Python-style regex are queued. Empty = all. Case-sensitive; use (?i) in the pattern for case-insensitive." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="text"
                       class="form-control"
                       name="titleRegex"
                       [(ngModel)]="titleRegex"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      placeholder="Optional regex"
-                      ngbTooltip="In subscriptions, only titles matching this Python-style regex are queued. Empty = all. Case-sensitive; use (?i) in the pattern for case-insensitive.">
+                      placeholder="Optional regex">
                   </div>
                 </div>
                 <div class="col-12">
                   <div class="form-check form-switch">
                     <input class="form-check-input" type="checkbox" role="switch" id="checkbox-skip-subscriber-only"
                       name="skipSubscriberOnly" [(ngModel)]="skipSubscriberOnly"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="When enabled, subscription checks skip videos marked members-only by yt-dlp (channel Join). Ignored for one-off downloads." />
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
                     <label class="form-check-label" for="checkbox-skip-subscriber-only">Skip members-only subscription videos</label>
+                    <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="When enabled, subscription checks skip videos marked members-only by yt-dlp (channel Join). Ignored for one-off downloads." triggers="click" autoClose="outside" container="body" />
                   </div>
                 </div>
               </div>
@@ -531,7 +513,7 @@
               <div class="row g-3">
                 <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
                   <div class="input-group">
-                    <span class="input-group-text">Option Presets</span>
+                    <span class="input-group-text">Option Presets <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Choose one or more yt-dlp option presets configured on the server (applied in order)." triggers="click" autoClose="outside" container="body" /></span>
                     <ng-select
                       class="flex-grow-1"
                       name="ytdlOptionsPresets"
@@ -541,22 +523,20 @@
                       placeholder="Default"
                       [(ngModel)]="ytdlOptionsPresets"
                       (ngModelChange)="ytdlOptionsPresetsChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Choose one or more yt-dlp option presets configured on the server (applied in order)" />
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
                   </div>
                 </div>
                 @if (allowYtdlOptionsOverrides()) {
                 <div class="col-md-6">
                   <div class="input-group">
-                    <span class="input-group-text">Custom yt-dlp Options</span>
+                    <span class="input-group-text">Custom yt-dlp Options <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Optional per-download yt-dlp overrides as a JSON object." triggers="click" autoClose="outside" container="body" /></span>
                     <input type="text"
                       class="form-control"
                       placeholder='e.g. {"writesubtitles": true}'
                       name="ytdlOptionsOverrides"
                       [(ngModel)]="ytdlOptionsOverrides"
                       (change)="ytdlOptionsOverridesChanged()"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
-                      ngbTooltip="Optional per-download yt-dlp overrides as a JSON object">
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
                 }
@@ -566,7 +546,7 @@
               <div class="settings-section-label">Tools</div>
               <div class="row g-3">
                 <div class="col-md-4">
-                  <div class="action-group-label">Cookies</div>
+                  <div class="action-group-label">Cookies <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Upload a cookies.txt file from your browser to authenticate restricted or private downloads." triggers="click" autoClose="outside" container="body" /></div>
                   <input type="file" id="cookie-upload" class="d-none" accept=".txt"
                     (change)="onCookieFileSelect($event)"
                     [disabled]="cookieUploadInProgress || addInProgress">
@@ -574,8 +554,7 @@
                     <label class="btn mb-0"
                       [class]="hasCookies ? 'btn cookie-active-btn mb-0' : 'btn cookie-btn mb-0'"
                       [class.disabled]="cookieUploadInProgress || addInProgress"
-                      for="cookie-upload"
-                      ngbTooltip="Upload a cookies.txt file for authenticated downloads">
+                      for="cookie-upload">
                       @if (cookieUploadInProgress) {
                         <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                       } @else {
@@ -936,8 +915,7 @@
           </th>
           <th scope="col">Name</th>
           <th scope="col">URL</th>
-          <th scope="col" class="text-nowrap"
-            ngbTooltip="Subscriptions only — which new video titles to queue when this feed is checked. Does not affect manual downloads.">Sub. title filter</th>
+          <th scope="col" class="text-nowrap">Sub. title filter <fa-icon [icon]="faCircleQuestion" class="help-icon" role="button" tabindex="0" ngbPopover="Subscriptions only — which new video titles to queue when this feed is checked. Does not affect manual downloads." triggers="click" autoClose="outside" container="body" /></th>
           <th scope="col" class="text-nowrap">Interval (min)</th>
           <th scope="col" class="text-nowrap">Last checked</th>
           <th scope="col">Status</th>

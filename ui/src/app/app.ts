@@ -1,13 +1,13 @@
-import { AsyncPipe, DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
+import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, Subject, Subscription, from, map, distinctUntilChanged, finalize, mergeMap, takeUntil, tap } from 'rxjs';
+import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, takeUntil, tap } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
-import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
+import { NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
+import { NgSelectModule } from '@ng-select/ng-select';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faCircleQuestion, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -40,7 +40,6 @@ import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/
         FormsModule,
         NgTemplateOutlet,
         KeyValuePipe,
-        AsyncPipe,
         DatePipe,
         FontAwesomeModule,
         NgbModule,
@@ -106,7 +105,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
   customDirs$!: Observable<string[]>;
-  showBatchPanel = false; 
+  readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
+  folderFocus$ = new Subject<string>();
+  folderClick$ = new Subject<string>();
+  showBatchPanel = false;
   batchImportModalOpen = false;
   batchImportText = '';
   batchImportStatus = '';
@@ -170,6 +172,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faMoon = faMoon;
   faCheck = faCheck;
   faCircleHalfStroke = faCircleHalfStroke;
+  faCircleQuestion = faCircleQuestion;
   faDownload = faDownload;
   faExternalLinkAlt = faExternalLinkAlt;
   faFileImport = faFileImport;
@@ -336,9 +339,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   // workaround to allow fetching of Map values in the order they were inserted
   //  https://github.com/angular/angular/issues/31420
-    
-   
-      
+
+
+
   asIsOrder() {
     return 1;
   }
@@ -381,6 +384,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     return false;
   }
+
+  searchFolder: OperatorFunction<string, readonly string[]> = (text$: Observable<string>) => {
+    const debouncedText$ = text$.pipe(debounceTime(150), distinctUntilChanged());
+    const clicksWithClosedPopup$ = this.folderClick$.pipe(
+      filter(() => !this.folderTypeahead()?.isPopupOpen()),
+    );
+    return merge(debouncedText$, this.folderFocus$, clicksWithClosedPopup$).pipe(
+      map(term => {
+        const dirs = this.isAudioType()
+          ? (this.downloads.customDirs?.['audio_download_dir'] ?? [])
+          : (this.downloads.customDirs?.['download_dir'] ?? []);
+        const t = (term ?? '').toLowerCase();
+        return (t === '' ? dirs : dirs.filter(d => d.toLowerCase().includes(t))).slice(0, 10);
+      }),
+    );
+  };
 
   isAudioType() {
     return this.downloadType === 'audio';
@@ -1398,7 +1417,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   fetchVersionInfo(): void {
-    // eslint-disable-next-line no-useless-escape    
+    // eslint-disable-next-line no-useless-escape
     const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
     const versionUrl = `${baseUrl}version`;
     this.http.get<{ 'yt-dlp': string, version: string }>(versionUrl)
