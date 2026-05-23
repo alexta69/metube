@@ -32,6 +32,7 @@ import {
 } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
 import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/';
+import { parseMetubeImportFromLocation } from './metube-import-query';
 
 @Component({
   selector: 'app-root',
@@ -83,6 +84,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   chapterTemplate: string;
   clipStart = '';
   clipEnd = '';
+  batchClipRows: { start: string; end: string }[] = [{ start: '', end: '' }];
+  /** Set when opened via extension deep link with merge=1 */
+  importMergeHint = false;
+  private urlImportDone = false;
   subtitleLanguage: string;
   subtitleMode: string;
   ytdlOptionsPresets: string[] = [];
@@ -301,6 +306,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngOnInit() {
+    this.applyImportFromUrl();
     this.downloads.getCookieStatus().pipe(takeUntilDestroyed(this.destroyRef)).subscribe(data => {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
       this.cdr.markForCheck();
@@ -315,6 +321,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngAfterViewInit() {
+    this.applyImportFromUrl();
     this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.queueMasterCheckbox()?.selectionChanged();
       this.cdr.markForCheck();
@@ -365,6 +372,35 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   codecChanged() {
     this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
     this.saveSelection(this.downloadType);
+  }
+
+  applyImportFromUrl() {
+    if (this.urlImportDone) {
+      return;
+    }
+    const imp = parseMetubeImportFromLocation(window.location.search, window.location.hash);
+    if (!imp) {
+      return;
+    }
+    this.urlImportDone = true;
+    this.addUrl = imp.url;
+    this.importMergeHint = !!imp.mergeClips;
+    if (imp.clips.length > 0) {
+      this.batchClipRows = imp.clips.map((c) => ({ start: c.start, end: c.end }));
+      if (imp.clips.length === 1) {
+        this.clipStart = imp.clips[0].start;
+        this.clipEnd = imp.clips[0].end;
+      } else {
+        this.clipStart = '';
+        this.clipEnd = '';
+      }
+    }
+    if (imp.clips.length > 0 && (this.downloadType === 'video' || this.downloadType === 'audio')) {
+      this.isAdvancedOpen = true;
+    }
+    const path = window.location.pathname || '/';
+    window.history.replaceState(null, '', path);
+    this.cdr.markForCheck();
   }
 
   showAdvanced() {
@@ -1057,6 +1093,57 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     };
   }
 
+  addBatchClipRow() {
+    this.batchClipRows.push({ start: '', end: '' });
+  }
+
+  removeBatchClipRow(index: number) {
+    if (this.batchClipRows.length > 1) {
+      this.batchClipRows.splice(index, 1);
+    }
+  }
+
+  hasValidBatchClips(): boolean {
+    return this.batchClipRows.some(
+      (row) => Boolean(row.start?.trim()) && Boolean(row.end?.trim()),
+    );
+  }
+
+  addBatchDownload(mergeClips: boolean) {
+    if (!this.addUrl?.trim()) {
+      alert('Enter a video URL first.');
+      return;
+    }
+    const clips = this.batchClipRows
+      .filter((row) => row.start.trim() && row.end.trim())
+      .map((row) => ({ start: row.start.trim(), end: row.end.trim() }));
+    if (!clips.length) {
+      alert('Add at least one row with start and end times.');
+      return;
+    }
+    const payload = this.buildAddPayload();
+    if (!this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides)) {
+      return;
+    }
+    this.addInProgress = true;
+    this.cancelRequested = false;
+    this.addRequestSub?.unsubscribe();
+    this.addRequestSub = this.downloads
+      .addBatch(payload, clips, mergeClips)
+      .subscribe((status: Status) => {
+        if (status.status === 'error' && !this.cancelRequested) {
+          alert(`Error adding batch: ${status.msg}`);
+        } else if (status.status !== 'error') {
+          if (status.msg) {
+            alert(status.msg);
+          } else {
+            this.addUrl = '';
+          }
+        }
+        this.resetAddState();
+      });
+  }
+
   addDownload(overrides: Partial<AddDownloadPayload> = {}) {
     const payload = this.buildAddPayload(overrides);
 
@@ -1077,7 +1164,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       if (status.status === 'error' && !this.cancelRequested) {
         alert(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
-        this.addUrl = '';
+        if (status.msg) {
+          alert(status.msg);
+        } else {
+          this.addUrl = '';
+        }
       }
       this.resetAddState();
     });

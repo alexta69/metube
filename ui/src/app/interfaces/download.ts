@@ -3,6 +3,8 @@ export interface Download {
   id: string;
   title: string;
   url: string;
+  /** Backend queue/history id; required for clips (differs from url). */
+  queue_key?: string;
   download_type: string;
   codec?: string;
   quality: string;

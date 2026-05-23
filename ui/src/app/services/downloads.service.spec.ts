@@ -197,6 +197,35 @@ describe('DownloadsService', () => {
     expect(service.queue.has('u1')).toBe(true);
   });
 
+  it('delByFilter uses map keys for clip downloads', () => {
+    const clipKey = 'https://youtu.be/x#clip:10-20';
+    const dl: Download = {
+      id: '1',
+      title: 't',
+      url: 'https://youtu.be/x',
+      queue_key: clipKey,
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+      deleting: false,
+    };
+    service.done.set(clipKey, dl);
+    service.delByFilter('done', () => true).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: [clipKey] });
+    req.flush({});
+  });
+
   it('socket updated preserves checked and deleting', () => {
     service.queue.set('u1', {
       id: '1',
@@ -227,10 +256,12 @@ describe('DownloadsService', () => {
   });
 
   it('socket completed moves entry to done', () => {
-    service.queue.set('u1', {
+    const clipKey = 'u1#clip:10-20';
+    service.queue.set(clipKey, {
       id: '1',
       title: 't',
       url: 'u1',
+      queue_key: clipKey,
       download_type: 'video',
       quality: 'best',
       format: 'any',
@@ -245,9 +276,12 @@ describe('DownloadsService', () => {
       filename: '',
       checked: false,
     });
-    socket.emit('completed', JSON.stringify({ url: 'u1', title: 't', status: 'finished' }));
-    expect(service.queue.has('u1')).toBe(false);
-    expect(service.done.has('u1')).toBe(true);
+    socket.emit(
+      'completed',
+      JSON.stringify({ url: 'u1', queue_key: clipKey, title: 't', status: 'finished' }),
+    );
+    expect(service.queue.has(clipKey)).toBe(false);
+    expect(service.done.has(clipKey)).toBe(true);
   });
 
   it('socket canceled removes from queue', () => {

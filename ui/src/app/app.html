@@ -436,7 +436,7 @@
                       class="form-control"
                       name="clipStart"
                       [(ngModel)]="clipStart"
-                      (change)="clipStartChanged()"
+                      (ngModelChange)="clipStartChanged()"
                       placeholder="e.g. 2:26"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Optional start time (seconds, M:SS, or H:MM:SS). Blank = from start or YouTube &t= in URL.">
@@ -449,10 +449,78 @@
                       class="form-control"
                       name="clipEnd"
                       [(ngModel)]="clipEnd"
-                      (change)="clipEndChanged()"
+                      (ngModelChange)="clipEndChanged()"
                       placeholder="e.g. 3:24"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading"
                       ngbTooltip="Optional end time. Blank = until end of media.">
+                  </div>
+                </div>
+                }
+                @if (downloadType === 'video' || downloadType === 'audio') {
+                <div class="col-12">
+                  <div class="settings-section-label mb-2">Batch clips (same URL)</div>
+                  <p class="text-muted small mb-2">
+                    Add multiple time ranges for the URL above. Use <code>M:SS</code> or <code>H:MM:SS</code> (seconds also work).
+                    @if (importMergeHint) {
+                      <span class="d-block mt-1">Extension suggested a <strong>merged</strong> download — use <em>Download merged</em> below.</span>
+                    }
+                  </p>
+                  <div class="table-responsive">
+                    <table class="table table-sm align-middle mb-2">
+                      <thead>
+                        <tr>
+                          <th scope="col">Start</th>
+                          <th scope="col">End</th>
+                          <th scope="col" class="text-end"> </th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        @for (row of batchClipRows; track $index; let i = $index) {
+                        <tr>
+                          <td>
+                            <input type="text" class="form-control form-control-sm"
+                              [(ngModel)]="row.start"
+                              [name]="'batchStart' + i"
+                              placeholder="1:30"
+                              [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
+                          </td>
+                          <td>
+                            <input type="text" class="form-control form-control-sm"
+                              [(ngModel)]="row.end"
+                              [name]="'batchEnd' + i"
+                              placeholder="1:45"
+                              [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
+                          </td>
+                          <td class="text-end">
+                            <button type="button" class="btn btn-sm btn-outline-danger"
+                              (click)="removeBatchClipRow(i)"
+                              [disabled]="batchClipRows.length <= 1 || addInProgress || subscribeInProgress || downloads.loading"
+                              [attr.aria-label]="'Remove clip row ' + (i + 1)">
+                              <fa-icon [icon]="faTrashAlt" />
+                            </button>
+                          </td>
+                        </tr>
+                        }
+                      </tbody>
+                    </table>
+                  </div>
+                  <div class="d-flex flex-wrap gap-2 align-items-center">
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                      (click)="addBatchClipRow()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                      Add row
+                    </button>
+                    <button type="button" class="btn btn-sm btn-primary"
+                      (click)="addBatchDownload(false)"
+                      [disabled]="!addUrl || !hasValidBatchClips() || addInProgress || subscribeInProgress || downloads.loading">
+                      Download each clip
+                    </button>
+                    <button type="button" class="btn btn-sm btn-outline-primary"
+                      (click)="addBatchDownload(true)"
+                      [disabled]="!addUrl || !hasValidBatchClips() || addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Download all ranges, then merge into one file with ffmpeg">
+                      Download merged
+                    </button>
                   </div>
                 </div>
                 }

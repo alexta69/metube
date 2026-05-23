@@ -383,6 +383,45 @@ async def test_add_sets_clip_bounds_on_download_info(dq_env):
         )
 
     assert result["status"] == "ok"
-    download = dq.pending.get("https://example.com/clip")
+    from ytdl import download_queue_key
+
+    url = "https://example.com/clip"
+    download = dq.pending.get(download_queue_key(url, 10.0, 99.5))
     assert download.info.clip_start == 10.0
     assert download.info.clip_end == 99.5
+    assert download.info.url == url
+
+
+@pytest.mark.asyncio
+async def test_add_allows_multiple_clips_for_same_url(dq_env):
+    notifier = AsyncMock()
+    url = "https://example.com/watch?v=same"
+
+    def fake_extract(self, _url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": _url,
+            "webpage_url": _url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        first = await dq.add(
+            url, "video", "auto", "any", "best", "", "", 0,
+            auto_start=False, clip_start=10.0, clip_end=20.0,
+        )
+        second = await dq.add(
+            url, "video", "auto", "any", "best", "", "", 0,
+            auto_start=False, clip_start=30.0, clip_end=40.0,
+        )
+
+    assert first["status"] == "ok"
+    assert second["status"] == "ok"
+    from ytdl import download_queue_key
+
+    assert dq.pending.exists(download_queue_key(url, 10.0, 20.0))
+    assert dq.pending.exists(download_queue_key(url, 30.0, 40.0))
+    assert dq.pending.get(download_queue_key(url, 10.0, 20.0)).info.clip_start == 10.0
+    assert dq.pending.get(download_queue_key(url, 30.0, 40.0)).info.clip_start == 30.0

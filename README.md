@@ -9,8 +9,15 @@ Key capabilities:
 * Download videos, audio, captions, and thumbnails from a browser UI.
 * Download playlists and channels, with configurable output and download options.
 * Subscribe to channels and playlists, periodically check for new items, and queue new uploads automatically.
+* Download only part of a video or audio track using **Clip start** / **Clip end** (see below).
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
+
+## ✂️ Time clips (partial downloads)
+
+For **Video** or **Audio**, use **Clip start** / **Clip end** (`90`, `1:30`, `H:MM:SS`), or **Batch clips** in Advanced Options (several ranges for the same URL — separate files or one merged file). Prefer a URL without `&t=` when setting times manually. Not available for subscriptions.
+
+Bookmarklets or other tools can prefill the add form via `?url=…&clips=…` or `#mt=…` (see `ui/src/app/metube-import-query.ts`).
 
 ## 🐳 Run using Docker
 

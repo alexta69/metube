@@ -25,6 +25,17 @@ export interface AddDownloadPayload {
   clipStart?: string;
   clipEnd?: string;
 }
+
+export interface BatchClipInput {
+  start: string;
+  end: string;
+}
+
+/** Map key for queue/done — matches backend PersistentQueue key. */
+export function downloadMapKey(dl: Pick<Download, 'url' | 'queue_key'>): string {
+  return dl.queue_key ?? dl.url;
+}
+
 @Injectable({
   providedIn: 'root'
 })
@@ -61,25 +72,36 @@ export class DownloadsService {
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: Download = JSON.parse(strdata);
-      this.queue.set(data.url, data);
+      const key = downloadMapKey(data);
+      if (key !== data.url) {
+        this.queue.delete(data.url);
+      }
+      this.queue.set(key, data);
       this.queueChanged.next();
     });
     this.socket.fromEvent('updated')
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: Download = JSON.parse(strdata);
-      const dl: Download | undefined  = this.queue.get(data.url);
+      const key = downloadMapKey(data);
+      const dl: Download | undefined = this.queue.get(key) ?? this.queue.get(data.url);
       data.checked = !!dl?.checked;
       data.deleting = !!dl?.deleting;
-      this.queue.set(data.url, data);
+      if (key !== data.url) {
+        this.queue.delete(data.url);
+      }
+      this.queue.set(key, data);
       this.updated.next();
     });
     this.socket.fromEvent('completed')
     .pipe(takeUntilDestroyed())
     .subscribe((strdata: string) => {
       const data: Download = JSON.parse(strdata);
+      const key = downloadMapKey(data);
       this.queue.delete(data.url);
-      this.done.set(data.url, data);
+      this.queue.delete(key);
+      this.done.delete(data.url);
+      this.done.set(key, data);
       this.queueChanged.next();
       this.doneChanged.next();
     });
@@ -150,9 +172,42 @@ export class DownloadsService {
     };
     const cs = payload.clipStart?.trim();
     const ce = payload.clipEnd?.trim();
-    if (cs) body['clip_start'] = cs;
-    if (ce) body['clip_end'] = ce;
+    if (cs) {
+      body['clip_start'] = cs;
+    }
+    if (ce) {
+      body['clip_end'] = ce;
+    }
+    // If only end is set, backend needs an explicit start of 0 — send it when end is present.
+    if (ce && !cs) {
+      body['clip_start'] = '0';
+    }
     return this.http.post<Status>('add', body).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  public addBatch(payload: AddDownloadPayload, clips: BatchClipInput[], mergeClips: boolean) {
+    const body: Record<string, unknown> = {
+      url: payload.url,
+      download_type: payload.downloadType,
+      codec: payload.codec,
+      quality: payload.quality,
+      format: payload.format,
+      folder: payload.folder,
+      custom_name_prefix: payload.customNamePrefix,
+      playlist_item_limit: payload.playlistItemLimit,
+      auto_start: payload.autoStart,
+      split_by_chapters: payload.splitByChapters,
+      chapter_template: payload.chapterTemplate,
+      subtitle_language: payload.subtitleLanguage,
+      subtitle_mode: payload.subtitleMode,
+      ytdl_options_presets: payload.ytdlOptionsPresets,
+      ytdl_options_overrides: payload.ytdlOptionsOverrides,
+      merge_clips: mergeClips,
+      clips: clips.map((c) => ({ start: c.start.trim(), end: c.end.trim() })),
+    };
+    return this.http.post<Status>('add-batch', body).pipe(
       catchError(this.handleHTTPError)
     );
   }
@@ -182,13 +237,21 @@ export class DownloadsService {
 
   public startByFilter(where: State, filter: (dl: Download) => boolean) {
     const ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
+    this[where].forEach((dl: Download, key: string) => {
+      if (filter(dl)) {
+        ids.push(key);
+      }
+    });
     return this.startById(ids);
   }
 
   public delByFilter(where: State, filter: (dl: Download) => boolean) {
     const ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
+    this[where].forEach((dl: Download, key: string) => {
+      if (filter(dl)) {
+        ids.push(key);
+      }
+    });
     return this.delById(where, ids);
   }
   public cancelAdd() {

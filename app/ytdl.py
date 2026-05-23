@@ -1,5 +1,7 @@
+import glob
 import os
 import shutil
+import subprocess
 import yt_dlp
 import collections
 import collections.abc
@@ -43,6 +45,64 @@ def _sanitize_path_component(value: Any) -> Any:
     if not isinstance(value, str):
         return value
     return _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
+
+
+def _format_clip_bound(value: Any) -> str:
+    if value is None:
+        return "none"
+    if isinstance(value, float):
+        if value == float("inf"):
+            return "inf"
+        if value == int(value):
+            return str(int(value))
+        return format(value, "g")
+    return str(value)
+
+
+def download_queue_key(
+    url: str,
+    clip_start=None,
+    clip_end=None,
+    clip_ranges: list[tuple[float, float]] | None = None,
+    merge_clips: bool = False,
+) -> str:
+    """Stable queue/history key; allows multiple clips from the same video URL."""
+    if clip_ranges:
+        parts = "_".join(
+            f"{_format_clip_bound(s)}-{_format_clip_bound(e)}" for s, e in clip_ranges
+        )
+        tag = "clipmerged" if merge_clips else "clipbatch"
+        return f"{url}#{tag}:{parts}"
+    if clip_start is None and clip_end is None:
+        return url
+    return f"{url}#clip:{_format_clip_bound(clip_start)}-{_format_clip_bound(clip_end)}"
+
+
+def clip_batch_autoname_prefix(
+    clip_ranges: list[tuple[float, float]],
+    *,
+    merge: bool,
+) -> str:
+    parts = "_".join(
+        f"{_format_clip_bound(s)}-{_format_clip_bound(e)}" for s, e in clip_ranges
+    )
+    return f"clipmerged_{parts}" if merge else f"clipbatch_{parts}"
+
+
+def clip_autoname_prefix(clip_start=None, clip_end=None) -> str:
+    """Filename prefix segment so clips from the same title do not overwrite each other."""
+    if clip_start is None and clip_end is None:
+        return ""
+    return f"clip_{_format_clip_bound(clip_start)}-{_format_clip_bound(clip_end)}"
+
+
+def merge_custom_name_prefix(custom_name_prefix: str, clip_start=None, clip_end=None) -> str:
+    suffix = clip_autoname_prefix(clip_start, clip_end)
+    if not suffix:
+        return custom_name_prefix or ""
+    if custom_name_prefix:
+        return f"{custom_name_prefix}_{suffix}"
+    return suffix
 
 
 # Regex matching yt-dlp output-template field references, e.g. ``%(title)s``
@@ -194,10 +254,21 @@ class DownloadInfo:
         ytdl_options_overrides=None,
         clip_start=None,
         clip_end=None,
+        clip_ranges=None,
+        merge_clips=False,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
         self.url = url
+        self.clip_ranges = list(clip_ranges or [])
+        self.merge_clips = bool(merge_clips)
+        self.queue_key = download_queue_key(
+            url,
+            clip_start,
+            clip_end,
+            clip_ranges=self.clip_ranges if self.merge_clips else None,
+            merge_clips=self.merge_clips,
+        )
         self.quality = quality
         self.download_type = download_type
         self.codec = codec
@@ -292,6 +363,20 @@ class DownloadInfo:
             self.clip_start = None
         if not hasattr(self, "clip_end"):
             self.clip_end = None
+        if not hasattr(self, "clip_ranges"):
+            self.clip_ranges = []
+        elif self.clip_ranges and isinstance(self.clip_ranges[0], (list, tuple)):
+            self.clip_ranges = [tuple(float(x) for x in r) for r in self.clip_ranges]
+        if not hasattr(self, "merge_clips"):
+            self.merge_clips = False
+        if not hasattr(self, "queue_key"):
+            self.queue_key = download_queue_key(
+                self.url,
+                getattr(self, "clip_start", None),
+                getattr(self, "clip_end", None),
+                clip_ranges=self.clip_ranges if self.merge_clips else None,
+                merge_clips=self.merge_clips,
+            )
 
 
 _PERSISTED_DOWNLOAD_FIELDS = (
@@ -313,6 +398,9 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "ytdl_options_overrides",
     "clip_start",
     "clip_end",
+    "clip_ranges",
+    "merge_clips",
+    "queue_key",
     "status",
     "timestamp",
     "error",
@@ -413,6 +501,77 @@ class Download:
         self.loop = None
         self.notifier = None
 
+    def _download_merged_clips(self, ytdl_params: dict) -> int:
+        """Download multiple time ranges and concatenate into one file with ffmpeg."""
+        ranges = list(self.info.clip_ranges or [])
+        if not ranges:
+            return 1
+        batch_dir = os.path.join(self.temp_dir, f'merge_{self.info.id}')
+        os.makedirs(batch_dir, exist_ok=True)
+        part_paths: list[str] = []
+        try:
+            for i, (start, end) in enumerate(ranges):
+                part_tmpl = os.path.join(batch_dir, f'part_{i:03d}.%(ext)s')
+                part_params = {
+                    **ytdl_params,
+                    'outtmpl': {'default': part_tmpl, 'chapter': self.output_template_chapter},
+                    'download_ranges': yt_dlp.utils.download_range_func(
+                        None,
+                        [(float(start), float(end))],
+                    ),
+                }
+                code = yt_dlp.YoutubeDL(params=part_params).download([self.info.url])
+                if code != 0:
+                    return code
+                matches = sorted(glob.glob(os.path.join(batch_dir, f'part_{i:03d}.*')))
+                if not matches:
+                    log.error('Merged clip part %s produced no file', i)
+                    return 1
+                part_paths.append(matches[0])
+
+            list_path = os.path.join(batch_dir, 'concat.txt')
+            with open(list_path, 'w', encoding='utf-8') as fh:
+                for path in part_paths:
+                    escaped = path.replace("'", "'\\''")
+                    fh.write(f"file '{escaped}'\n")
+
+            ext = os.path.splitext(part_paths[0])[1] or '.mp4'
+            name_info = dict(self.info.entry) if isinstance(self.info.entry, dict) else {}
+            name_info.setdefault('title', self.info.title)
+            name_info.setdefault('id', self.info.id)
+            name_info['ext'] = ext.lstrip('.') or 'mp4'
+            merged_name = yt_dlp.YoutubeDL({
+                'quiet': True,
+                'paths': {'home': self.download_dir},
+            }).prepare_filename(name_info, outtmpl=self.output_template)
+            if not os.path.isabs(merged_name):
+                merged_name = os.path.join(self.download_dir, merged_name)
+            os.makedirs(os.path.dirname(merged_name) or self.download_dir, exist_ok=True)
+
+            cmd = [
+                'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                '-i', list_path, '-c', 'copy', merged_name,
+            ]
+            proc = subprocess.run(cmd, capture_output=True, text=True)
+            if proc.returncode != 0:
+                log.warning('ffmpeg concat -c copy failed, re-encoding: %s', proc.stderr)
+                cmd = [
+                    'ffmpeg', '-y', '-f', 'concat', '-safe', '0',
+                    '-i', list_path, '-c:v', 'libx264', '-c:a', 'aac', merged_name,
+                ]
+                proc = subprocess.run(cmd, capture_output=True, text=True)
+                if proc.returncode != 0:
+                    log.error('ffmpeg merge failed: %s', proc.stderr)
+                    return 1
+
+            rel_name = os.path.relpath(merged_name, self.download_dir)
+            self.info.filename = rel_name
+            self.info.size = os.path.getsize(merged_name) if os.path.exists(merged_name) else None
+            self.status_queue.put({'status': 'finished', 'filename': merged_name})
+            return 0
+        finally:
+            shutil.rmtree(batch_dir, ignore_errors=True)
+
     def _download(self):
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
@@ -483,17 +642,21 @@ class Download:
                     'force_keyframes': False
                 })
 
-            clip_start = getattr(self.info, 'clip_start', None)
-            clip_end = getattr(self.info, 'clip_end', None)
-            if clip_start is not None or clip_end is not None:
-                start = float(clip_start) if clip_start is not None else 0.0
-                end = float(clip_end) if clip_end is not None else float('inf')
-                ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(
-                    None,
-                    [(start, end)],
-                )
-
-            ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
+            clip_ranges = getattr(self.info, 'clip_ranges', None) or []
+            merge_clips = getattr(self.info, 'merge_clips', False)
+            if merge_clips and clip_ranges:
+                ret = self._download_merged_clips(ytdl_params)
+            else:
+                clip_start = getattr(self.info, 'clip_start', None)
+                clip_end = getattr(self.info, 'clip_end', None)
+                if clip_start is not None or clip_end is not None:
+                    start = float(clip_start) if clip_start is not None else 0.0
+                    end = float(clip_end) if clip_end is not None else float('inf')
+                    ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(
+                        None,
+                        [(start, end)],
+                    )
+                ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
@@ -639,8 +802,11 @@ class PersistentQueue:
         self.dict = OrderedDict()
 
     def load(self):
-        for k, v in self.saved_items():
-            self.dict[k] = Download(None, None, None, None, getattr(v, 'quality', 'best'), getattr(v, 'format', 'any'), {}, v)
+        for file_key, v in self.saved_items():
+            key = getattr(v, "queue_key", None) or file_key
+            if key != file_key:
+                log.info("PersistentQueue:%s migrating key %s -> %s", self.identifier, file_key, key)
+            self.dict[key] = Download(None, None, None, None, getattr(v, 'quality', 'best'), getattr(v, 'format', 'any'), {}, v)
 
     def exists(self, key):
         return key in self.dict
@@ -716,7 +882,7 @@ class PersistentQueue:
         return items
 
     def put(self, value):
-        key = value.info.url
+        key = value.info.queue_key
         old = self.dict.get(key)
         self.dict[key] = value
         try:
@@ -795,10 +961,10 @@ class DownloadQueue:
                     pass
             download.info.status = 'error'
         download.close()
-        if self.queue.exists(download.info.url):
-            self.queue.delete(download.info.url)
+        if self.queue.exists(download.info.queue_key):
+            self.queue.delete(download.info.queue_key)
             if download.canceled:
-                asyncio.create_task(self.notifier.canceled(download.info.url))
+                asyncio.create_task(self.notifier.canceled(download.info.queue_key))
             else:
                 self.done.put(download)
                 asyncio.create_task(self.notifier.completed(download.info))
@@ -808,7 +974,7 @@ class DownloadQueue:
                     log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
                     clear_after = 0
                 if clear_after > 0:
-                    task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
+                    task = asyncio.create_task(self.__auto_clear_after_delay(download.info.queue_key, clear_after))
                     task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
 
     async def __auto_clear_after_delay(self, url, delay_seconds):
@@ -914,6 +1080,8 @@ class DownloadQueue:
         clip_end,
         already,
         _add_gen=None,
+        clip_ranges=None,
+        merge_clips=False,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1003,6 +1171,8 @@ class DownloadQueue:
                         clip_end,
                         already,
                         _add_gen,
+                        clip_ranges,
+                        merge_clips,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -1014,7 +1184,20 @@ class DownloadQueue:
             if key in self._canceled_urls:
                 log.info(f'Skipping canceled URL: {entry.get("title") or key}')
                 return {'status': 'ok'}
-            if not self.queue.exists(key):
+            clip_ranges = clip_ranges or []
+            merge_clips = bool(merge_clips)
+            if merge_clips and clip_ranges:
+                queue_key = download_queue_key(
+                    key, clip_ranges=clip_ranges, merge_clips=True,
+                )
+                if self.queue.exists(queue_key) or self.pending.exists(queue_key):
+                    log.info('Download already queued for %s', queue_key)
+                    return {'status': 'ok', 'msg': 'This merged clip batch is already in the queue'}
+                effective_prefix = custom_name_prefix or ''
+                batch_prefix = clip_batch_autoname_prefix(clip_ranges, merge=True)
+                effective_prefix = (
+                    f"{effective_prefix}_{batch_prefix}" if effective_prefix else batch_prefix
+                )
                 dl = DownloadInfo(
                     id=entry['id'],
                     title=entry.get('title') or entry['id'],
@@ -1024,7 +1207,37 @@ class DownloadQueue:
                     codec=codec,
                     format=format,
                     folder=folder,
-                    custom_name_prefix=custom_name_prefix,
+                    custom_name_prefix=effective_prefix,
+                    error=error,
+                    entry=entry,
+                    playlist_item_limit=playlist_item_limit,
+                    split_by_chapters=False,
+                    chapter_template=chapter_template,
+                    subtitle_language=subtitle_language,
+                    subtitle_mode=subtitle_mode,
+                    ytdl_options_presets=ytdl_options_presets,
+                    ytdl_options_overrides=ytdl_options_overrides,
+                    clip_ranges=clip_ranges,
+                    merge_clips=True,
+                )
+            else:
+                queue_key = download_queue_key(key, clip_start, clip_end)
+                if self.queue.exists(queue_key) or self.pending.exists(queue_key):
+                    log.info('Download already queued for %s', queue_key)
+                    return {'status': 'ok', 'msg': 'This clip is already in the queue'}
+                effective_prefix = merge_custom_name_prefix(
+                    custom_name_prefix, clip_start, clip_end,
+                )
+                dl = DownloadInfo(
+                    id=entry['id'],
+                    title=entry.get('title') or entry['id'],
+                    url=key,
+                    quality=quality,
+                    download_type=download_type,
+                    codec=codec,
+                    format=format,
+                    folder=folder,
+                    custom_name_prefix=effective_prefix,
                     error=error,
                     entry=entry,
                     playlist_item_limit=playlist_item_limit,
@@ -1037,7 +1250,7 @@ class DownloadQueue:
                     clip_start=clip_start,
                     clip_end=clip_end,
                 )
-                await self.__add_download(dl, auto_start)
+            await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
@@ -1062,13 +1275,16 @@ class DownloadQueue:
         clip_end=None,
         already=None,
         _add_gen=None,
+        clip_ranges=None,
+        merge_clips=False,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
         log.info(
             f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=}'
+            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=} '
+            f'{merge_clips=} {clip_ranges=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -1106,7 +1322,64 @@ class DownloadQueue:
             clip_end,
             already,
             _add_gen,
+            clip_ranges,
+            merge_clips,
         )
+
+    async def add_batch(self, options: dict, clips: list[tuple[float, float]], merge_clips: bool):
+        if options['download_type'] in ('captions', 'thumbnail'):
+            return {'status': 'error', 'msg': 'Batch clips only support video and audio downloads'}
+        if not clips:
+            return {'status': 'error', 'msg': 'No clip ranges provided'}
+        if merge_clips:
+            return await self.add(
+                options['url'],
+                options['download_type'],
+                options['codec'],
+                options['format'],
+                options['quality'],
+                options['folder'],
+                options['custom_name_prefix'],
+                options['playlist_item_limit'],
+                options['auto_start'],
+                False,
+                options['chapter_template'],
+                options['subtitle_language'],
+                options['subtitle_mode'],
+                options['ytdl_options_presets'],
+                options['ytdl_options_overrides'],
+                clip_start=None,
+                clip_end=None,
+                clip_ranges=clips,
+                merge_clips=True,
+            )
+        errors: list[str] = []
+        for start, end in clips:
+            result = await self.add(
+                options['url'],
+                options['download_type'],
+                options['codec'],
+                options['format'],
+                options['quality'],
+                options['folder'],
+                options['custom_name_prefix'],
+                options['playlist_item_limit'],
+                options['auto_start'],
+                options['split_by_chapters'],
+                options['chapter_template'],
+                options['subtitle_language'],
+                options['subtitle_mode'],
+                options['ytdl_options_presets'],
+                options['ytdl_options_overrides'],
+                clip_start=start,
+                clip_end=end,
+            )
+            if result.get('status') == 'error':
+                msg = result.get('msg') or 'unknown error'
+                errors.append(str(msg))
+        if errors:
+            return {'status': 'error', 'msg': '; '.join(errors)}
+        return {'status': 'ok', 'msg': f'Queued {len(clips)} separate clips'}
 
     async def add_entry(
         self,
