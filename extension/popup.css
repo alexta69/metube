@@ -1,0 +1,110 @@
+body {
+  width: 320px;
+  margin: 0;
+  padding: 12px;
+  font: 13px/1.4 system-ui, sans-serif;
+  color: #1a1a1a;
+}
+header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+h1 {
+  font-size: 15px;
+  margin: 0;
+}
+#optionsLink {
+  text-decoration: none;
+  font-size: 18px;
+}
+.status {
+  margin: 0 0 8px;
+  color: #444;
+}
+.url {
+  font-size: 11px;
+  word-break: break-all;
+  color: #666;
+  margin: 0 0 8px;
+}
+.markers {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+  margin-bottom: 8px;
+}
+button {
+  cursor: pointer;
+  border: 1px solid #ccc;
+  border-radius: 6px;
+  padding: 6px 10px;
+  background: #f5f5f5;
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+button.primary {
+  background: #0d6efd;
+  color: #fff;
+  border-color: #0d6efd;
+  width: 100%;
+}
+.pending {
+  font-size: 12px;
+  color: #0d6efd;
+  margin: 0 0 8px;
+  min-height: 1.2em;
+}
+#btnCancelPending {
+  font-size: 12px;
+}
+.clips {
+  list-style: none;
+  padding: 0;
+  margin: 0 0 10px;
+  max-height: 140px;
+  overflow-y: auto;
+}
+.clips li {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 4px 0;
+  border-bottom: 1px solid #eee;
+  font-size: 12px;
+}
+.clips button {
+  padding: 2px 6px;
+  font-size: 11px;
+}
+.actions {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.hint-top {
+  font-size: 11px;
+  color: #333;
+  background: #fff8e6;
+  border: 1px solid #ffe08a;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 0 0 8px;
+}
+.btn-show-bar {
+  width: 100%;
+  margin-bottom: 8px;
+  font-size: 12px;
+}
+.hint {
+  font-size: 11px;
+  color: #777;
+  margin: 10px 0 0;
+}
+code {
+  font-size: 10px;
+}

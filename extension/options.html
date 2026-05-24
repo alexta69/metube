@@ -1,0 +1,45 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="utf-8" />
+  <title>MeTube Extension – Einstellungen</title>
+  <style>
+    body { font: 14px system-ui, sans-serif; max-width: 520px; margin: 24px auto; padding: 0 16px; }
+    label { display: block; margin-top: 12px; font-weight: 600; }
+    input, select { width: 100%; margin-top: 4px; padding: 8px; box-sizing: border-box; }
+    button { margin-top: 20px; padding: 10px 16px; }
+    .saved { color: green; margin-left: 8px; }
+    p.note { color: #555; font-size: 13px; }
+  </style>
+</head>
+<body>
+  <h1>MeTube Extension</h1>
+  <p class="note">Set <code>CORS_ALLOWED_ORIGINS=*</code> on your MeTube server. Queue requests use these defaults.</p>
+  <label>MeTube URL
+    <input type="url" id="metubeBaseUrl" placeholder="http://localhost:8081/" />
+  </label>
+  <label>Download type
+    <select id="downloadType">
+      <option value="video">Video</option>
+      <option value="audio">Audio</option>
+    </select>
+  </label>
+  <label>Quality
+    <input type="text" id="quality" value="best" />
+  </label>
+  <label>Codec
+    <input type="text" id="codec" value="auto" />
+  </label>
+  <label>Format
+    <input type="text" id="format" value="any" />
+  </label>
+  <label>Auto-start downloads
+    <select id="autoStart">
+      <option value="true">Yes</option>
+      <option value="false">No</option>
+    </select>
+  </label>
+  <button type="button" id="save">Save</button><span id="saved" class="saved" hidden>Saved</span>
+  <script type="module" src="options.js"></script>
+</body>
+</html>

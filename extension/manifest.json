@@ -1,0 +1,27 @@
+{
+  "manifest_version": 3,
+  "name": "MeTube Clip Marker",
+  "version": "0.2.9",
+  "description": "Mark clip times on any page with a video element and send them to your MeTube instance.",
+  "permissions": ["storage", "activeTab", "scripting"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html",
+    "default_title": "MeTube clips"
+  },
+  "options_ui": {
+    "page": "options.html",
+    "open_in_tab": true
+  },
+  "background": {
+    "service_worker": "background.js",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["<all_urls>"],
+      "js": ["content.js"],
+      "run_at": "document_idle"
+    }
+  ]
+}

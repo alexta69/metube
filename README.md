@@ -238,6 +238,8 @@ __Chrome:__ contributed by [Rpsl](https://github.com/rpsl). You can install it f
 
 __Firefox:__ contributed by [nanocortex](https://github.com/nanocortex). You can install it from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources from [here](https://github.com/nanocortex/metube-firefox-addon).
 
+**Clip marker (optional, in-repo):** load unpacked from [`extension/`](extension/) to set start/end times on the video player and queue partial downloads (requires batch-clip API support). See [extension/README.md](extension/README.md).
+
 ## 📱 iOS Shortcut
 
 [rithask](https://github.com/rithask) created an iOS shortcut to send URLs to MeTube from Safari. Enter the MeTube instance address when prompted which will be saved for later use. You can run the shortcut from Safari’s share menu. The shortcut can be downloaded from [this iCloud link](https://www.icloud.com/shortcuts/66627a9f334c467baabdb2769763a1a6).

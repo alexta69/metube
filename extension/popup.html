@@ -1,0 +1,32 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="popup.css" />
+  <title>MeTube Clip Marker</title>
+</head>
+<body>
+  <header>
+    <h1>MeTube Clip Marker</h1>
+    <a href="#" id="optionsLink" title="Settings">⚙</a>
+  </header>
+  <p id="status" class="status">…</p>
+  <p class="hint-top"><strong>Tip:</strong> use the bar at the <strong>bottom-right of the video page</strong> (Start / End). The popup may close when you click the video.</p>
+  <button type="button" id="btnShowBar" class="btn-show-bar">Show bar on page</button>
+  <p id="pageUrl" class="url" hidden></p>
+  <div class="markers">
+    <button type="button" id="btnStart" disabled>Set start</button>
+    <button type="button" id="btnEnd" disabled>Set end</button>
+    <button type="button" id="btnCancelPending" hidden>Discard start</button>
+  </div>
+  <p id="pending" class="pending"></p>
+  <ul id="clipList" class="clips"></ul>
+  <div class="actions">
+    <button type="button" id="btnQueueEach" class="primary" disabled>Queue clips</button>
+    <button type="button" id="btnQueueMerge" disabled>Queue merged</button>
+  </div>
+  <p class="hint">Works on any page with a <code>&lt;video&gt;</code> element. MeTube needs <code>CORS_ALLOWED_ORIGINS=*</code>.</p>
+  <script type="module" src="popup.js"></script>
+</body>
+</html>
