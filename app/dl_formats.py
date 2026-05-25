@@ -10,6 +10,39 @@ CODEC_FILTER_MAP = {
     'vp9':  "[vcodec~='^vp0?9']",
 }
 
+# Common language variant suffixes that yt-dlp may encounter on YouTube and
+# other platforms.  When a user requests "en" we also try "en-GB", "en-US",
+# etc. so that a request isn't silently skipped when only a regional variant
+# exists.  yt-dlp processes the list in order and picks the first match.
+_LANGUAGE_REGION_VARIANTS = {
+    "en": ("US", "GB", "AU", "CA", "IN", "NZ", "IE", "ZA"),
+    "zh": ("CN", "TW", "HK", "SG"),
+    "pt": ("BR", "PT"),
+    "es": ("ES", "MX", "AR", "CO", "CL", "PE", "VE"),
+    "fr": ("FR", "CA", "BE", "CH"),
+    "de": ("DE", "AT", "CH"),
+    "ar": ("SA", "AE", "EG", "MA", "DZ"),
+    "nl": ("NL", "BE"),
+    "ro": ("RO", "MD"),
+    "ms": ("MY", "BN", "SG"),
+}
+
+
+def _subtitle_lang_list(language: str, include_orig: bool = False) -> list[str]:
+    """Build a prioritised list of subtitle language codes for yt-dlp.
+
+    Starts with the exact language, then appends common regional variants
+    (e.g. ``en`` → ``en-US, en-GB, en-AU, …``).  ``include_orig`` adds the
+    ``<lang>-orig`` tag that YouTube uses for original-language auto-captions.
+    """
+    langs = [language]
+    variants = _LANGUAGE_REGION_VARIANTS.get(language)
+    if variants:
+        langs.extend(f"{language}-{region}" for region in variants)
+    if include_orig:
+        langs.append(f"{language}-orig")
+    return langs
+
 
 def _normalize_caption_mode(mode: str) -> str:
     mode = (mode or "").strip()
@@ -141,21 +174,20 @@ def get_opts(
         if mode == "manual_only":
             opts["writesubtitles"] = True
             opts["writeautomaticsub"] = False
-            opts["subtitleslangs"] = [language]
+            opts["subtitleslangs"] = _subtitle_lang_list(language)
         elif mode == "auto_only":
             opts["writesubtitles"] = False
             opts["writeautomaticsub"] = True
-            # `-orig` captures common YouTube auto-sub tags. The plain language
-            # fallback keeps behavior useful across other extractors.
-            opts["subtitleslangs"] = [f"{language}-orig", language]
+            opts["subtitleslangs"] = _subtitle_lang_list(language, include_orig=True)
         elif mode == "prefer_auto":
             opts["writesubtitles"] = True
             opts["writeautomaticsub"] = True
-            opts["subtitleslangs"] = [f"{language}-orig", language]
+            opts["subtitleslangs"] = _subtitle_lang_list(language, include_orig=True)
         else:
+            # prefer_manual (default)
             opts["writesubtitles"] = True
             opts["writeautomaticsub"] = True
-            opts["subtitleslangs"] = [language, f"{language}-orig"]
+            opts["subtitleslangs"] = _subtitle_lang_list(language, include_orig=True)
 
     opts["postprocessors"] = postprocessors + (
         opts["postprocessors"] if "postprocessors" in opts else []

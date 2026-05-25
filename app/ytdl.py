@@ -704,6 +704,7 @@ class Download:
             status = await self.loop.run_in_executor(None, self.status_queue.get)
             if status is None:
                 log.info(f"Status update finished for: {self.info.title}")
+
                 return
             if self.paused:
                 self.info.status = 'paused'
@@ -775,6 +776,7 @@ class Download:
                     str(getattr(self.info, 'format', '')).lower() == 'txt'
                 ):
                     self.info.filename = rel_path
+                continue
 
             if 'thumbnail_file' in status:
                 thumbnail_file = status.get('thumbnail_file')
@@ -782,6 +784,11 @@ class Download:
                     rel_path = os.path.relpath(thumbnail_file, self.download_dir)
                     self.info.filename = rel_path
                     self.info.size = os.path.getsize(thumbnail_file)
+                continue
+
+            # All remaining messages must have a 'status' key
+            if 'status' not in status:
+                log.warning(f"Skipping status update without 'status' key for {self.info.title}: {list(status.keys())}")
                 continue
 
             self.info.status = status['status']
@@ -1006,6 +1013,33 @@ class DownloadQueue:
                 except OSError:
                     pass
             download.info.status = 'error'
+        else:
+            # Captions-only downloads that produced no subtitle files should be
+            # reported as an error rather than a silent "success".  This can
+            # happen when the requested language (e.g. "en") is unavailable and
+            # yt-dlp silently skips subtitle extraction without raising an
+            # error.
+            if getattr(download.info, 'download_type', '') == 'captions' and not download.info.filename:
+                subtitle_files = getattr(download.info, 'subtitle_files', [])
+                if not subtitle_files:
+                    log.warning(
+                        f"Captions download for \"{download.info.title}\" produced no files. "
+                        f"Requested language: {getattr(download.info, 'subtitle_language', 'en')}, "
+                        f"mode: {getattr(download.info, 'subtitle_mode', 'prefer_manual')}"
+                    )
+                    download.info.status = 'error'
+                    download.info.error = (
+                        f"No subtitles found for language \"{getattr(download.info, 'subtitle_language', 'en')}\". "
+                        f"The video may not have subtitles in the requested language."
+                    )
+            # Thumbnail-only downloads that produced no image file should also
+            # be reported as an error for the same reason.
+            elif getattr(download.info, 'download_type', '') == 'thumbnail' and not download.info.filename:
+                log.warning(
+                    f"Thumbnail download for \"{download.info.title}\" produced no file."
+                )
+                download.info.status = 'error'
+                download.info.error = "No thumbnail found for this video."
         download.close()
         if self.queue.exists(key):
             self.queue.delete(key)
