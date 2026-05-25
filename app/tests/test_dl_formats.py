@@ -134,6 +134,23 @@ class DlFormatsTests(unittest.TestCase):
         self.assertEqual(_normalize_subtitle_language(""), "en")
         self.assertEqual(_normalize_subtitle_language("  "), "en")
 
+    def test_subtitle_lang_list_with_region_variant_input(self):
+        """zh-Hans should expand to include zh base and zh-CN, zh-TW, etc."""
+        from app.dl_formats import _subtitle_lang_list
+        result = _subtitle_lang_list("zh-Hans", include_orig=True)
+        self.assertEqual(result[0], "zh-Hans")  # original input first
+        self.assertIn("zh", result)              # base language fallback
+        self.assertIn("zh-CN", result)           # regional variant
+        self.assertIn("zh-orig", result)         # orig suffix for auto-captions
+
+    def test_subtitle_lang_list_dedup_region_variant(self):
+        """pt-BR should not duplicate pt-BR in the variant expansion."""
+        from app.dl_formats import _subtitle_lang_list
+        result = _subtitle_lang_list("pt-BR", include_orig=True)
+        self.assertEqual(result.count("pt-BR"), 1)  # no duplicate
+        self.assertIn("pt", result)                   # base language fallback
+        self.assertIn("pt-PT", result)                # other regional variant
+
 
 if __name__ == "__main__":
     unittest.main()

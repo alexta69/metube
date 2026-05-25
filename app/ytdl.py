@@ -328,6 +328,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "filename",
     "size",
     "chapter_files",
+    "subtitle_files",
 )
 
 
@@ -1494,11 +1495,23 @@ class DownloadQueue:
                 continue
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
-                try:
-                    dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
-                    os.remove(os.path.join(dldirectory, dl.info.filename))
-                except Exception as e:
-                    log.warning(f'deleting file for download {id} failed with error message {e!r}')
+                dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
+                # Delete the primary downloaded file
+                files_to_delete = [dl.info.filename]
+                # Also delete chapter files and subtitle files
+                for cf in getattr(dl.info, 'chapter_files', []) or []:
+                    if isinstance(cf, dict) and cf.get('filename'):
+                        files_to_delete.append(cf['filename'])
+                for sf in getattr(dl.info, 'subtitle_files', []) or []:
+                    if isinstance(sf, dict) and sf.get('filename'):
+                        files_to_delete.append(sf['filename'])
+                for filename in files_to_delete:
+                    if not filename:
+                        continue
+                    try:
+                        os.remove(os.path.join(dldirectory, filename))
+                    except Exception as e:
+                        log.warning(f'deleting file {filename} for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
