@@ -17,67 +17,33 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-        with:
-          ref: master
-          fetch-depth: 0
-          # Must use a PAT with repo scope — GITHUB_TOKEN cannot push in fork scheduled workflows
-          token: ${{ secrets.UPSTREAM_TOKEN }}
 
-      - name: Check UPSTREAM_TOKEN
-        run: |
-          if [ -z "$UPSTREAM_TOKEN" ]; then
-            echo "::error::UPSTREAM_TOKEN secret is not set. Please add a Personal Access Token with repo scope to your repository secrets."
-            exit 1
-          fi
-        env:
-          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
+      - name: Clean issue notice
+        uses: actions-cool/issues-helper@e361abf610221f09495ad510cb1e69328d839e1c # v3.7.6
+        with:
+          actions: "close-issues"
+          labels: "🚨 Sync Fail"
 
       - name: Sync upstream changes
         id: sync
-        run: |
-          git remote add upstream https://github.com/alexta69/metube.git 2>/dev/null || true
-          git fetch upstream master
-
-          LOCAL=$(git rev-parse HEAD)
-          UPSTREAM=$(git rev-parse upstream/master)
-
-          if [ "$LOCAL" = "$UPSTREAM" ]; then
-            echo "Already up-to-date"
-            echo "has_changes=false" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          echo "Local:  $LOCAL"
-          echo "Upstream: $UPSTREAM"
-          echo "has_changes=true" >> "$GITHUB_OUTPUT"
-
-          # Configure git for the merge commit
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-
-          # Try merge first (preserves both histories)
-          if git merge upstream/master --no-edit; then
-            git push origin master
-            echo "Merge succeeded"
-            echo "sync_result=success" >> "$GITHUB_OUTPUT"
-          else
-            echo "Merge conflict detected, aborting"
-            git merge --abort
-            echo "sync_result=conflict" >> "$GITHUB_OUTPUT"
-            exit 1
-          fi
-
-      - name: Sync check — create issue on failure
-        if: failure()
-        uses: actions/github-script@v7
+        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
         with:
-          script: |
-            await github.rest.issues.create({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              title: "🚨 同步失败 | Sync Fail",
-              labels: ["🚨 Sync Fail"],
-              body: `Due to conflicts or workflow changes in the [alexta69/metube](https://github.com/alexta69/metube) upstream repository, the automatic sync has failed. Please manually sync your fork and resolve any conflicts.
+          upstream_sync_repo: alexta69/metube
+          upstream_sync_branch: master
+          target_sync_branch: master
+          target_repo_token: ${{ secrets.GITHUB_TOKEN }} # automatically generated, no need to set
+          test_mode: false
 
-            由于上游仓库 [alexta69/metube](https://github.com/alexta69/metube) 存在冲突或 workflow 变更，自动同步失败。请手动 Sync Fork 并解决冲突。`
-            });
+      - name: Sync check
+        if: failure()
+        uses: actions-cool/issues-helper@e361abf610221f09495ad510cb1e69328d839e1c # v3.7.6
+        with:
+          actions: "create-issue"
+          title: "🚨 同步失败 | Sync Fail"
+          labels: "🚨 Sync Fail"
+          body: |
+            Due to a change in the workflow file of the [alexta69/metube](https://github.com/alexta69/metube) upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork. Please go to your fork page and click "Sync fork → Update branch".
+
+            由于 [alexta69/metube](https://github.com/alexta69/metube) 上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次。
+
+            ![](https://github-production-user-asset-6210df.s3.amazonaws.com/17870709/273954625-df80c890-0822-4ac2-95e6-c990785cbed5.png)
