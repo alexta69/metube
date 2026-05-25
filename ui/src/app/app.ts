@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faClosedCaptioning } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -78,6 +78,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   folder!: string;
   customNamePrefix!: string;
   autoStart: boolean;
+  autoDownloadCompleted: boolean;
   playlistItemLimit!: number;
   splitByChapters: boolean;
   chapterTemplate: string;
@@ -128,6 +129,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   cachedSortedDone: [string, Download][] = [];
   lastCopiedErrorId: string | null = null;
   private previousDownloadType = 'video';
+  private autoDownloadedResults = new Set<string>();
   private addRequestSub?: Subscription;
   private selectionsByType: Record<string, {
     codec: string;
@@ -158,6 +160,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   readonly queueMasterCheckbox = viewChild<SelectAllCheckboxComponent>('queueMasterCheckboxRef');
   readonly queueDelSelected = viewChild.required<ElementRef>('queueDelSelected');
   readonly queueDownloadSelected = viewChild.required<ElementRef>('queueDownloadSelected');
+  readonly queuePauseSelected = viewChild.required<ElementRef>('queuePauseSelected');
   readonly doneMasterCheckbox = viewChild<SelectAllCheckboxComponent>('doneMasterCheckboxRef');
   readonly doneDelSelected = viewChild.required<ElementRef>('doneDelSelected');
   readonly doneDownloadSelected = viewChild.required<ElementRef>('doneDownloadSelected');
@@ -185,6 +188,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faUpload = faUpload;
   faPause = faPause;
   faPlay = faPlay;
+  faClosedCaptioning = faClosedCaptioning;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -242,6 +246,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.format = this.cookieService.get('metube_format') || 'any';
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
+    this.autoDownloadCompleted = this.cookieService.get('metube_auto_download_completed') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
@@ -292,6 +297,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
       this.cdr.markForCheck();
+    });
+    this.downloads.completedDownload.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((download) => {
+      this.autoDownloadResult(download);
     });
 
     this.subscriptionsSvc.subscriptionsChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -885,6 +893,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   queueSelectionChanged(checked: number) {
     this.queueDelSelected().nativeElement.disabled = checked === 0;
     this.queueDownloadSelected().nativeElement.disabled = checked === 0;
+    this.queuePauseSelected().nativeElement.disabled = checked === 0;
   }
 
   doneSelectionChanged(checked: number) {
@@ -1128,6 +1137,16 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.downloads.startById([id]).subscribe();
   }
 
+  pauseDownloadByKey(id: string) {
+    this.downloads.pauseById([id]).subscribe();
+  }
+
+  autoDownloadCompletedChanged() {
+    this.cookieService.set('metube_auto_download_completed', String(this.autoDownloadCompleted), {
+      expires: this.settingsCookieExpiryDays,
+    });
+  }
+
   retryDownload(key: string, download: Download) {
     this.addDownload({
       url: download.url,
@@ -1159,6 +1178,18 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   startSelectedDownloads(where: State){
     this.downloads.startByFilter(where, dl => !!dl.checked).subscribe();
+  }
+
+  pauseSelectedDownloads() {
+    const ids: string[] = [];
+    this.downloads.queue.forEach((dl: Download, key: string) => {
+      if (dl.checked && (dl.status === 'downloading' || dl.status === 'preparing')) {
+        ids.push(key);
+      }
+    });
+    if (ids.length) {
+      this.downloads.pauseById(ids).subscribe();
+    }
   }
 
   delSelectedDownloads(where: State) {
@@ -1196,6 +1227,28 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
+  private autoDownloadResult(download: Download) {
+    if (!this.autoDownloadCompleted || download.status !== 'finished' || !download.filename) {
+      return;
+    }
+    const key = `${download.url}|${download.filename}|${download.timestamp ?? ''}`;
+    if (this.autoDownloadedResults.has(key)) {
+      return;
+    }
+    this.autoDownloadedResults.add(key);
+    this.triggerBrowserDownload(download);
+  }
+
+  private triggerBrowserDownload(download: Download) {
+    const link = document.createElement('a');
+    link.href = this.buildDownloadLink(download);
+    link.setAttribute('download', download.filename);
+    link.setAttribute('target', '_self');
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
+
   buildDownloadLink(download: Download) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
     if (download.download_type === 'audio' || download.filename.endsWith('.mp3')) {
@@ -1207,6 +1260,24 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
 
     return baseDir + encodeURIComponent(download.filename);
+  }
+
+  downloadPhaseLabel(download: Download): string {
+    switch (download.download_phase) {
+      case 'video':
+        return 'Video';
+      case 'audio':
+        return 'Audio';
+      case 'media':
+        return 'Media';
+      case 'postprocessing':
+        return 'Post-processing';
+      default:
+        if (download.status === 'paused') return 'Paused';
+        if (download.status === 'pending') return 'Pending';
+        if (download.status === 'preparing') return 'Preparing';
+        return '';
+    }
   }
 
   buildResultItemTooltip(download: Download) {
@@ -1581,7 +1652,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         speed += download.speed || 0;
       } else if (download.status === 'preparing') {
         active++;
-      } else if (download.status === 'pending') {
+      } else if (download.status === 'postprocessing') {
+        active++;
+      } else if (download.status === 'pending' || download.status === 'paused') {
         queued++;
       }
     });

@@ -1,0 +1,122 @@
+services:
+  mytube:
+    build:
+      context: .
+      args:
+        TARGETARCH: amd64
+    image: mytube
+    container_name: mytube
+    restart: unless-stopped
+    ports:
+      - "8081:8081"
+    volumes:
+      # Required: download directory (matches DOWNLOAD_DIR, STATE_DIR, TEMP_DIR)
+      - /path/to/downloads:/downloads
+
+      # Optional: environment configuration file
+      # - /path/to/.env:/app/.env:ro
+
+      # Optional: yt-dlp global options file
+      # - /path/to/ytdl-options.json:/config/ytdl-options.json:ro
+
+      # Optional: yt-dlp presets file
+      # - /path/to/ytdl-presets.json:/config/ytdl-presets.json:ro
+
+      # Optional: HTTPS certificates (if HTTPS=true)
+      # - /path/to/ssl/crt.pem:/ssl/crt.pem:ro
+      # - /path/to/ssl/key.pem:/ssl/key.pem:ro
+
+      # Optional: custom robots.txt
+      # - /path/to/robots.txt:/etc/robots.txt:ro
+
+    environment:
+      ENV_FILE: ""
+
+      # === Container Setup ===
+      # PUID: "1000"
+      # PGID: "1000"
+      # UMASK: "022"
+      # DEFAULT_THEME: auto
+      # LOGLEVEL: INFO
+      # ENABLE_ACCESSLOG: "false"
+
+      # === Directory Configuration ===
+      # DOWNLOAD_DIR: /downloads
+      # STATE_DIR: /downloads/.metube
+      # TEMP_DIR: /downloads
+      # AUDIO_DOWNLOAD_DIR: /audio
+
+      # === Web Server ===
+      # HOST: 0.0.0.0
+      # PORT: "8081"
+      # PUBLIC_MODE: "false"
+      # URL_PREFIX: /mytube/
+      # PUBLIC_HOST_URL: download/
+      # PUBLIC_HOST_AUDIO_URL: audio_download/
+      # HTTPS: "false"
+      # CERTFILE: /ssl/crt.pem
+      # KEYFILE: /ssl/key.pem
+      # CORS_ALLOWED_ORIGINS: ""
+      # ROBOTS_TXT: ""
+
+      # === Download Behavior ===
+      # MAX_CONCURRENT_DOWNLOADS: "3"
+      # DELETE_FILE_ON_TRASHCAN: "false"
+      # DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT: "0"
+      # SUBSCRIPTION_DEFAULT_CHECK_INTERVAL: "60"
+      # SUBSCRIPTION_SCAN_PLAYLIST_END: "50"
+      # SUBSCRIPTION_MAX_SEEN_IDS: "50000"
+      # CLEAR_COMPLETED_AFTER: "0"
+
+      # === File Naming & Output ===
+      # OUTPUT_TEMPLATE: "%(title)s.%(ext)s"
+      # OUTPUT_TEMPLATE_CHAPTER: "%(title)s - %(section_number)02d - %(section_title)s.%(ext)s"
+      # OUTPUT_TEMPLATE_PLAYLIST: "%(playlist_title)s/%(title)s.%(ext)s"
+      # OUTPUT_TEMPLATE_CHANNEL: "%(channel)s/%(title)s.%(ext)s"
+
+      # === yt-dlp Options ===
+      # YTDL_OPTIONS: "{}"
+      # YTDL_OPTIONS_FILE: /config/ytdl-options.json
+      # YTDL_OPTIONS_PRESETS: "{}"
+      # YTDL_OPTIONS_PRESETS_FILE: /config/ytdl-presets.json
+      # ALLOW_YTDL_OPTIONS_OVERRIDES: "false"
+
+      # === Directory Features ===
+      # CUSTOM_DIRS: "true"
+      # CREATE_CUSTOM_DIRS: "true"
+      # DOWNLOAD_DIRS_INDEXABLE: "false"
+      # CUSTOM_DIRS_EXCLUDE_REGEX: "(^|/)[.@].*$"
+      # CHOWN_DIRS: "true"
+
+      # === Custom Environment File ===
+      # ENV_FILE: /path/to/custom.env
+
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:${PORT:-8081}/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+    # Optional: set working user
+    # user: "${PUID:-1000}:${PGID:-1000}"
+
+    # Optional: network configuration
+    # networks:
+    #   - default
+
+    # Optional: resource limits
+    # deploy:
+    #   resources:
+    #     limits:
+    #       cpus: '1'
+    #       memory: 1G
+    #     reservations:
+    #       cpus: '0.5'
+    #       memory: 512M
+
+# Optional: define custom network
+# networks:
+#   default:
+#     name: mytube-network
+#     driver: bridge

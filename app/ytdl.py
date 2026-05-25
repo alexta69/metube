@@ -206,9 +206,11 @@ class DownloadInfo:
         self.custom_name_prefix = custom_name_prefix
         self.msg = self.percent = self.speed = self.eta = None
         self.status = "pending"
+        self.download_phase = None
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
+        self.filename = None
         # Strip non-pickleable values (generators, iterators, locks, etc.) for shelve
         self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
@@ -220,6 +222,7 @@ class DownloadInfo:
         self.ytdl_options_overrides = dict(ytdl_options_overrides or {})
         self.clip_start = clip_start
         self.clip_end = clip_end
+        self.chapter_files = []
         self.subtitle_files = []
 
     def __setstate__(self, state):
@@ -288,10 +291,14 @@ class DownloadInfo:
             self.subtitle_files = []
         if not hasattr(self, "chapter_files"):
             self.chapter_files = []
+        if not hasattr(self, "filename"):
+            self.filename = None
         if not hasattr(self, "clip_start"):
             self.clip_start = None
         if not hasattr(self, "clip_end"):
             self.clip_end = None
+        if not hasattr(self, "download_phase"):
+            self.download_phase = None
 
 
 _PERSISTED_DOWNLOAD_FIELDS = (
@@ -314,12 +321,14 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "clip_start",
     "clip_end",
     "status",
+    "download_phase",
     "timestamp",
     "error",
     "msg",
     "filename",
     "size",
     "chapter_files",
+    "subtitle_files",
 )
 
 
@@ -368,6 +377,8 @@ def _download_info_from_record(record: dict[str, Any]) -> DownloadInfo:
         info.eta = None
     if not hasattr(info, "status"):
         info.status = "pending"
+    if not hasattr(info, "download_phase"):
+        info.download_phase = None
     if not hasattr(info, "size"):
         info.size = None
     if not hasattr(info, "error"):
@@ -470,18 +481,56 @@ class Download:
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
         self.canceled = False
+        self.paused = getattr(self.info, 'status', None) == 'paused'
         self.tmpfilename = None
         self.status_queue = None
         self.proc = None
         self.loop = None
         self.notifier = None
+        self.start_generation = 0
+
+    def _download_phase_from_status(self, st):
+        info_dict = st.get('info_dict') if isinstance(st, dict) else None
+        if not isinstance(info_dict, dict):
+            return None
+
+        vcodec = str(info_dict.get('vcodec') or '').lower()
+        acodec = str(info_dict.get('acodec') or '').lower()
+
+        # Check requested_formats when top-level codecs are both "none"
+        # (common when yt-dlp uses separate downloaders for video+audio streams)
+        if (not vcodec or vcodec == 'none') and (not acodec or acodec == 'none'):
+            requested = info_dict.get('requested_formats')
+            if isinstance(requested, list) and requested:
+                has_video = any(
+                    str(f.get('vcodec') or '').lower() not in ('', 'none')
+                    for f in requested if isinstance(f, dict)
+                )
+                has_audio = any(
+                    str(f.get('acodec') or '').lower() not in ('', 'none')
+                    for f in requested if isinstance(f, dict)
+                )
+                if has_video and has_audio:
+                    return 'media'
+                if has_video:
+                    return 'video'
+                if has_audio:
+                    return 'audio'
+
+        if vcodec and vcodec != 'none' and (not acodec or acodec == 'none'):
+            return 'video'
+        if acodec and acodec != 'none' and (not vcodec or vcodec == 'none'):
+            return 'audio'
+        if vcodec and vcodec != 'none' and acodec and acodec != 'none':
+            return 'media'
+        return None
 
     def _download(self):
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
             def put_status(st):
-                self.status_queue.put({k: v for k, v in st.items() if k in (
+                status = {k: v for k, v in st.items() if k in (
                     'tmpfilename',
                     'filename',
                     'status',
@@ -491,9 +540,22 @@ class Download:
                     'downloaded_bytes',
                     'speed',
                     'eta',
-                )})
+                )}
+                phase = self._download_phase_from_status(st)
+                if phase:
+                    status['download_phase'] = phase
+                log.debug(f"put_status: status={status.get('status')}, phase={phase}, "
+                          f"vcodec={st.get('info_dict', {}).get('vcodec') if isinstance(st.get('info_dict'), dict) else 'N/A'}, "
+                          f"acodec={st.get('info_dict', {}).get('acodec') if isinstance(st.get('info_dict'), dict) else 'N/A'}")
+                self.status_queue.put(status)
 
             def put_status_postprocessor(d):
+                if d.get('status') == 'started':
+                    self.status_queue.put({
+                        'status': 'postprocessing',
+                        'download_phase': 'postprocessing',
+                        'msg': d.get('postprocessor'),
+                    })
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
                     filepath = d['info_dict']['filepath']
                     if '__finaldir' in d['info_dict']:
@@ -573,14 +635,15 @@ class Download:
                 )
 
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
-            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+            self.status_queue.put({'status': 'finished' if ret == 0 else 'error', 'download_phase': None})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
-            self.status_queue.put({'status': 'error', 'msg': str(exc)})
+            self.status_queue.put({'status': 'error', 'msg': str(exc), 'download_phase': None})
 
     async def start(self, notifier):
         log.info(f"Preparing download for: {self.info.title}")
+        self.paused = False
         if Download.manager is None:
             Download.manager = multiprocessing.Manager()
         self.status_queue = Download.manager.Queue()
@@ -589,6 +652,7 @@ class Download:
         self.loop = asyncio.get_running_loop()
         self.notifier = notifier
         self.info.status = 'preparing'
+        self.info.download_phase = None
         await self.notifier.updated(self.info)
         self.status_task = asyncio.create_task(self.update_status())
         await self.loop.run_in_executor(None, self.proc.join)
@@ -607,6 +671,22 @@ class Download:
             except Exception as e:
                 log.error(f"Error killing process for {self.info.title}: {e}")
         self.canceled = True
+        if self.status_queue is not None:
+            self.status_queue.put(None)
+
+    def pause(self):
+        log.info(f"Pausing download: {self.info.title}")
+        self.paused = True
+        self.start_generation += 1
+        self.info.status = 'paused'
+        self.info.download_phase = None
+        self.info.speed = None
+        self.info.eta = None
+        if self.running():
+            try:
+                self.proc.kill()
+            except Exception as e:
+                log.error(f"Error killing process for {self.info.title}: {e}")
         if self.status_queue is not None:
             self.status_queue.put(None)
 
@@ -629,6 +709,14 @@ class Download:
             status = await self.loop.run_in_executor(None, self.status_queue.get)
             if status is None:
                 log.info(f"Status update finished for: {self.info.title}")
+
+                return
+            if self.paused:
+                self.info.status = 'paused'
+                self.info.download_phase = None
+                self.info.speed = None
+                self.info.eta = None
+                await self.notifier.updated(self.info)
                 return
             if self.canceled:
                 log.info(f"Download {self.info.title} is canceled; stopping status updates.")
@@ -693,6 +781,7 @@ class Download:
                     str(getattr(self.info, 'format', '')).lower() == 'txt'
                 ):
                     self.info.filename = rel_path
+                continue
 
             if 'thumbnail_file' in status:
                 thumbnail_file = status.get('thumbnail_file')
@@ -702,8 +791,15 @@ class Download:
                     self.info.size = os.path.getsize(thumbnail_file)
                 continue
 
+            # All remaining messages must have a 'status' key
+            if 'status' not in status:
+                log.warning(f"Skipping status update without 'status' key for {self.info.title}: {list(status.keys())}")
+                continue
+
             self.info.status = status['status']
             self.info.msg = status.get('msg')
+            if 'download_phase' in status:
+                self.info.download_phase = status['download_phase']
             if 'downloaded_bytes' in status:
                 total = status.get('total_bytes') or status.get('total_bytes_estimate')
                 if total:
@@ -892,18 +988,29 @@ class DownloadQueue:
         asyncio.create_task(self.__import_queue())
         asyncio.create_task(self.__import_pending())
 
-    async def __start_download(self, download):
-        if download.canceled:
-            log.info(f"Download {download.info.title} was canceled, skipping start.")
+    async def __start_download(self, download, generation):
+        if generation != download.start_generation or download.canceled or download.paused:
+            log.info(f"Download {download.info.title} was canceled or paused, skipping start.")
             return
         async with self.semaphore:
-            if download.canceled:
-                log.info(f"Download {download.info.title} was canceled, skipping start.")
+            if generation != download.start_generation or download.canceled or download.paused:
+                log.info(f"Download {download.info.title} was canceled or paused, skipping start.")
                 return
             await download.start(self.notifier)
             self._post_download_cleanup(download)
 
     def _post_download_cleanup(self, download):
+        key = getattr(download.info, 'key', download.info.url)
+        if download.paused:
+            download.info.status = 'paused'
+            download.info.download_phase = None
+            download.info.speed = None
+            download.info.eta = None
+            download.close()
+            if self.queue.exists(key):
+                self.queue.put(download)
+                asyncio.create_task(self.notifier.updated(download.info))
+            return
         if download.info.status != 'finished':
             if download.tmpfilename and os.path.isfile(download.tmpfilename):
                 try:
@@ -911,8 +1018,34 @@ class DownloadQueue:
                 except OSError:
                     pass
             download.info.status = 'error'
+        else:
+            # Captions-only downloads that produced no subtitle files should be
+            # reported as an error rather than a silent "success".  This can
+            # happen when the requested language (e.g. "en") is unavailable and
+            # yt-dlp silently skips subtitle extraction without raising an
+            # error.
+            if getattr(download.info, 'download_type', '') == 'captions' and not getattr(download.info, 'filename', None):
+                subtitle_files = getattr(download.info, 'subtitle_files', [])
+                if not subtitle_files:
+                    log.warning(
+                        f"Captions download for \"{download.info.title}\" produced no files. "
+                        f"Requested language: {getattr(download.info, 'subtitle_language', 'en')}, "
+                        f"mode: {getattr(download.info, 'subtitle_mode', 'prefer_manual')}"
+                    )
+                    download.info.status = 'error'
+                    download.info.error = (
+                        f"No subtitles found for language \"{getattr(download.info, 'subtitle_language', 'en')}\". "
+                        f"The video may not have subtitles in the requested language."
+                    )
+            # Thumbnail-only downloads that produced no image file should also
+            # be reported as an error for the same reason.
+            elif getattr(download.info, 'download_type', '') == 'thumbnail' and not getattr(download.info, 'filename', None):
+                log.warning(
+                    f"Thumbnail download for \"{download.info.title}\" produced no file."
+                )
+                download.info.status = 'error'
+                download.info.error = "No thumbnail found for this video."
         download.close()
-        key = getattr(download.info, 'key', download.info.url)
         if self.queue.exists(key):
             self.queue.delete(key)
             if download.canceled:
@@ -1028,7 +1161,8 @@ class DownloadQueue:
         download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
         if auto_start is True:
             self.queue.put(download)
-            asyncio.create_task(self.__start_download(download))
+            download.start_generation += 1
+            asyncio.create_task(self.__start_download(download, download.start_generation))
         else:
             self.pending.put(download)
         await self.notifier.added(dl)
@@ -1297,13 +1431,25 @@ class DownloadQueue:
 
     async def start_pending(self, ids):
         for id in ids:
+            if self.queue.exists(id):
+                dl = self.queue.get(id)
+                if getattr(dl.info, 'status', None) == 'paused' or dl.paused:
+                    dl.paused = False
+                    dl.info.status = 'pending'
+                    dl.info.speed = None
+                    dl.info.eta = None
+                    self.queue.put(dl)
+                    dl.start_generation += 1
+                    asyncio.create_task(self.__start_download(dl, dl.start_generation))
+                continue
             if not self.pending.exists(id):
                 log.warning(f'requested start for non-existent download {id}')
                 continue
             dl = self.pending.get(id)
             self.queue.put(dl)
             self.pending.delete(id)
-            asyncio.create_task(self.__start_download(dl))
+            dl.start_generation += 1
+            asyncio.create_task(self.__start_download(dl, dl.start_generation))
         return {'status': 'ok'}
 
     async def cancel(self, ids):
@@ -1318,12 +1464,28 @@ class DownloadQueue:
                 log.warning(f'requested cancel for non-existent download {id}')
                 continue
             dl = self.queue.get(id)
+            if getattr(dl.info, 'status', None) == 'paused' or dl.paused:
+                dl.cancel()
+                self.queue.delete(id)
+                await self.notifier.canceled(id)
+                continue
             if dl.started():
                 dl.cancel()
             else:
                 dl.canceled = True
                 self.queue.delete(id)
                 await self.notifier.canceled(id)
+        return {'status': 'ok'}
+
+    async def pause(self, ids):
+        for id in ids:
+            if not self.queue.exists(id):
+                log.warning(f'requested pause for non-existent download {id}')
+                continue
+            dl = self.queue.get(id)
+            dl.pause()
+            self.queue.put(dl)
+            await self.notifier.updated(dl.info)
         return {'status': 'ok'}
 
     async def clear(self, ids):
@@ -1333,11 +1495,23 @@ class DownloadQueue:
                 continue
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
-                try:
-                    dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
-                    os.remove(os.path.join(dldirectory, dl.info.filename))
-                except Exception as e:
-                    log.warning(f'deleting file for download {id} failed with error message {e!r}')
+                dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
+                # Delete the primary downloaded file
+                files_to_delete = [dl.info.filename]
+                # Also delete chapter files and subtitle files
+                for cf in getattr(dl.info, 'chapter_files', []) or []:
+                    if isinstance(cf, dict) and cf.get('filename'):
+                        files_to_delete.append(cf['filename'])
+                for sf in getattr(dl.info, 'subtitle_files', []) or []:
+                    if isinstance(sf, dict) and sf.get('filename'):
+                        files_to_delete.append(sf['filename'])
+                for filename in files_to_delete:
+                    if not filename:
+                        continue
+                    try:
+                        os.remove(os.path.join(dldirectory, filename))
+                    except Exception as e:
+                        log.warning(f'deleting file {filename} for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}

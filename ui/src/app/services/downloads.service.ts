@@ -40,6 +40,7 @@ export class DownloadsService {
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   configurationChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
+  completedDownload = new Subject<Download>();
 
   configuration: Record<string, unknown> = {};
   customDirs: Record<string, string[]> = {};
@@ -90,6 +91,7 @@ export class DownloadsService {
       this.done.set(key, data);
       this.queueChanged.next();
       this.doneChanged.next();
+      this.completedDownload.next(data);
     });
     this.socket.fromEvent('canceled')
     .pipe(takeUntilDestroyed())
@@ -175,6 +177,10 @@ export class DownloadsService {
 
   public startById(ids: string[]) {
     return this.http.post('start', {ids: ids});
+  }
+
+  public pauseById(ids: string[]) {
+    return this.http.post('pause', {ids: ids});
   }
 
   public delById(where: State, ids: string[]) {

@@ -92,7 +92,7 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertTrue(opts.get("writesubtitles"))
         self.assertFalse(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["fr"])
+        self.assertEqual(opts["subtitleslangs"], ["fr", "fr-FR", "fr-CA", "fr-BE", "fr-CH"])
 
     def test_get_opts_captions_auto_only(self):
         opts = get_opts(
@@ -100,7 +100,7 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertFalse(opts.get("writesubtitles"))
         self.assertTrue(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["de-orig", "de"])
+        self.assertEqual(opts["subtitleslangs"], ["de", "de-DE", "de-AT", "de-CH", "de-orig"])
 
     def test_get_opts_captions_prefer_auto(self):
         opts = get_opts(
@@ -108,13 +108,13 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertTrue(opts.get("writesubtitles"))
         self.assertTrue(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["es-orig", "es"])
+        self.assertEqual(opts["subtitleslangs"], ["es", "es-ES", "es-MX", "es-AR", "es-CO", "es-CL", "es-PE", "es-VE", "es-orig"])
 
     def test_get_opts_captions_prefer_manual_default_branch(self):
         opts = get_opts(
             "captions", "auto", "srt", "best", {}, subtitle_language="it", subtitle_mode="prefer_manual"
         )
-        self.assertEqual(opts["subtitleslangs"], ["it", "it-orig"])
+        self.assertEqual(opts["subtitleslangs"], ["it", "it-IT", "it-SM", "it-orig"])
 
     def test_get_opts_captions_txt_maps_to_srt_format(self):
         opts = get_opts("captions", "auto", "txt", "best", {})
@@ -133,6 +133,23 @@ class DlFormatsTests(unittest.TestCase):
     def test_normalize_subtitle_language_empty_defaults_en(self):
         self.assertEqual(_normalize_subtitle_language(""), "en")
         self.assertEqual(_normalize_subtitle_language("  "), "en")
+
+    def test_subtitle_lang_list_with_region_variant_input(self):
+        """zh-Hans should expand to include zh base and zh-CN, zh-TW, etc."""
+        from app.dl_formats import _subtitle_lang_list
+        result = _subtitle_lang_list("zh-Hans", include_orig=True)
+        self.assertEqual(result[0], "zh-Hans")  # original input first
+        self.assertIn("zh", result)              # base language fallback
+        self.assertIn("zh-CN", result)           # regional variant
+        self.assertIn("zh-orig", result)         # orig suffix for auto-captions
+
+    def test_subtitle_lang_list_dedup_region_variant(self):
+        """pt-BR should not duplicate pt-BR in the variant expansion."""
+        from app.dl_formats import _subtitle_lang_list
+        result = _subtitle_lang_list("pt-BR", include_orig=True)
+        self.assertEqual(result.count("pt-BR"), 1)  # no duplicate
+        self.assertIn("pt", result)                   # base language fallback
+        self.assertIn("pt-PT", result)                # other regional variant
 
 
 if __name__ == "__main__":

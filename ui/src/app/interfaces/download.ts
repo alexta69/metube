@@ -19,6 +19,7 @@ export interface Download {
   clip_start?: number;
   clip_end?: number;
   status: string;
+  download_phase?: string;
   msg: string;
   percent: number;
   speed: number;
@@ -30,4 +31,5 @@ export interface Download {
   error?: string;
   deleting?: boolean;
   chapter_files?: { filename: string, size: number }[];
+  subtitle_files?: { filename: string, size: number }[];
 }
