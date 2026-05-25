@@ -92,7 +92,7 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertTrue(opts.get("writesubtitles"))
         self.assertFalse(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["fr"])
+        self.assertEqual(opts["subtitleslangs"], ["fr", "fr-FR", "fr-CA", "fr-BE", "fr-CH"])
 
     def test_get_opts_captions_auto_only(self):
         opts = get_opts(
@@ -100,7 +100,7 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertFalse(opts.get("writesubtitles"))
         self.assertTrue(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["de-orig", "de"])
+        self.assertEqual(opts["subtitleslangs"], ["de", "de-DE", "de-AT", "de-CH", "de-orig"])
 
     def test_get_opts_captions_prefer_auto(self):
         opts = get_opts(
@@ -108,7 +108,7 @@ class DlFormatsTests(unittest.TestCase):
         )
         self.assertTrue(opts.get("writesubtitles"))
         self.assertTrue(opts.get("writeautomaticsub"))
-        self.assertEqual(opts["subtitleslangs"], ["es-orig", "es"])
+        self.assertEqual(opts["subtitleslangs"], ["es", "es-ES", "es-MX", "es-AR", "es-CO", "es-CL", "es-PE", "es-VE", "es-orig"])
 
     def test_get_opts_captions_prefer_manual_default_branch(self):
         opts = get_opts(
