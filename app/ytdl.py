@@ -210,6 +210,7 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
+        self.filename = None
         # Strip non-pickleable values (generators, iterators, locks, etc.) for shelve
         self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
@@ -221,6 +222,7 @@ class DownloadInfo:
         self.ytdl_options_overrides = dict(ytdl_options_overrides or {})
         self.clip_start = clip_start
         self.clip_end = clip_end
+        self.chapter_files = []
         self.subtitle_files = []
 
     def __setstate__(self, state):
@@ -289,6 +291,8 @@ class DownloadInfo:
             self.subtitle_files = []
         if not hasattr(self, "chapter_files"):
             self.chapter_files = []
+        if not hasattr(self, "filename"):
+            self.filename = None
         if not hasattr(self, "clip_start"):
             self.clip_start = None
         if not hasattr(self, "clip_end"):

@@ -904,7 +904,36 @@
           </td>
         </tr>
         }
-      }
+        }
+        @if (entry[1].subtitle_files && entry[1].subtitle_files.length > 0) {
+          @for (subtitleFile of entry[1].subtitle_files; track subtitleFile.filename) {
+            <tr [class.disabled]='entry[1].deleting'>
+              <td></td>
+              <td>
+                <div style="padding-left: 2rem;">
+              <fa-icon [icon]="faClosedCaptioning" class="text-info me-2" />
+              <a href="{{buildChapterDownloadLink(entry[1], subtitleFile.filename)}}" target="_blank" [attr.aria-label]="'Open subtitle file ' + getChapterFileName(subtitleFile.filename)">{{
+                getChapterFileName(subtitleFile.filename) }}</a>
+            </div>
+          </td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td>
+            @if (subtitleFile.size) {
+            <span>{{ subtitleFile.size | fileSize }}</span>
+            }
+          </td>
+          <td></td>
+          <td>
+            <div class="d-flex">
+              <a href="{{buildChapterDownloadLink(entry[1], subtitleFile.filename)}}" download [attr.aria-label]="'Download subtitle file ' + getChapterFileName(subtitleFile.filename)"
+                class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
+            </div>
+          </td>
+        </tr>
+        }
+        }
     }
       </tbody>
     </table>

@@ -114,7 +114,7 @@ class DlFormatsTests(unittest.TestCase):
         opts = get_opts(
             "captions", "auto", "srt", "best", {}, subtitle_language="it", subtitle_mode="prefer_manual"
         )
-        self.assertEqual(opts["subtitleslangs"], ["it", "it-orig"])
+        self.assertEqual(opts["subtitleslangs"], ["it", "it-IT", "it-SM", "it-orig"])
 
     def test_get_opts_captions_txt_maps_to_srt_format(self):
         opts = get_opts("captions", "auto", "txt", "best", {})

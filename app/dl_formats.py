@@ -25,6 +25,27 @@ _LANGUAGE_REGION_VARIANTS = {
     "nl": ("NL", "BE"),
     "ro": ("RO", "MD"),
     "ms": ("MY", "BN", "SG"),
+    "it": ("IT", "SM"),
+    "ja": (),
+    "ko": (),
+    "hi": (),
+    "th": (),
+    "vi": (),
+    "id": (),
+    "pl": (),
+    "uk": (),
+    "ru": ("RU", "BY", "KZ", "UA"),
+    "cs": (),
+    "sv": ("SE", "FI"),
+    "da": ("DK",),
+    "no": ("NO", "NB", "NN"),
+    "fi": (),
+    "tr": (),
+    "el": ("GR", "CY"),
+    "he": (),
+    "hu": (),
+    "bn": ("BD", "IN"),
+    "ta": ("IN", "SG", "LK", "MY"),
 }
 
 
@@ -34,13 +55,27 @@ def _subtitle_lang_list(language: str, include_orig: bool = False) -> list[str]:
     Starts with the exact language, then appends common regional variants
     (e.g. ``en`` → ``en-US, en-GB, en-AU, …``).  ``include_orig`` adds the
     ``<lang>-orig`` tag that YouTube uses for original-language auto-captions.
+
+    Handles user input that already contains a region or script subtag (e.g.
+    ``zh-Hans``, ``pt-BR``): extracts the base language (``zh``, ``pt``) so
+    regional variants for that base language are still included as fallbacks.
     """
     langs = [language]
-    variants = _LANGUAGE_REGION_VARIANTS.get(language)
+    # Extract base language (e.g. "zh-Hans" → "zh", "en-GB" → "en")
+    base = language.split('-')[0]
+    # If user provided a qualified tag, also include the base form as fallback
+    if base != language:
+        langs.append(base)
+    variants = _LANGUAGE_REGION_VARIANTS.get(base)
     if variants:
-        langs.extend(f"{language}-{region}" for region in variants)
+        for region in variants:
+            variant = f"{base}-{region}"
+            if variant not in langs:
+                langs.append(variant)
     if include_orig:
-        langs.append(f"{language}-orig")
+        orig_tag = f"{base}-orig"
+        if orig_tag not in langs:
+            langs.append(orig_tag)
     return langs
 
 

@@ -31,4 +31,5 @@ export interface Download {
   error?: string;
   deleting?: boolean;
   chapter_files?: { filename: string, size: number }[];
+  subtitle_files?: { filename: string, size: number }[];
 }
