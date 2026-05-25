@@ -31,7 +31,7 @@ jobs:
           upstream_sync_repo: alexta69/metube
           upstream_sync_branch: master
           target_sync_branch: master
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
+          target_repo_token: ${{ secrets.UPSTREAM_TOKEN }}
           test_mode: false
 
       - name: Sync check

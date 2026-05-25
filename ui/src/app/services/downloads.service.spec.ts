@@ -153,6 +153,13 @@ describe('DownloadsService', () => {
     req.flush({});
   });
 
+  it('pauseById posts ids', () => {
+    service.pauseById(['a', 'b']).subscribe();
+    const req = httpMock.expectOne('pause');
+    expect(req.request.body).toEqual({ ids: ['a', 'b'] });
+    req.flush({});
+  });
+
   it('delById marks items deleting and posts delete', () => {
     const dl = makeDownload({ deleting: false });
     service.queue.set('u1', dl);
@@ -271,7 +278,7 @@ describe('DownloadsService', () => {
     expect(updated?.deleting).toBe(true);
   });
 
-  it('socket completed moves entry to done', () => {
+  it('socket completed moves entry to done and emits completedDownload', () => {
     service.queue.set('u1', {
       id: '1',
       title: 't',
@@ -290,9 +297,14 @@ describe('DownloadsService', () => {
       filename: '',
       checked: false,
     });
+    let completed: Download | undefined;
+    service.completedDownload.subscribe((download) => {
+      completed = download;
+    });
     socket.emit('completed', JSON.stringify({ url: 'u1', title: 't', status: 'finished' }));
     expect(service.queue.has('u1')).toBe(false);
     expect(service.done.has('u1')).toBe(true);
+    expect(completed?.url).toBe('u1');
   });
 
   it('socket canceled removes from queue', () => {

@@ -191,6 +191,92 @@ async def test_start_pending_moves_to_queue(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_pause_keeps_download_in_queue(dq_env):
+    notifier = AsyncMock()
+
+    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid-pause",
+            "title": "Pause Test",
+            "url": url,
+            "webpage_url": url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/pause"
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
+        await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+
+    result = await dq.pause([url])
+    assert result["status"] == "ok"
+    assert dq.queue.exists(url)
+    download = dq.queue.get(url)
+    assert download.paused is True
+    assert download.info.status == "paused"
+    notifier.updated.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_start_paused_download_reschedules_it(dq_env):
+    notifier = AsyncMock()
+
+    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid-resume",
+            "title": "Resume Test",
+            "url": url,
+            "webpage_url": url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/resume"
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
+        await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+
+    await dq.pause([url])
+    start_mock = AsyncMock()
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        result = await dq.start_pending([url])
+
+    assert result["status"] == "ok"
+    download = dq.queue.get(url)
+    assert download.paused is False
+    assert download.info.status == "pending"
+    start_mock.assert_called_once_with(download, download.start_generation)
+
+
+@pytest.mark.asyncio
+async def test_cancel_paused_download_removes_from_queue(dq_env):
+    notifier = AsyncMock()
+
+    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid-cancel-paused",
+            "title": "Cancel Paused Test",
+            "url": url,
+            "webpage_url": url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/cancel-paused"
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
+        await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+
+    await dq.pause([url])
+    result = await dq.cancel([url])
+
+    assert result["status"] == "ok"
+    assert not dq.queue.exists(url)
+    notifier.canceled.assert_awaited_with(url)
+
+
+@pytest.mark.asyncio
 async def test_add_entry_queues_single_video_without_reextracting(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)

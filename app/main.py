@@ -988,6 +988,16 @@ async def start(request):
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
 
+@routes.post(config.URL_PREFIX + 'pause')
+async def pause(request):
+    post = await _read_json_request(request)
+    ids = post.get('ids')
+    if not ids or not isinstance(ids, list):
+        raise web.HTTPBadRequest(reason='missing ids list')
+    log.info(f"Received request to pause downloads for ids: {ids}")
+    status = await dqueue.pause(ids)
+    return web.Response(text=serializer.encode(status))
+
 
 COOKIES_PATH = os.path.join(config.STATE_DIR, 'cookies.txt')
 
@@ -1229,6 +1239,7 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/delete', add_
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/check', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'pause', add_cors)
 
 async def on_prepare(request, response):
     origin = request.headers.get('Origin')

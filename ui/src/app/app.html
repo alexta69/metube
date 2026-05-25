@@ -482,6 +482,20 @@
                 </div>
                 <div class="col-md-6">
                   <div class="input-group">
+                    <span class="input-group-text">Auto Download</span>
+                    <select class="form-select"
+                      name="autoDownloadCompleted"
+                      [(ngModel)]="autoDownloadCompleted"
+                      (change)="autoDownloadCompletedChanged()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading"
+                      ngbTooltip="Automatically save completed files through the browser">
+                      <option [ngValue]="true">Yes</option>
+                      <option [ngValue]="false">No</option>
+                    </select>
+                  </div>
+                </div>
+                <div class="col-md-6">
+                  <div class="input-group">
                     <span class="input-group-text">Subscription Check (min)</span>
                     <input type="number"
                       min="1"
@@ -688,6 +702,7 @@
   <div class="px-2 py-3 border-bottom">
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDelSelected (click)="delSelectedDownloads('queue')"><fa-icon [icon]="faTrashAlt" />&nbsp; Cancel selected</button>
     <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queueDownloadSelected (click)="startSelectedDownloads('queue')"><fa-icon [icon]="faDownload" />&nbsp; Download selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled #queuePauseSelected (click)="pauseSelectedDownloads()"><fa-icon [icon]="faPause" />&nbsp; Pause selected</button>
   </div>
   <div class="overflow-auto">
     <table class="table">
@@ -710,7 +725,12 @@
             </td>
             <td title="{{ download.value.filename }}">
               <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
-                <div>{{ download.value.title }} </div>
+                <div>
+                  {{ download.value.title }}
+                  @if (downloadPhaseLabel(download.value)) {
+                    <span class="badge text-bg-secondary ms-2">{{ downloadPhaseLabel(download.value) }}</span>
+                  }
+                </div>
                 <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'" [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'" type="success"
                 [value]="download.value.status === 'preparing' ? 100 : download.value.percent" class="download-progressbar" />
               </div>
@@ -721,6 +741,12 @@
               <div class="d-flex">
                 @if (download.value.status === 'pending') {
                   <button type="button" class="btn btn-link" [attr.aria-label]="'Start download for ' + download.value.title" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
+                }
+                @if (download.value.status === 'paused') {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Resume download for ' + download.value.title" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faPlay" /></button>
+                }
+                @if (download.value.status === 'downloading' || download.value.status === 'preparing') {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Pause download for ' + download.value.title" (click)="pauseDownloadByKey(download.key)"><fa-icon [icon]="faPause" /></button>
                 }
                 <button type="button" class="btn btn-link" [attr.aria-label]="'Remove ' + download.value.title + ' from queue'" (click)="delDownload('queue', download.key)"><fa-icon [icon]="faTrashAlt" /></button>
                 <a href="{{download.value.url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + download.value.title"><fa-icon [icon]="faExternalLinkAlt" /></a>

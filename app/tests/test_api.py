@@ -18,6 +18,7 @@ def mock_dqueue(monkeypatch):
     d.add = AsyncMock(return_value={"status": "ok"})
     d.cancel = AsyncMock(return_value={"status": "ok"})
     d.start_pending = AsyncMock(return_value={"status": "ok"})
+    d.pause = AsyncMock(return_value={"status": "ok"})
     d.cancel_add = MagicMock()
     d.queue = MagicMock()
     d.done = MagicMock()
@@ -210,6 +211,21 @@ async def test_start_pending(mock_dqueue):
     resp = await main.start(req)
     assert resp.status == 200
     mock_dqueue.start_pending.assert_awaited_once_with(["a"])
+
+
+@pytest.mark.asyncio
+async def test_pause_download(mock_dqueue):
+    req = _json_request({"ids": ["a"]})
+    resp = await main.pause(req)
+    assert resp.status == 200
+    mock_dqueue.pause.assert_awaited_once_with(["a"])
+
+
+@pytest.mark.asyncio
+async def test_pause_missing_ids(mock_dqueue):
+    req = _json_request({})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.pause(req)
 
 
 @pytest.mark.asyncio
