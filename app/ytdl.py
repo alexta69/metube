@@ -647,6 +647,7 @@ class Download:
         self.loop = asyncio.get_running_loop()
         self.notifier = notifier
         self.info.status = 'preparing'
+        self.info.download_phase = None
         await self.notifier.updated(self.info)
         self.status_task = asyncio.create_task(self.update_status())
         await self.loop.run_in_executor(None, self.proc.join)
@@ -673,6 +674,7 @@ class Download:
         self.paused = True
         self.start_generation += 1
         self.info.status = 'paused'
+        self.info.download_phase = None
         self.info.speed = None
         self.info.eta = None
         if self.running():
@@ -705,6 +707,7 @@ class Download:
                 return
             if self.paused:
                 self.info.status = 'paused'
+                self.info.download_phase = None
                 self.info.speed = None
                 self.info.eta = None
                 await self.notifier.updated(self.info)
@@ -988,6 +991,7 @@ class DownloadQueue:
         key = getattr(download.info, 'key', download.info.url)
         if download.paused:
             download.info.status = 'paused'
+            download.info.download_phase = None
             download.info.speed = None
             download.info.eta = None
             download.close()

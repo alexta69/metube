@@ -5,6 +5,7 @@ import { App } from './app';
 import { DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { CookieService } from 'ngx-cookie-service';
+import { Download } from './interfaces';
 
 class DownloadsServiceStub {
   loading = false;
@@ -18,6 +19,7 @@ class DownloadsServiceStub {
   customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
+  completedDownload = new Subject<Download>();
 
   getCookieStatus() {
     return of({ status: 'ok', has_cookies: false });

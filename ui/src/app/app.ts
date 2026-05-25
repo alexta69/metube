@@ -1651,6 +1651,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         speed += download.speed || 0;
       } else if (download.status === 'preparing') {
         active++;
+      } else if (download.status === 'postprocessing') {
+        active++;
       } else if (download.status === 'pending' || download.status === 'paused') {
         queued++;
       }
