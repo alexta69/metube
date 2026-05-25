@@ -16,6 +16,7 @@ COPY pyproject.toml uv.lock docker-entrypoint.sh ./
 # Install dependencies
 RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
     chmod +x docker-entrypoint.sh && \
+    find /etc/apt -type f -name '*.sources' -exec sed -i 's|http://deb.debian.org|https://deb.debian.org|g' {} + && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
@@ -27,28 +28,28 @@ RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
       curl \
       tini \
       build-essential && \
-    curl -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh && \
+    curl --retry 5 --retry-all-errors --retry-delay 3 -LsSf https://astral.sh/uv/install.sh | UV_INSTALL_DIR=/usr/local/bin sh && \
     UV_PROJECT_ENVIRONMENT=/usr/local uv sync --frozen --no-dev --compile-bytecode && \
     uv cache clean && \
     rm -f /usr/local/bin/uv /usr/local/bin/uvx /usr/local/bin/uvw && \
-    curl -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y && \
+    curl --retry 5 --retry-all-errors --retry-delay 3 -fsSL https://deno.land/install.sh | DENO_INSTALL=/usr/local sh -s -- -y && \
     apt-get purge -y --auto-remove build-essential && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /.cache && chmod 777 /.cache
 
 ARG TARGETARCH
 
-RUN BGUTIL_TAG="$(curl -Ls -o /dev/null -w '%{url_effective}' https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest | sed 's#.*/tag/##')" && \
+RUN BGUTIL_TAG="$(curl --retry 5 --retry-all-errors --retry-delay 3 -Ls -o /dev/null -w '%{url_effective}' https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/latest | sed 's#.*/tag/##')" && \
     case "$TARGETARCH" in \
       amd64) BGUTIL_ARCH="x86_64" ;; \
       arm64) BGUTIL_ARCH="aarch64" ;; \
       *) echo "Unsupported TARGETARCH: $TARGETARCH" >&2; exit 1 ;; \
     esac && \
-    curl -L -o /usr/local/bin/bgutil-pot \
+    curl --retry 5 --retry-all-errors --retry-delay 3 -L -o /usr/local/bin/bgutil-pot \
       "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/download/${BGUTIL_TAG}/bgutil-pot-linux-${BGUTIL_ARCH}" && \
     chmod +x /usr/local/bin/bgutil-pot && \
     PLUGIN_DIR="$(python3 -c 'import site; print(site.getsitepackages()[0])')" && \
-    curl -L -o /tmp/bgutil-ytdlp-pot-provider-rs.zip \
+    curl --retry 5 --retry-all-errors --retry-delay 3 -L -o /tmp/bgutil-ytdlp-pot-provider-rs.zip \
       "https://github.com/jim60105/bgutil-ytdlp-pot-provider-rs/releases/download/${BGUTIL_TAG}/bgutil-ytdlp-pot-provider-rs.zip" && \
     unzip -q /tmp/bgutil-ytdlp-pot-provider-rs.zip -d "${PLUGIN_DIR}" && \
     rm /tmp/bgutil-ytdlp-pot-provider-rs.zip

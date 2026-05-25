@@ -1,0 +1,26 @@
+services:
+  mytube:
+    build:
+      context: .
+    image: mytube
+    container_name: mytube-local
+    ports:
+      - "8081:8081"
+    volumes:
+      - ./downloads:/downloads
+    environment:
+      DOWNLOAD_DIR: /downloads
+      STATE_DIR: /downloads/.metube
+      TEMP_DIR: /downloads
+      HOST: 0.0.0.0
+      PORT: "8081"
+      PUBLIC_MODE: "false"
+      CUSTOM_DIRS: "true"
+      CREATE_CUSTOM_DIRS: "true"
+      LOGLEVEL: INFO
+    healthcheck:
+      test: ["CMD", "curl", "-fsS", "http://localhost:8081/"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
