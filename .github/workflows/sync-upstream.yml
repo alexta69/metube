@@ -2,6 +2,7 @@ name: Upstream Sync
 
 permissions:
   contents: write
+  issues: write
 
 on:
   schedule:
@@ -19,7 +20,17 @@ jobs:
         with:
           ref: master
           fetch-depth: 0
-          token: ${{ secrets.UPSTREAM_TOKEN || secrets.GITHUB_TOKEN }}
+          # Must use a PAT with repo scope — GITHUB_TOKEN cannot push in fork scheduled workflows
+          token: ${{ secrets.UPSTREAM_TOKEN }}
+
+      - name: Check UPSTREAM_TOKEN
+        run: |
+          if [ -z "$UPSTREAM_TOKEN" ]; then
+            echo "::error::UPSTREAM_TOKEN secret is not set. Please add a Personal Access Token with repo scope to your repository secrets."
+            exit 1
+          fi
+        env:
+          UPSTREAM_TOKEN: ${{ secrets.UPSTREAM_TOKEN }}
 
       - name: Sync upstream changes
         id: sync
@@ -39,6 +50,10 @@ jobs:
           echo "Local:  $LOCAL"
           echo "Upstream: $UPSTREAM"
           echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          # Configure git for the merge commit
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
 
           # Try merge first (preserves both histories)
           if git merge upstream/master --no-edit; then
