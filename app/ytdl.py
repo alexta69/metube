@@ -1019,7 +1019,7 @@ class DownloadQueue:
             # happen when the requested language (e.g. "en") is unavailable and
             # yt-dlp silently skips subtitle extraction without raising an
             # error.
-            if getattr(download.info, 'download_type', '') == 'captions' and not download.info.filename:
+            if getattr(download.info, 'download_type', '') == 'captions' and not getattr(download.info, 'filename', None):
                 subtitle_files = getattr(download.info, 'subtitle_files', [])
                 if not subtitle_files:
                     log.warning(
@@ -1034,7 +1034,7 @@ class DownloadQueue:
                     )
             # Thumbnail-only downloads that produced no image file should also
             # be reported as an error for the same reason.
-            elif getattr(download.info, 'download_type', '') == 'thumbnail' and not download.info.filename:
+            elif getattr(download.info, 'download_type', '') == 'thumbnail' and not getattr(download.info, 'filename', None):
                 log.warning(
                     f"Thumbnail download for \"{download.info.title}\" produced no file."
                 )
