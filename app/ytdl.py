@@ -488,8 +488,30 @@ class Download:
         info_dict = st.get('info_dict') if isinstance(st, dict) else None
         if not isinstance(info_dict, dict):
             return None
+
         vcodec = str(info_dict.get('vcodec') or '').lower()
         acodec = str(info_dict.get('acodec') or '').lower()
+
+        # Check requested_formats when top-level codecs are both "none"
+        # (common when yt-dlp uses separate downloaders for video+audio streams)
+        if (not vcodec or vcodec == 'none') and (not acodec or acodec == 'none'):
+            requested = info_dict.get('requested_formats')
+            if isinstance(requested, list) and requested:
+                has_video = any(
+                    str(f.get('vcodec') or '').lower() not in ('', 'none')
+                    for f in requested if isinstance(f, dict)
+                )
+                has_audio = any(
+                    str(f.get('acodec') or '').lower() not in ('', 'none')
+                    for f in requested if isinstance(f, dict)
+                )
+                if has_video and has_audio:
+                    return 'media'
+                if has_video:
+                    return 'video'
+                if has_audio:
+                    return 'audio'
+
         if vcodec and vcodec != 'none' and (not acodec or acodec == 'none'):
             return 'video'
         if acodec and acodec != 'none' and (not vcodec or vcodec == 'none'):
@@ -517,6 +539,9 @@ class Download:
                 phase = self._download_phase_from_status(st)
                 if phase:
                     status['download_phase'] = phase
+                log.debug(f"put_status: status={status.get('status')}, phase={phase}, "
+                          f"vcodec={st.get('info_dict', {}).get('vcodec') if isinstance(st.get('info_dict'), dict) else 'N/A'}, "
+                          f"acodec={st.get('info_dict', {}).get('acodec') if isinstance(st.get('info_dict'), dict) else 'N/A'}")
                 self.status_queue.put(status)
 
             def put_status_postprocessor(d):
@@ -605,11 +630,11 @@ class Download:
                 )
 
             ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
-            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+            self.status_queue.put({'status': 'finished' if ret == 0 else 'error', 'download_phase': None})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
-            self.status_queue.put({'status': 'error', 'msg': str(exc)})
+            self.status_queue.put({'status': 'error', 'msg': str(exc), 'download_phase': None})
 
     async def start(self, notifier):
         log.info(f"Preparing download for: {self.info.title}")
@@ -759,7 +784,7 @@ class Download:
             self.info.status = status['status']
             self.info.msg = status.get('msg')
             if 'download_phase' in status:
-                self.info.download_phase = status.get('download_phase')
+                self.info.download_phase = status['download_phase']
             if 'downloaded_bytes' in status:
                 total = status.get('total_bytes') or status.get('total_bytes_estimate')
                 if total:
