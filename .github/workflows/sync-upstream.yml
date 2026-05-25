@@ -2,7 +2,6 @@ name: Upstream Sync
 
 permissions:
   contents: write
-  issues: write
 
 on:
   schedule:
@@ -17,31 +16,53 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
-
-      - name: Clean issue notice
-        uses: actions-cool/issues-helper@v3
         with:
-          actions: close-issues
-          labels: "🚨 Sync Fail"
+          ref: master
+          fetch-depth: 0
+          token: ${{ secrets.UPSTREAM_TOKEN || secrets.GITHUB_TOKEN }}
 
       - name: Sync upstream changes
         id: sync
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4
-        with:
-          upstream_sync_repo: alexta69/metube
-          upstream_sync_branch: master
-          target_sync_branch: master
-          target_repo_token: ${{ secrets.UPSTREAM_TOKEN }}
-          test_mode: false
+        run: |
+          git remote add upstream https://github.com/alexta69/metube.git 2>/dev/null || true
+          git fetch upstream master
 
-      - name: Sync check
+          LOCAL=$(git rev-parse HEAD)
+          UPSTREAM=$(git rev-parse upstream/master)
+
+          if [ "$LOCAL" = "$UPSTREAM" ]; then
+            echo "Already up-to-date"
+            echo "has_changes=false" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "Local:  $LOCAL"
+          echo "Upstream: $UPSTREAM"
+          echo "has_changes=true" >> "$GITHUB_OUTPUT"
+
+          # Try merge first (preserves both histories)
+          if git merge upstream/master --no-edit; then
+            git push origin master
+            echo "Merge succeeded"
+            echo "sync_result=success" >> "$GITHUB_OUTPUT"
+          else
+            echo "Merge conflict detected, aborting"
+            git merge --abort
+            echo "sync_result=conflict" >> "$GITHUB_OUTPUT"
+            exit 1
+          fi
+
+      - name: Sync check — create issue on failure
         if: failure()
-        uses: actions-cool/issues-helper@v3
+        uses: actions/github-script@v7
         with:
-          actions: create-issue
-          title: "🚨 同步失败 | Sync Fail"
-          labels: "🚨 Sync Fail"
-          body: |
-            Due to conflicts or workflow changes in the [alexta69/metube](https://github.com/alexta69/metube) upstream repository, the automatic sync has failed. Please manually sync your fork and resolve any conflicts.
+          script: |
+            await github.rest.issues.create({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              title: "🚨 同步失败 | Sync Fail",
+              labels: ["🚨 Sync Fail"],
+              body: `Due to conflicts or workflow changes in the [alexta69/metube](https://github.com/alexta69/metube) upstream repository, the automatic sync has failed. Please manually sync your fork and resolve any conflicts.
 
-            由于上游仓库 [alexta69/metube](https://github.com/alexta69/metube) 存在冲突或 workflow 变更，自动同步失败。请手动 Sync Fork 并解决冲突。
+            由于上游仓库 [alexta69/metube](https://github.com/alexta69/metube) 存在冲突或 workflow 变更，自动同步失败。请手动 Sync Fork 并解决冲突。`
+            });
