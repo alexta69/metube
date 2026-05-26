@@ -2,7 +2,6 @@ name: Upstream Sync
 
 permissions:
   contents: write
-  issues: write
 
 on:
   schedule:
@@ -13,44 +12,28 @@ jobs:
   sync_latest_from_upstream:
     name: Sync latest commits from upstream repo
     runs-on: ubuntu-latest
+
     if: ${{ github.event.repository.fork }}
-    env:
-      FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      - uses: actions/checkout@v6
+      - name: Checkout target repo
+        uses: actions/checkout@v4
         with:
           ref: master
           fetch-depth: 0
           token: ${{ secrets.GITHUB_TOKEN }}
-          persist-credentials: true
-
-      - name: Clean issue notice
-        uses: actions-cool/issues-helper@e361abf610221f09495ad510cb1e69328d839e1c # v3.7.6
-        with:
-          actions: "close-issues"
-          labels: "🚨 Sync Fail"
 
       - name: Sync upstream changes
-        id: sync
-        uses: aormsby/Fork-Sync-With-Upstream-action@v3.4.3
-        with:
-          upstream_sync_repo: alexta69/metube
-          upstream_sync_branch: master
-          target_sync_branch: master
-          target_repo_token: ${{ secrets.GITHUB_TOKEN }}
-          test_mode: false
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
 
-      - name: Sync check
-        if: failure()
-        uses: actions-cool/issues-helper@e361abf610221f09495ad510cb1e69328d839e1c # v3.7.6
-        with:
-          actions: "create-issue"
-          title: "🚨 同步失败 | Sync Fail"
-          labels: "🚨 Sync Fail"
-          body: |
-            Due to a change in the workflow file of the [alexta69/metube](https://github.com/alexta69/metube) upstream repository, GitHub has automatically suspended the scheduled automatic update. You need to manually sync your fork. Please go to your fork page and click "Sync fork → Update branch".
+          git remote add upstream https://github.com/alexta69/metube.git
 
-            由于 [alexta69/metube](https://github.com/alexta69/metube) 上游仓库的 workflow 文件变更，导致 GitHub 自动暂停了本次自动更新，你需要手动 Sync Fork 一次。
+          git fetch upstream
 
-            ![](https://github-production-user-asset-6210df.s3.amazonaws.com/17870709/273954625-df80c890-0822-4ac2-95e6-c990785cbed5.png)
+          git checkout master
+
+          git merge upstream/master --allow-unrelated-histories
+
+          git push origin master
