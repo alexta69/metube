@@ -18,13 +18,11 @@ jobs:
       FORCE_JAVASCRIPT_ACTIONS_TO_NODE24: true
 
     steps:
-      # Checkout with UPSTREAM_TOKEN (Classic PAT with repo + workflow scope)
-      # GITHUB_TOKEN cannot push commits that modify .github/workflows/ files
       - uses: actions/checkout@v6
         with:
           ref: master
           fetch-depth: 0
-          token: ${{ secrets.UPSTREAM_TOKEN }}
+          token: ${{ secrets.GITHUB_TOKEN }}
           persist-credentials: true
 
       - name: Clean issue notice
