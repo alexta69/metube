@@ -854,6 +854,9 @@
                 @if (entry[1].filename) {
                   <a href="{{buildDownloadLink(entry[1])}}" download class="btn btn-link" [attr.aria-label]="'Download result file for ' + entry[1].title"><fa-icon [icon]="faDownload" /></a>
                 }
+                @if (entry[1].filename && canShareDownloads()) {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Share result file for ' + entry[1].title" (click)="shareDownload(entry[1])" ngbTooltip="Share — on iOS opens the share sheet (Save to Photos, Files, AirDrop…)"><fa-icon [icon]="faShareNodes" /></button>
+                }
                 <a href="{{entry[1].url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + entry[1].title"><fa-icon [icon]="faExternalLinkAlt" /></a>
                 <button type="button" class="btn btn-link" [attr.aria-label]="'Delete completed item ' + entry[1].title" (click)="delDownload('done', entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
               </div>

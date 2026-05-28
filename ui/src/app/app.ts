@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -185,6 +185,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faUpload = faUpload;
   faPause = faPause;
   faPlay = faPlay;
+  faShareNodes = faShareNodes;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -1187,6 +1188,51 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
 
     return baseDir + encodeURIComponent(download.filename);
+  }
+
+  // Web Share API support — primarily for iOS Safari / Chrome, lets the user
+  // hand the downloaded file off to the platform share sheet (Photos.app,
+  // Files, third-party apps, AirDrop). Falls back silently to the standard
+  // download flow on platforms without navigator.share / canShare.
+  canShareDownloads(): boolean {
+    // navigator.share alone is not enough — Desktop Safari implements
+    // navigator.share but not canShare with files. We explicitly require
+    // both, since we always intend to share a file (not a URL).
+    return typeof navigator !== 'undefined'
+      && typeof navigator.share === 'function'
+      && typeof navigator.canShare === 'function';
+  }
+
+  async shareDownload(download: Download): Promise<void> {
+    if (!this.canShareDownloads()) {
+      return;
+    }
+    try {
+      const response = await fetch(this.buildDownloadLink(download));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} fetching file for share`);
+      }
+      const blob = await response.blob();
+      const file = new File([blob], download.filename, {
+        type: blob.type || 'application/octet-stream',
+      });
+      const payload: ShareData = { files: [file], title: download.title };
+      if (!navigator.canShare(payload)) {
+        // File type not shareable on this platform (e.g. desktop browsers,
+        // or some MIME types iOS refuses). Bail out so the user can still
+        // use the regular download button right next to this one.
+        console.warn('navigator.canShare rejected payload for', download.filename);
+        return;
+      }
+      await navigator.share(payload);
+    } catch (err: any) {
+      // AbortError = user dismissed the share sheet → silent no-op.
+      // Other errors (network, file too big, …) get logged but we don't
+      // surface a UI error: the regular download link remains a fallback.
+      if (err?.name !== 'AbortError') {
+        console.error('Share failed:', err);
+      }
+    }
   }
 
   buildResultItemTooltip(download: Download) {
