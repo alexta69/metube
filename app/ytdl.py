@@ -1194,12 +1194,68 @@ class DownloadQueue:
                 dl = self.done.get(id)
                 try:
                     dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
-                    os.remove(os.path.join(dldirectory, dl.info.filename))
+                    self.__remove_download_and_sidecars(dldirectory, dl.info.filename)
                 except Exception as e:
                     log.warning(f'deleting file for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
+
+    def __remove_download_and_sidecars(self, bucket_root, rel_filename):
+        """When DELETE_FILE_ON_TRASHCAN is enabled, the trash button should
+        leave the bucket the way it found it: no orphan thumbnail / subtitle
+        / info.json files, no empty `<uploader>/` directories left behind.
+
+        Removes:
+          1. the main file the download record references
+          2. every same-stem sidecar in the same directory
+             (writethumbnail's .jpg/.webp, writesubtitles' .vtt/.srt,
+              writeinfojson's .info.json, writedescription's .description,
+              anything else yt-dlp writes per video)
+          3. any directories from the file's parent up to (but not including)
+             the bucket root, while they're empty after the removals above
+
+        Never touches the bucket root itself (e.g. /downloads/helmut), and
+        os.rmdir() is non-destructive — it raises if the directory still
+        contains anything, which is exactly the desired behaviour."""
+        main_path = os.path.join(bucket_root, rel_filename)
+        main_dir = os.path.dirname(main_path)
+        main_stem, _ = os.path.splitext(os.path.basename(main_path))
+        # Sidecar prefix matches the main file and anything yt-dlp wrote
+        # alongside it (e.g. "Title [id].jpg", "Title [id].en.vtt",
+        # "Title [id].info.json"). The trailing dot avoids matching a
+        # sibling whose name starts with the same stem but continues
+        # with other characters (e.g. "Title [id] (alt cut).mp4").
+        sidecar_prefix = main_stem + '.'
+        if os.path.isdir(main_dir):
+            for entry in os.listdir(main_dir):
+                if not entry.startswith(sidecar_prefix):
+                    continue
+                entry_path = os.path.join(main_dir, entry)
+                if not os.path.isfile(entry_path):
+                    continue
+                try:
+                    os.remove(entry_path)
+                except OSError as e:
+                    log.warning(f'failed to remove sidecar {entry_path}: {e!r}')
+
+        # Prune empty parent directories up to (but not including)
+        # bucket_root. Walk on realpath()ed paths so a symlinked layout
+        # can't trick us into climbing above the bucket.
+        try:
+            bucket_real = os.path.realpath(bucket_root)
+            cur = os.path.realpath(main_dir)
+            while cur != bucket_real and cur.startswith(bucket_real + os.sep):
+                try:
+                    os.rmdir(cur)
+                except OSError:
+                    # Directory is non-empty (or a permission issue) —
+                    # in either case stop climbing, that's the signal
+                    # to leave it alone.
+                    break
+                cur = os.path.dirname(cur)
+        except Exception as e:
+            log.warning(f'failed to prune empty parents below {bucket_root}: {e!r}')
 
     def get(self):
         return (list((k, v.info) for k, v in self.queue.items()) +
