@@ -1250,12 +1250,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         return;
       }
       await navigator.share(payload);
-    } catch (err: any) {
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
       // AbortError = user dismissed the share sheet → silent no-op.
-      if (err?.name === 'AbortError') return;
+      if (e.name === 'AbortError') return;
       console.error('Share failed:', err);
       window.alert(
-        `Share failed: ${err?.message || 'unknown error'}. ` +
+        `Share failed: ${e.message || 'unknown error'}. ` +
         `Please use the download button instead.`
       );
     }
