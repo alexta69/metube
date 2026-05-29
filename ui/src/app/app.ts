@@ -104,7 +104,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   cookieUploadInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
-  customDirs$!: Observable<string[]>;
   readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
   folderFocus$ = new Subject<string>();
   folderClick$ = new Subject<string>();
@@ -310,7 +309,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.getYtdlOptionPresets();
-    this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
@@ -377,13 +375,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return this.downloads.configuration['ALLOW_YTDL_OPTIONS_OVERRIDES'] === true;
   }
 
-  allowCustomDir(tag: string) {
-    if (this.downloads.configuration['CREATE_CUSTOM_DIRS']) {
-      return tag;
-    }
-    return false;
-  }
-
   searchFolder: OperatorFunction<string, readonly string[]> = (text$: Observable<string>) => {
     const debouncedText$ = text$.pipe(debounceTime(150), distinctUntilChanged());
     const clicksWithClosedPopup$ = this.folderClick$.pipe(
@@ -402,23 +393,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   isAudioType() {
     return this.downloadType === 'audio';
-  }
-
-  getMatchingCustomDir() : Observable<string[]> {
-    return this.downloads.customDirsChanged.asObservable().pipe(
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      map((output: any) => {
-        // Keep logic consistent with app/ytdl.py
-        if (this.isAudioType()) {
-          console.debug("Showing audio-specific download directories");
-          return output["audio_download_dir"];
-        } else {
-          console.debug("Showing default download directories");
-          return output["download_dir"];
-        }
-      }),
-      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr))
-    );
   }
 
   getYtdlOptionsUpdateTime() {

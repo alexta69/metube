@@ -384,7 +384,6 @@
                       (click)="folderClick$.next($any($event.target).value)"
                       #folderTypeahead="ngbTypeahead"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-
                   </div>
                 </div>
                 <div class="col-md-6">
@@ -450,12 +449,17 @@
               <!-- Behavior -->
               <div class="settings-section-label">Behavior</div>
               <div class="row g-3">
-                <div class="col-md-6 d-flex align-items-center">
-                  <div class="form-check form-switch">
-                    <input class="form-check-input" type="checkbox" role="switch" id="checkbox-auto-start"
-                      name="autoStart" [(ngModel)]="autoStart" (change)="autoStartChanged()"
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text help-title" ngbPopover="Automatically start downloads when added." triggers="click" autoClose="outside" container="body">Auto Start</span>
+                    <select class="form-select"
+                      name="autoStart"
+                      [(ngModel)]="autoStart"
+                      (change)="autoStartChanged()"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                    <label class="form-check-label help-title" for="checkbox-auto-start" ngbPopover="Automatically start downloads when added." triggers="click" autoClose="outside" container="body" (click)="$event.preventDefault()">Auto Start</label>
+                      <option [ngValue]="true">Yes</option>
+                      <option [ngValue]="false">No</option>
+                    </select>
                   </div>
                 </div>
                 <div class="col-md-6">
@@ -500,7 +504,14 @@
                     <input class="form-check-input" type="checkbox" role="switch" id="checkbox-skip-subscriber-only"
                       name="skipSubscriberOnly" [(ngModel)]="skipSubscriberOnly"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
-                    <label class="form-check-label help-title" for="checkbox-skip-subscriber-only" ngbPopover="When enabled, subscription checks skip videos marked members-only by yt-dlp (channel Join). Ignored for one-off downloads." triggers="click" autoClose="outside" container="body" (click)="$event.preventDefault()">Skip members-only subscription videos</label>
+                    <label class="form-check-label" for="checkbox-skip-subscriber-only">
+                      <span class="help-title" tabindex="0" role="button"
+                        ngbPopover="When enabled, subscription checks skip videos marked members-only by yt-dlp (channel Join). Ignored for one-off downloads."
+                        triggers="click" autoClose="outside" container="body"
+                        (click)="$event.preventDefault(); $event.stopPropagation()"
+                        (keydown.enter)="$event.preventDefault(); $event.stopPropagation()"
+                        (keydown.space)="$event.preventDefault(); $event.stopPropagation()">Skip members-only subscription videos</span>
+                    </label>
                   </div>
                 </div>
               </div>
