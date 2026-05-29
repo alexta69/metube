@@ -1203,9 +1203,27 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       && typeof navigator.canShare === 'function';
   }
 
+  // Conservative warning threshold for the share sheet — iOS' actual
+  // refusal limit varies between ~50 MB (older versions) and ~150 MB
+  // (recent ones). 80 MB warns the user before the time-wasting fetch+
+  // copy of a too-large file that the platform will then reject.
+  private static readonly SHARE_SIZE_WARN_BYTES = 80 * 1024 * 1024;
+
   async shareDownload(download: Download): Promise<void> {
     if (!this.canShareDownloads()) {
       return;
+    }
+    // Pre-flight size check: warn the user about the iOS share-sheet
+    // soft-fail on large files, before we spend time fetching the whole
+    // file into memory only to have navigator.canShare reject it.
+    if (download.size && download.size > App.SHARE_SIZE_WARN_BYTES) {
+      const sizeMb = Math.round(download.size / 1024 / 1024);
+      const proceed = window.confirm(
+        `This file is ${sizeMb} MB. iOS' share sheet often refuses files ` +
+        `larger than ~100 MB and the share will silently fail. ` +
+        `Try anyway? (Use the download button instead if it fails.)`
+      );
+      if (!proceed) return;
     }
     try {
       const response = await fetch(this.buildDownloadLink(download));
@@ -1218,20 +1236,28 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       });
       const payload: ShareData = { files: [file], title: download.title };
       if (!navigator.canShare(payload)) {
-        // File type not shareable on this platform (e.g. desktop browsers,
-        // or some MIME types iOS refuses). Bail out so the user can still
-        // use the regular download button right next to this one.
+        // The platform refused the payload — most commonly because the
+        // file is too large for the iOS share sheet, or the MIME type
+        // isn't accepted. Tell the user so they can fall back to the
+        // download button right next to this one instead of staring at
+        // a button that quietly did nothing.
         console.warn('navigator.canShare rejected payload for', download.filename);
+        window.alert(
+          `Your device's share sheet doesn't accept this file ` +
+          `(most likely because it's too large). ` +
+          `Please use the download button instead.`
+        );
         return;
       }
       await navigator.share(payload);
     } catch (err: any) {
       // AbortError = user dismissed the share sheet → silent no-op.
-      // Other errors (network, file too big, …) get logged but we don't
-      // surface a UI error: the regular download link remains a fallback.
-      if (err?.name !== 'AbortError') {
-        console.error('Share failed:', err);
-      }
+      if (err?.name === 'AbortError') return;
+      console.error('Share failed:', err);
+      window.alert(
+        `Share failed: ${err?.message || 'unknown error'}. ` +
+        `Please use the download button instead.`
+      );
     }
   }
 
