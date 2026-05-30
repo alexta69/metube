@@ -30,4 +30,14 @@ export interface Download {
   error?: string;
   deleting?: boolean;
   chapter_files?: { filename: string, size: number }[];
+  // Actual media properties resolved by yt-dlp at download time. Unlike
+  // `quality`/`codec` (the user's request), these reflect what came out.
+  // Optional because they're only populated for finished downloads of
+  // video/audio (not captions/thumbnails) and old persisted entries
+  // pre-dating the patch don't have them.
+  width?: number;
+  height?: number;
+  fps?: number;
+  vcodec_actual?: string;
+  abr?: number;
 }
