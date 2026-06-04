@@ -364,6 +364,7 @@
               <!-- Output -->
               <div class="settings-section-label">Output</div>
               <div class="row g-3">
+                @if (downloads.configuration['CUSTOM_DIRS']) {
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text help-title" ngbPopover="Type to filter existing folders, or enter a new folder name." triggers="click" autoClose="outside" container="body">Download Folder</span>
@@ -380,6 +381,7 @@
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
                 </div>
+                }
                 <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text help-title" ngbPopover="Add a prefix to downloaded filenames." triggers="click" autoClose="outside" container="body">Custom Name Prefix</span>
