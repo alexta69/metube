@@ -1,13 +1,13 @@
-import { AsyncPipe, DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
+import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, Subject, Subscription, from, map, distinctUntilChanged, finalize, mergeMap, takeUntil, tap, concatMap, toArray } from 'rxjs';
+import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, takeUntil, tap, concatMap, toArray } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { NgbModule } from '@ng-bootstrap/ng-bootstrap';
-import { NgSelectModule } from '@ng-select/ng-select';  
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faClosedCaptioning } from '@fortawesome/free-solid-svg-icons';
+import { NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
+import { NgSelectModule } from '@ng-select/ng-select';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faClosedCaptioning, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -40,7 +40,6 @@ import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/
         FormsModule,
         NgTemplateOutlet,
         KeyValuePipe,
-        AsyncPipe,
         DatePipe,
         FontAwesomeModule,
         NgbModule,
@@ -106,8 +105,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   cookieUploadInProgress = false;
   themes: Theme[] = Themes;
   activeTheme: Theme | undefined;
-  customDirs$!: Observable<string[]>;
-  showBatchPanel = false; 
+  readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
+  folderFocus$ = new Subject<string>();
+  folderClick$ = new Subject<string>();
+  showBatchPanel = false;
   batchImportModalOpen = false;
   batchImportText = '';
   batchImportStatus = '';
@@ -189,6 +190,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faPause = faPause;
   faPlay = faPlay;
   faClosedCaptioning = faClosedCaptioning;
+  faShareNodes = faShareNodes;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -316,7 +318,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.getConfiguration();
     this.getYtdlOptionsUpdateTime();
     this.getYtdlOptionPresets();
-    this.customDirs$ = this.getMatchingCustomDir();
     this.setTheme(this.activeTheme!);
 
     this.colorSchemeMediaQuery.addEventListener('change', this.onColorSchemeChanged);
@@ -344,9 +345,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   // workaround to allow fetching of Map values in the order they were inserted
   //  https://github.com/angular/angular/issues/31420
-    
-   
-      
+
+
+
   asIsOrder() {
     return 1;
   }
@@ -394,25 +395,24 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return false;
   }
 
+  searchFolder: OperatorFunction<string, readonly string[]> = (text$: Observable<string>) => {
+    const debouncedText$ = text$.pipe(debounceTime(150), distinctUntilChanged());
+    const clicksWithClosedPopup$ = this.folderClick$.pipe(
+      filter(() => !this.folderTypeahead()?.isPopupOpen()),
+    );
+    return merge(debouncedText$, this.folderFocus$, clicksWithClosedPopup$).pipe(
+      map(term => {
+        const dirs = this.isAudioType()
+          ? (this.downloads.customDirs?.['audio_download_dir'] ?? [])
+          : (this.downloads.customDirs?.['download_dir'] ?? []);
+        const t = (term ?? '').toLowerCase();
+        return (t === '' ? dirs : dirs.filter(d => d.toLowerCase().includes(t))).slice(0, 10);
+      }),
+    );
+  };
+
   isAudioType() {
     return this.downloadType === 'audio';
-  }
-
-  getMatchingCustomDir() : Observable<string[]> {
-    return this.downloads.customDirsChanged.asObservable().pipe(
-       // eslint-disable-next-line @typescript-eslint/no-explicit-any
-      map((output: any) => {
-        // Keep logic consistent with app/ytdl.py
-        if (this.isAudioType()) {
-          console.debug("Showing audio-specific download directories");
-          return output["audio_download_dir"];
-        } else {
-          console.debug("Showing default download directories");
-          return output["download_dir"];
-        }
-      }),
-      distinctUntilChanged((prev, curr) => JSON.stringify(prev) === JSON.stringify(curr))
-    );
   }
 
   getYtdlOptionsUpdateTime() {
@@ -1280,6 +1280,78 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
   }
 
+  // Web Share API support — primarily for iOS Safari / Chrome, lets the user
+  // hand the downloaded file off to the platform share sheet (Photos.app,
+  // Files, third-party apps, AirDrop). Falls back silently to the standard
+  // download flow on platforms without navigator.share / canShare.
+  canShareDownloads(): boolean {
+    // navigator.share alone is not enough — Desktop Safari implements
+    // navigator.share but not canShare with files. We explicitly require
+    // both, since we always intend to share a file (not a URL).
+    return typeof navigator !== 'undefined'
+      && typeof navigator.share === 'function'
+      && typeof navigator.canShare === 'function';
+  }
+
+  // Conservative warning threshold for the share sheet — iOS' actual
+  // refusal limit varies between ~50 MB (older versions) and ~150 MB
+  // (recent ones). 80 MB warns the user before the time-wasting fetch+
+  // copy of a too-large file that the platform will then reject.
+  private static readonly SHARE_SIZE_WARN_BYTES = 80 * 1024 * 1024;
+
+  async shareDownload(download: Download): Promise<void> {
+    if (!this.canShareDownloads()) {
+      return;
+    }
+    // Pre-flight size check: warn the user about the iOS share-sheet
+    // soft-fail on large files, before we spend time fetching the whole
+    // file into memory only to have navigator.canShare reject it.
+    if (download.size && download.size > App.SHARE_SIZE_WARN_BYTES) {
+      const sizeMb = Math.round(download.size / 1024 / 1024);
+      const proceed = window.confirm(
+        `This file is ${sizeMb} MB. iOS' share sheet often refuses files ` +
+        `larger than ~100 MB and the share will silently fail. ` +
+        `Try anyway? (Use the download button instead if it fails.)`
+      );
+      if (!proceed) return;
+    }
+    try {
+      const response = await fetch(this.buildDownloadLink(download));
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status} fetching file for share`);
+      }
+      const blob = await response.blob();
+      const file = new File([blob], download.filename, {
+        type: blob.type || 'application/octet-stream',
+      });
+      const payload: ShareData = { files: [file], title: download.title };
+      if (!navigator.canShare(payload)) {
+        // The platform refused the payload — most commonly because the
+        // file is too large for the iOS share sheet, or the MIME type
+        // isn't accepted. Tell the user so they can fall back to the
+        // download button right next to this one instead of staring at
+        // a button that quietly did nothing.
+        console.warn('navigator.canShare rejected payload for', download.filename);
+        window.alert(
+          `Your device's share sheet doesn't accept this file ` +
+          `(most likely because it's too large). ` +
+          `Please use the download button instead.`
+        );
+        return;
+      }
+      await navigator.share(payload);
+    } catch (err) {
+      const e = err as { name?: string; message?: string };
+      // AbortError = user dismissed the share sheet → silent no-op.
+      if (e.name === 'AbortError') return;
+      console.error('Share failed:', err);
+      window.alert(
+        `Share failed: ${e.message || 'unknown error'}. ` +
+        `Please use the download button instead.`
+      );
+    }
+  }
+
   buildResultItemTooltip(download: Download) {
     const parts = [];
     if (download.msg) {
@@ -1489,7 +1561,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   fetchVersionInfo(): void {
-    // eslint-disable-next-line no-useless-escape    
+    // eslint-disable-next-line no-useless-escape
     const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
     const versionUrl = `${baseUrl}version`;
     this.http.get<{ 'yt-dlp': string, version: string }>(versionUrl)
