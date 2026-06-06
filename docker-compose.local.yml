@@ -1,0 +1,15 @@
+services:
+  metube:
+    image: ghcr.io/alexta69/metube
+    container_name: metube-local
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:8081:8081"
+    volumes:
+      - ./downloads:/downloads
+    environment:
+      - DOWNLOAD_DIR=/downloads
+      - DOWNLOAD_DIRS_INDEXABLE=false
+      - ALLOW_YTDL_OPTIONS_OVERRIDES=false
+      - CORS_ALLOWED_ORIGINS=
+      - ENABLE_ACCESSLOG=false
