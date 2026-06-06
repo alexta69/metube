@@ -11,6 +11,7 @@ import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faC
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
+import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
@@ -56,6 +57,7 @@ import { SelectAllCheckboxComponent, ItemCheckboxComponent } from './components/
 export class App implements AfterViewInit, OnInit, OnDestroy {
   downloads = inject(DownloadsService);
   subscriptionsSvc = inject(SubscriptionsService);
+  private socket = inject(MeTubeSocket);
   private cookieService = inject(CookieService);
   private http = inject(HttpClient);
   private cdr = inject(ChangeDetectorRef);
@@ -328,6 +330,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Initialize action button states for already-loaded entries.
     this.updateDoneActionButtons();
     this.fetchVersionInfo();
+    this.socket.fromEvent('connect')
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe(() => this.fetchVersionInfo());
   }
 
   ngOnDestroy() {
