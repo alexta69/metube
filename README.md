@@ -109,6 +109,7 @@ You can also load variables from files:
 * __YTDL_OPTIONS_PRESETS__: Named bundles of yt-dlp options, selectable per download in the UI. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for format and examples.
 * __YTDL_OPTIONS_PRESETS_FILE__: Path to a JSON file containing presets. Monitored and reloaded automatically on changes. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options).
 * __ALLOW_YTDL_OPTIONS_OVERRIDES__: Whether to show a free-text field in the UI for per-download yt-dlp option overrides. Defaults to `false`. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for details and security considerations.
+* __YTDL_NIGHTLY_UPDATE_TIME__: If set, will cause MeTube to use [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds) instead of the stable releases. Set to the time (`HH:MM`, 24-hour) when you want the daily upgrades and MeTube restart to happen. Defaults to empty (disabled).
 
 ### 🌐 Web Server & URLs
 

@@ -4,8 +4,10 @@
 import os
 import sys
 import asyncio
+from datetime import datetime, timedelta
 from pathlib import Path
 from aiohttp import web
+from aiohttp.web import GracefulExit
 from aiohttp.log import access_logger
 import ssl
 import socket
@@ -22,6 +24,22 @@ from subscriptions import SubscriptionManager, SubscriptionNotifier, Subscriptio
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
+
+_NIGHTLY_TIME_RE = re.compile(r'^([01]\d|2[0-3]):[0-5]\d$')
+_RESTART_FOR_UPDATE = False
+
+def _request_graceful_exit() -> None:
+    raise GracefulExit()
+
+
+def seconds_until_next_daily_time(time_hhmm: str, now: datetime | None = None) -> float:
+    """Seconds until the next occurrence of HH:MM in local time."""
+    now = now or datetime.now()
+    hour, minute = map(int, time_hhmm.split(':'))
+    target = now.replace(hour=hour, minute=minute, second=0, microsecond=0)
+    if target <= now:
+        target += timedelta(days=1)
+    return (target - now).total_seconds()
 
 def parseLogLevel(logLevel):
     if not isinstance(logLevel, str):
@@ -73,6 +91,7 @@ class Config:
         'MAX_CONCURRENT_DOWNLOADS': '3',
         'LOGLEVEL': 'INFO',
         'ENABLE_ACCESSLOG': 'false',
+        'YTDL_NIGHTLY_UPDATE_TIME': '',
         'PUBLIC_MODE': 'false',
     }
 
@@ -104,6 +123,13 @@ class Config:
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
         if self.YTDL_OPTIONS_PRESETS_FILE and self.YTDL_OPTIONS_PRESETS_FILE.startswith('.'):
             self.YTDL_OPTIONS_PRESETS_FILE = str(Path(self.YTDL_OPTIONS_PRESETS_FILE).resolve())
+
+        if self.YTDL_NIGHTLY_UPDATE_TIME and not _NIGHTLY_TIME_RE.match(self.YTDL_NIGHTLY_UPDATE_TIME):
+            log.error(
+                'Environment variable "YTDL_NIGHTLY_UPDATE_TIME" must be HH:MM (24-hour), got "%s"',
+                self.YTDL_NIGHTLY_UPDATE_TIME,
+            )
+            sys.exit(1)
 
         self._runtime_overrides = {}
 
@@ -549,8 +575,18 @@ class Notifier(DownloadQueueNotifier):
         await _emit_download_event('cleared', serializer.encode(id), url=id, dl_id=id)
 
 dqueue = DownloadQueue(config, Notifier())
-app.on_startup.append(lambda app: dqueue.initialize())
-app.on_cleanup.append(lambda app: Download.shutdown_manager())
+
+
+async def _download_queue_startup(app):
+    await dqueue.initialize()
+
+
+async def _shutdown_download_manager(app):
+    Download.shutdown_manager()
+
+
+app.on_startup.append(_download_queue_startup)
+app.on_cleanup.append(_shutdown_download_manager)
 
 
 class MetubeSubscriptionNotifier(SubscriptionNotifier):
@@ -570,7 +606,13 @@ class MetubeSubscriptionNotifier(SubscriptionNotifier):
 
 
 submgr = SubscriptionManager(config, dqueue, MetubeSubscriptionNotifier())
-app.on_cleanup.append(lambda app: submgr.close())
+
+
+async def _shutdown_subscriptions(app):
+    submgr.close()
+
+
+app.on_cleanup.append(_shutdown_subscriptions)
 
 
 async def _subscription_loop_startup(app):
@@ -579,6 +621,26 @@ async def _subscription_loop_startup(app):
 
 
 app.on_startup.append(_subscription_loop_startup)
+
+
+async def _schedule_nightly_update() -> None:
+    global _RESTART_FOR_UPDATE
+    time_hhmm = config.YTDL_NIGHTLY_UPDATE_TIME
+    if not time_hhmm:
+        return
+    delay = seconds_until_next_daily_time(time_hhmm)
+    log.info('Next yt-dlp nightly update in %.0f seconds (at %s local time)', delay, time_hhmm)
+    await asyncio.sleep(delay)
+    log.info('Scheduled yt-dlp nightly update: requesting restart')
+    _RESTART_FOR_UPDATE = True
+    asyncio.get_running_loop().call_soon(_request_graceful_exit)
+
+
+async def _start_nightly_update_schedule(app):
+    asyncio.create_task(_schedule_nightly_update())
+
+
+app.on_startup.append(_start_nightly_update_schedule)
 
 class FileOpsFilter(DefaultFilter):
     def __call__(self, change_type: int, path: str) -> bool:
@@ -626,8 +688,12 @@ async def watch_files():
     log.info(f'Starting Watch File: {config.YTDL_OPTIONS_FILE}')
     asyncio.create_task(_watch_files())
 
+async def _watch_files_startup(app):
+    await watch_files()
+
+
 if config.YTDL_OPTIONS_FILE:
-    app.on_startup.append(lambda app: watch_files())
+    app.on_startup.append(_watch_files_startup)
 
 
 async def _read_json_request(request: web.Request) -> dict:
@@ -1280,3 +1346,5 @@ if __name__ == '__main__':
         web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context, access_log=isAccessLogEnabled())
     else:
         web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), access_log=isAccessLogEnabled())
+    if _RESTART_FOR_UPDATE:
+        sys.exit(42)
