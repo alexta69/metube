@@ -23,6 +23,7 @@ fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
 fake_yt_dlp.networking = fake_networking
 fake_yt_dlp.utils = types.SimpleNamespace(YoutubeDLError=Exception)
+fake_yt_dlp.YoutubeDL = MagicMock  # needed for _resolve_ytmusic_handle tests
 sys.modules.setdefault("yt_dlp", fake_yt_dlp)
 sys.modules.setdefault("yt_dlp.networking", fake_networking)
 sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
@@ -31,6 +32,7 @@ from subscriptions import (
     SubscriptionManager,
     _is_ytmusic_artist_url,
     _ytmusic_channel_id,
+    _resolve_ytmusic_handle,
     extract_ytmusic_artist_releases,
 )
 
@@ -39,23 +41,24 @@ from subscriptions import (
 # ---------------------------------------------------------------------------
 
 _YTMUSIC_URL = "https://music.youtube.com/channel/UCtest123"
+_YTMUSIC_HANDLE_URL = "https://music.youtube.com/@lekkerfaces"
 _ARTIST_INFO = {"_type": "channel", "title": "Test Artist"}
 _ALBUM_1 = {
     "id": "OLAK5uy_album1",
-    "url": "https://music.youtube.com/playlist?list=OLAK5uy_album1",
-    "webpage_url": "https://music.youtube.com/playlist?list=OLAK5uy_album1",
+    "url": "https://www.youtube.com/playlist?list=OLAK5uy_album1",
+    "webpage_url": "https://www.youtube.com/playlist?list=OLAK5uy_album1",
     "title": "Album 1",
 }
 _ALBUM_2 = {
     "id": "OLAK5uy_album2",
-    "url": "https://music.youtube.com/playlist?list=OLAK5uy_album2",
-    "webpage_url": "https://music.youtube.com/playlist?list=OLAK5uy_album2",
+    "url": "https://www.youtube.com/playlist?list=OLAK5uy_album2",
+    "webpage_url": "https://www.youtube.com/playlist?list=OLAK5uy_album2",
     "title": "Album 2",
 }
 _SINGLE_1 = {
     "id": "OLAK5uy_single1",
-    "url": "https://music.youtube.com/playlist?list=OLAK5uy_single1",
-    "webpage_url": "https://music.youtube.com/playlist?list=OLAK5uy_single1",
+    "url": "https://www.youtube.com/playlist?list=OLAK5uy_single1",
+    "webpage_url": "https://www.youtube.com/playlist?list=OLAK5uy_single1",
     "title": "Single 1",
 }
 
@@ -128,8 +131,14 @@ async def _add_ytmusic_sub(mgr, releases, *, url=_YTMUSIC_URL):
 # ---------------------------------------------------------------------------
 
 class YTMusicUrlHelperTests(unittest.TestCase):
-    def test_accepts_music_youtube_channel_url(self):
+    def test_accepts_channel_url(self):
         self.assertTrue(_is_ytmusic_artist_url("https://music.youtube.com/channel/UCtest123"))
+
+    def test_accepts_handle_url(self):
+        self.assertTrue(_is_ytmusic_artist_url("https://music.youtube.com/@lekkerfaces"))
+
+    def test_accepts_handle_url_with_dots(self):
+        self.assertTrue(_is_ytmusic_artist_url("https://music.youtube.com/@artist.name"))
 
     def test_accepts_http_variant(self):
         self.assertTrue(_is_ytmusic_artist_url("http://music.youtube.com/channel/UCtest123"))
@@ -146,16 +155,17 @@ class YTMusicUrlHelperTests(unittest.TestCase):
     def test_rejects_empty_string(self):
         self.assertFalse(_is_ytmusic_artist_url(""))
 
-    def test_rejects_none_coerced(self):
-        self.assertFalse(_is_ytmusic_artist_url(""))
-
     def test_channel_id_extracted_correctly(self):
         self.assertEqual(
             _ytmusic_channel_id("https://music.youtube.com/channel/UCtest123"),
             "UCtest123",
         )
 
-    def test_channel_id_returns_none_for_non_matching_url(self):
+    def test_channel_id_returns_none_for_handle_url(self):
+        # @handle URLs need yt-dlp resolution — not directly extractable
+        self.assertIsNone(_ytmusic_channel_id("https://music.youtube.com/@lekkerfaces"))
+
+    def test_channel_id_returns_none_for_non_ytmusic_url(self):
         self.assertIsNone(_ytmusic_channel_id("https://www.youtube.com/channel/UCtest123"))
 
     def test_channel_id_returns_none_for_empty(self):
@@ -167,24 +177,20 @@ class YTMusicUrlHelperTests(unittest.TestCase):
 # ---------------------------------------------------------------------------
 
 class ExtractYTMusicReleasesTests(unittest.TestCase):
-    def _make_ytm(self, artist_response, albums_response=None, singles_response=None):
-        """Build a mock YTMusic instance."""
-        ytm = MagicMock()
-        ytm.get_artist.return_value = artist_response
-        ytm.get_artist_albums.side_effect = lambda browse_id, params: (
-            albums_response if "album" in browse_id.lower() or singles_response is None
-            else singles_response
-        )
-        return ytm
+    def setUp(self):
+        self._config = MagicMock()
+        self._config.DOWNLOAD_DIR = "/tmp"
+        self._config.TEMP_DIR = "/tmp"
+        self._config.YTDL_OPTIONS = {}
 
     def test_info_dict_has_channel_type_and_artist_title(self):
         ytm = MagicMock()
         ytm.get_artist.return_value = {"name": "Test Artist", "albums": {}, "singles": {}}
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            info, _ = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            info, _ = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertEqual(info["_type"], "channel")
         self.assertEqual(info["title"], "Test Artist")
-        self.assertNotIn("channel", info)  # only "title", not redundant "channel" key
+        self.assertNotIn("channel", info)
 
     def test_calls_get_artist_albums_when_browse_id_and_params_present(self):
         ytm = MagicMock()
@@ -197,7 +203,7 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
             {"playlistId": "OLAK5uy_album1", "title": "Album 1"},
         ]
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         ytm.get_artist_albums.assert_called_once_with("MPADUCxxx", "abc")
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["id"], "OLAK5uy_album1")
@@ -212,13 +218,12 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
             "singles": {},
         }
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         ytm.get_artist_albums.assert_not_called()
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["id"], "OLAK5uy_preview")
 
     def test_uses_audio_playlist_id_fallback(self):
-        """get_artist() results use audioPlaylistId; should still be picked up."""
         ytm = MagicMock()
         ytm.get_artist.return_value = {
             "name": "Artist",
@@ -228,7 +233,7 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
             "singles": {},
         }
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertEqual(entries[0]["id"], "OLAK5uy_audio")
 
     def test_get_artist_albums_failure_falls_back_to_preview_results(self):
@@ -244,7 +249,7 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
         }
         ytm.get_artist_albums.side_effect = Exception("network error")
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["id"], "OLAK5uy_fallback")
 
@@ -252,21 +257,15 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
         ytm = MagicMock()
         ytm.get_artist.return_value = {
             "name": "Artist",
-            "albums": {
-                "browseId": "MPADUCalbums",
-                "params": "p1",
-            },
-            "singles": {
-                "browseId": "MPADUCsingles",
-                "params": "p2",
-            },
+            "albums": {"browseId": "MPADUCalbums", "params": "p1"},
+            "singles": {"browseId": "MPADUCsingles", "params": "p2"},
         }
         ytm.get_artist_albums.side_effect = [
             [{"playlistId": "OLAK5uy_album1", "title": "Album"}],
             [{"playlistId": "OLAK5uy_single1", "title": "Single"}],
         ]
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         ids = [e["id"] for e in entries]
         self.assertIn("OLAK5uy_album1", ids)
         self.assertIn("OLAK5uy_single1", ids)
@@ -282,7 +281,7 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
             "singles": {},
         }
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         expected_url = "https://music.youtube.com/playlist?list=OLAK5uy_xxx"
         self.assertEqual(entries[0]["url"], expected_url)
         self.assertEqual(entries[0]["webpage_url"], expected_url)
@@ -300,7 +299,7 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
             "singles": {},
         }
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            _, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            _, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertEqual(len(entries), 1)
         self.assertEqual(entries[0]["id"], "OLAK5uy_valid")
 
@@ -308,13 +307,13 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
         ytm = MagicMock()
         ytm.get_artist.side_effect = Exception("API error")
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            info, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            info, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertIsNone(info)
         self.assertEqual(entries, [])
 
     def test_ytmusicapi_not_installed_returns_none_and_empty(self):
         with patch.dict("sys.modules", {"ytmusicapi": None}):
-            info, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            info, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertIsNone(info)
         self.assertEqual(entries, [])
 
@@ -322,9 +321,43 @@ class ExtractYTMusicReleasesTests(unittest.TestCase):
         ytm = MagicMock()
         ytm.get_artist.return_value = {"name": "Artist", "albums": {}, "singles": {}}
         with patch("ytmusicapi.YTMusic", return_value=ytm):
-            info, entries = extract_ytmusic_artist_releases(_YTMUSIC_URL)
+            info, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_URL)
         self.assertIsNotNone(info)
         self.assertEqual(entries, [])
+
+    def test_handle_url_resolved_via_yt_dlp(self):
+        ytm = MagicMock()
+        ytm.get_artist.return_value = {"name": "Lekkerfaces", "albums": {}, "singles": {}}
+        with patch("ytmusicapi.YTMusic", return_value=ytm), \
+             patch("subscriptions._resolve_ytmusic_handle", return_value="UCtest123") as mock_resolve:
+            info, _ = extract_ytmusic_artist_releases(self._config, _YTMUSIC_HANDLE_URL)
+        mock_resolve.assert_called_once_with(self._config, _YTMUSIC_HANDLE_URL)
+        self.assertEqual(info["title"], "Lekkerfaces")
+
+    def test_handle_url_resolution_failure_returns_none(self):
+        with patch("subscriptions._resolve_ytmusic_handle", return_value=None):
+            info, entries = extract_ytmusic_artist_releases(self._config, _YTMUSIC_HANDLE_URL)
+        self.assertIsNone(info)
+        self.assertEqual(entries, [])
+
+    def test_resolve_ytmusic_handle_returns_channel_id(self):
+        mock_info = {"channel_id": "UCtest123"}
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.return_value = mock_info
+        with patch("subscriptions.yt_dlp.YoutubeDL", return_value=mock_ydl):
+            result = _resolve_ytmusic_handle(self._config, _YTMUSIC_HANDLE_URL)
+        self.assertEqual(result, "UCtest123")
+
+    def test_resolve_ytmusic_handle_returns_none_on_failure(self):
+        mock_ydl = MagicMock()
+        mock_ydl.__enter__ = MagicMock(return_value=mock_ydl)
+        mock_ydl.__exit__ = MagicMock(return_value=False)
+        mock_ydl.extract_info.side_effect = Exception("fail")
+        with patch("subscriptions.yt_dlp.YoutubeDL", return_value=mock_ydl):
+            result = _resolve_ytmusic_handle(self._config, _YTMUSIC_HANDLE_URL)
+        self.assertIsNone(result)
 
 
 # ---------------------------------------------------------------------------
@@ -337,7 +370,7 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
             with patch("subscriptions.extract_flat_playlist") as flat, \
                  patch("subscriptions.extract_ytmusic_artist_releases",
-                       return_value=(_ARTIST_INFO, [_ALBUM_1])) as ytm:
+                       return_value=(_ARTIST_INFO, [_ALBUM_1])):
                 await _add_ytmusic_sub(mgr, [_ALBUM_1])
             flat.assert_not_called()
 
@@ -350,7 +383,7 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             sub = mgr.list_all()[0]
             self.assertIn("OLAK5uy_album1", sub.seen_ids)
             self.assertIn("OLAK5uy_album2", sub.seen_ids)
-            self.assertEqual(queue.entries, [])  # no downloads queued on subscribe
+            self.assertEqual(queue.entries, [])
 
     async def test_add_subscription_ytmusic_uses_artist_name(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -361,10 +394,7 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
     async def test_add_subscription_ytmusic_extract_failure_returns_error(self):
         with tempfile.TemporaryDirectory() as tmp:
             mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
-            with patch(
-                "subscriptions.extract_ytmusic_artist_releases",
-                return_value=(None, []),
-            ):
+            with patch("subscriptions.extract_ytmusic_artist_releases", return_value=(None, [])):
                 result = await mgr.add_subscription(
                     _YTMUSIC_URL,
                     check_interval_minutes=60,
@@ -384,18 +414,40 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(result["status"], "error")
             self.assertEqual(mgr.list_all(), [])
 
+    async def test_add_subscription_handle_url_normalized_to_channel_url(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            with patch("subscriptions.extract_ytmusic_artist_releases",
+                       return_value=(_ARTIST_INFO, [_ALBUM_1])), \
+                 patch("subscriptions._resolve_ytmusic_handle", return_value="UCtest123"):
+                result = await mgr.add_subscription(
+                    _YTMUSIC_HANDLE_URL,
+                    check_interval_minutes=60,
+                    download_type="audio",
+                    codec="auto",
+                    format="opus",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+            self.assertEqual(result["status"], "ok")
+            sub = mgr.list_all()[0]
+            self.assertEqual(sub.url, "https://music.youtube.com/channel/UCtest123")
+
     async def test_check_now_ytmusic_queues_new_release(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()
             mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
-            # Subscribe with album1 already seen
             result = await _add_ytmusic_sub(mgr, [_ALBUM_1])
             sub_id = result["subscription"]["id"]
-            # Check: album1 still seen, album2 is new
-            with patch(
-                "subscriptions.extract_ytmusic_artist_releases",
-                return_value=(_ARTIST_INFO, [_ALBUM_1, _ALBUM_2]),
-            ):
+            with patch("subscriptions.extract_ytmusic_artist_releases",
+                       return_value=(_ARTIST_INFO, [_ALBUM_1, _ALBUM_2])):
                 await mgr.check_now([sub_id])
             queued_urls = [e["webpage_url"] for e, _, _ in queue.entries]
             self.assertIn(_ALBUM_2["webpage_url"], queued_urls)
@@ -407,11 +459,8 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
             result = await _add_ytmusic_sub(mgr, [_ALBUM_1])
             sub_id = result["subscription"]["id"]
-            # Check: same releases, nothing new
-            with patch(
-                "subscriptions.extract_ytmusic_artist_releases",
-                return_value=(_ARTIST_INFO, [_ALBUM_1]),
-            ):
+            with patch("subscriptions.extract_ytmusic_artist_releases",
+                       return_value=(_ARTIST_INFO, [_ALBUM_1])):
                 await mgr.check_now([sub_id])
             self.assertEqual(queue.entries, [])
 
@@ -421,10 +470,8 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
             result = await _add_ytmusic_sub(mgr, [_ALBUM_1])
             sub_id = result["subscription"]["id"]
-            with patch(
-                "subscriptions.extract_ytmusic_artist_releases",
-                return_value=(_ARTIST_INFO, [_ALBUM_1, _ALBUM_2]),
-            ):
+            with patch("subscriptions.extract_ytmusic_artist_releases",
+                       return_value=(_ARTIST_INFO, [_ALBUM_1, _ALBUM_2])):
                 await mgr.check_now([sub_id])
             sub = mgr.list_all()[0]
             self.assertIn("OLAK5uy_album1", sub.seen_ids)
@@ -436,10 +483,7 @@ class YTMusicSubscriptionManagerTests(unittest.IsolatedAsyncioTestCase):
             mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
             result = await _add_ytmusic_sub(mgr, [_ALBUM_1])
             sub_id = result["subscription"]["id"]
-            with patch(
-                "subscriptions.extract_ytmusic_artist_releases",
-                return_value=(None, []),
-            ):
+            with patch("subscriptions.extract_ytmusic_artist_releases", return_value=(None, [])):
                 await mgr.check_now([sub_id])
             sub = mgr.list_all()[0]
             self.assertIsNotNone(sub.error)

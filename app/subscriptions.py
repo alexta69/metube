@@ -31,8 +31,11 @@ _MEDIA_HINT_FIELDS = (
     "live_status",
     "availability",
 )
-_YTMUSIC_ARTIST_URL_RE = re.compile(
+_YTMUSIC_CHANNEL_URL_RE = re.compile(
     r"https?://music\.youtube\.com/channel/([A-Za-z0-9_-]+)"
+)
+_YTMUSIC_HANDLE_URL_RE = re.compile(
+    r"https?://music\.youtube\.com/@([A-Za-z0-9._-]+)"
 )
 
 
@@ -136,16 +139,35 @@ def _is_subscriber_only_entry(entry: dict) -> bool:
 
 
 def _is_ytmusic_artist_url(url: str) -> bool:
-    """Return True if the URL is a YouTube Music artist channel URL."""
-    return bool(_YTMUSIC_ARTIST_URL_RE.match(url or ""))
+    """Return True if the URL is a YouTube Music artist channel or @handle URL."""
+    url = url or ""
+    return bool(_YTMUSIC_CHANNEL_URL_RE.match(url) or _YTMUSIC_HANDLE_URL_RE.match(url))
 
 
 def _ytmusic_channel_id(url: str) -> Optional[str]:
-    m = _YTMUSIC_ARTIST_URL_RE.match(url or "")
+    """Extract UCxxx channel ID from a channel/UCxxx URL. Returns None for @handle URLs."""
+    m = _YTMUSIC_CHANNEL_URL_RE.match(url or "")
     return m.group(1) if m else None
 
 
-def extract_ytmusic_artist_releases(url: str) -> tuple[Optional[dict], list[dict]]:
+def _resolve_ytmusic_handle(config, url: str) -> Optional[str]:
+    """Resolve a music.youtube.com/@handle URL to a UCxxx channel ID using yt-dlp."""
+    params = {**_build_ydl_params(config), "playlist_items": "0"}
+    try:
+        with yt_dlp.YoutubeDL(params=params) as ydl:
+            info = ydl.extract_info(url, download=False)
+        channel_id = (info or {}).get("channel_id")
+        if channel_id:
+            log.info("Resolved YTMusic handle %s \u2192 channel/%s", url, channel_id)
+        else:
+            log.warning("Could not extract channel_id from YTMusic handle %s", url)
+        return channel_id or None
+    except Exception as exc:
+        log.warning("Could not resolve YTMusic handle %s: %s", url, exc)
+        return None
+
+
+def extract_ytmusic_artist_releases(config, url: str) -> tuple[Optional[dict], list[dict]]:
     """Return (info_dict, entries) for a YouTube Music artist channel URL."""
     try:
         from ytmusicapi import YTMusic  # soft dependency
@@ -157,6 +179,8 @@ def extract_ytmusic_artist_releases(url: str) -> tuple[Optional[dict], list[dict
         return None, []
 
     channel_id = _ytmusic_channel_id(url)
+    if not channel_id:
+        channel_id = _resolve_ytmusic_handle(config, url)
     if not channel_id:
         log.warning("Could not extract channel ID from URL: %s", url)
         return None, []
@@ -598,9 +622,13 @@ class SubscriptionManager:
         try:
             scan_first = max(int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50)), 1)
             if _is_ytmusic_artist_url(url):
-                info, entries = extract_ytmusic_artist_releases(url)
+                info, entries = extract_ytmusic_artist_releases(self.config, url)
                 if not info:
                     return {"status": "error", "msg": "Could not resolve YouTube Music artist URL"}
+                if not _ytmusic_channel_id(url):
+                    resolved = _resolve_ytmusic_handle(self.config, url)
+                    if resolved:
+                        url = f"https://music.youtube.com/channel/{resolved}"
             else:
                 try:
                     info, entries = extract_flat_playlist(self.config, url, scan_first)
@@ -776,7 +804,7 @@ class SubscriptionManager:
         log.info("Checking subscription: %s", sub.name)
         if _is_ytmusic_artist_url(sub.url):
             # playlist IDs instead of yt-dlp flat-extract on the channel.
-            info, entries = extract_ytmusic_artist_releases(sub.url)
+            info, entries = extract_ytmusic_artist_releases(self.config, sub.url)
             if not info:
                 async with self._lock:
                     cur = self._subs.get(sid)
