@@ -31,6 +31,9 @@ _MEDIA_HINT_FIELDS = (
     "live_status",
     "availability",
 )
+_YTMUSIC_ARTIST_URL_RE = re.compile(
+    r"https?://music\.youtube\.com/channel/([A-Za-z0-9_-]+)"
+)
 
 
 def _impersonate_opt(ytdl_options: dict) -> dict:
@@ -130,6 +133,88 @@ def _entry_id(entry: dict) -> Optional[str]:
 def _is_subscriber_only_entry(entry: dict) -> bool:
     """True when yt-dlp marks the entry as channel member-only (subscriber_only availability)."""
     return str(entry.get("availability") or "") == "subscriber_only"
+
+
+def _is_ytmusic_artist_url(url: str) -> bool:
+    """Return True if the URL is a YouTube Music artist channel URL."""
+    return bool(_YTMUSIC_ARTIST_URL_RE.match(url or ""))
+
+
+def _ytmusic_channel_id(url: str) -> Optional[str]:
+    m = _YTMUSIC_ARTIST_URL_RE.match(url or "")
+    return m.group(1) if m else None
+
+
+def extract_ytmusic_artist_releases(url: str) -> tuple[Optional[dict], list[dict]]:
+    """Return (info_dict, entries) for a YouTube Music artist channel URL."""
+    try:
+        from ytmusicapi import YTMusic  # soft dependency
+    except ImportError:
+        log.error(
+            "ytmusicapi is not installed; cannot handle YouTube Music artist URLs. "
+            "Add 'ytmusicapi' to your dependencies."
+        )
+        return None, []
+
+    channel_id = _ytmusic_channel_id(url)
+    if not channel_id:
+        log.warning("Could not extract channel ID from URL: %s", url)
+        return None, []
+
+    ytm = YTMusic()
+    try:
+        artist = ytm.get_artist(channel_id)
+    except Exception as exc:
+        log.warning("ytmusicapi.get_artist(%s) failed: %s", channel_id, exc)
+        return None, []
+
+    artist_name = artist.get("name") or url
+    info: dict = {
+        "_type": "channel",
+        "title": artist_name,
+    }
+
+    entries: list[dict] = []
+
+    def _collect(section_key: str) -> None:
+        section = artist.get(section_key) or {}
+        browse_id = section.get("browseId")
+        params = section.get("params")
+
+        if browse_id and params:
+            # get_artist_albums uses "playlistId"
+            try:
+                results = ytm.get_artist_albums(browse_id, params) or []
+            except Exception as exc:
+                log.warning(
+                    "ytmusicapi.get_artist_albums(%s, %s) failed: %s",
+                    channel_id, section_key, exc,
+                )
+                results = section.get("results") or []
+        else:
+            # get_artist() uses "audioPlaylistId"
+            results = section.get("results") or []
+
+        for release in results:
+            # field name differs between get_artist() and get_artist_albums()
+            playlist_id = release.get("playlistId") or release.get("audioPlaylistId")
+            if not playlist_id:
+                continue
+            playlist_url = f"https://music.youtube.com/playlist?list={playlist_id}"
+            entries.append({
+                "id": playlist_id,
+                "url": playlist_url,
+                "webpage_url": playlist_url,
+                "title": release.get("title") or playlist_id,
+            })
+
+    _collect("albums")
+    _collect("singles")
+
+    log.info(
+        "YTMusic artist %s: found %d release(s)", artist_name, len(entries)
+    )
+    return info, entries
 
 
 def coerce_optional_bool(value: Any, *, default: bool = False, field_name: str = "value") -> bool:
@@ -512,10 +597,15 @@ class SubscriptionManager:
 
         try:
             scan_first = max(int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50)), 1)
-            try:
-                info, entries = extract_flat_playlist(self.config, url, scan_first)
-            except yt_dlp.utils.YoutubeDLError as exc:
-                return {"status": "error", "msg": str(exc)}
+            if _is_ytmusic_artist_url(url):
+                info, entries = extract_ytmusic_artist_releases(url)
+                if not info:
+                    return {"status": "error", "msg": "Could not resolve YouTube Music artist URL"}
+            else:
+                try:
+                    info, entries = extract_flat_playlist(self.config, url, scan_first)
+                except yt_dlp.utils.YoutubeDLError as exc:
+                    return {"status": "error", "msg": str(exc)}
 
             if not info:
                 return {"status": "error", "msg": "Could not resolve URL"}
@@ -532,7 +622,11 @@ class SubscriptionManager:
                 or url
             )
 
-            seen_entries = [ent for ent in entries if _is_media_entry(ent)]
+            seen_entries = (
+                entries if _is_ytmusic_artist_url(url)
+                else [ent for ent in entries if _is_media_entry(ent)]
+            )
+
             all_ids: list[str] = []
             for ent in seen_entries:
                 if ent.get("live_status") == "is_upcoming":
@@ -680,41 +774,62 @@ class SubscriptionManager:
         sid = sub.id
         scan = int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50))
         log.info("Checking subscription: %s", sub.name)
-        try:
-            info, entries = extract_flat_playlist(self.config, sub.url, scan)
-        except yt_dlp.utils.YoutubeDLError as exc:
-            async with self._lock:
-                cur = self._subs.get(sid)
-                if cur:
-                    previous = copy.deepcopy(cur)
-                    cur.error = str(exc)
-                    try:
-                        self._save_locked()
-                    except Exception:
-                        self._subs[sid] = previous
-                        raise
-                    sub = cur
-            log.warning("Subscription check failed for %s: %s", sub.name, exc)
-            await self.notifier.subscription_updated(sub)
-            return
-        entries = [ent for ent in entries if _is_media_entry(ent)]
+        if _is_ytmusic_artist_url(sub.url):
+            # playlist IDs instead of yt-dlp flat-extract on the channel.
+            info, entries = extract_ytmusic_artist_releases(sub.url)
+            if not info:
+                async with self._lock:
+                    cur = self._subs.get(sid)
+                    if cur:
+                        previous = copy.deepcopy(cur)
+                        cur.error = "Could not resolve YouTube Music artist"
+                        try:
+                            self._save_locked()
+                        except Exception:
+                            self._subs[sid] = previous
+                            raise
+                        sub = cur
+                log.warning("YTMusic subscription check failed for %s", sub.name)
+                await self.notifier.subscription_updated(sub)
+                return
+        else:
+            try:
+                info, entries = extract_flat_playlist(self.config, sub.url, scan)
+            except yt_dlp.utils.YoutubeDLError as exc:
+                async with self._lock:
+                    cur = self._subs.get(sid)
+                    if cur:
+                        previous = copy.deepcopy(cur)
+                        cur.error = str(exc)
+                        try:
+                            self._save_locked()
+                        except Exception:
+                            self._subs[sid] = previous
+                            raise
+                        sub = cur
+                log.warning("Subscription check failed for %s: %s", sub.name, exc)
+                await self.notifier.subscription_updated(sub)
+                return
+            entries = [ent for ent in entries if _is_media_entry(ent)]
 
-        etype = (info or {}).get("_type") or "video"
-        if etype == "video" or not entries:
-            async with self._lock:
-                cur = self._subs.get(sid)
-                if cur:
-                    previous = copy.deepcopy(cur)
-                    cur.error = VIDEO_ONLY_MSG
-                    try:
-                        self._save_locked()
-                    except Exception:
-                        self._subs[sid] = previous
-                        raise
-                    sub = cur
-            log.warning("Subscription %s no longer resolves to a subscribable feed", sub.name)
-            await self.notifier.subscription_updated(sub)
-            return
+            etype = (info or {}).get("_type") or "video"
+            if etype == "video" or not entries:
+                async with self._lock:
+                    cur = self._subs.get(sid)
+                    if cur:
+                        previous = copy.deepcopy(cur)
+                        cur.error = VIDEO_ONLY_MSG
+                        try:
+                            self._save_locked()
+                        except Exception:
+                            self._subs[sid] = previous
+                            raise
+                        sub = cur
+                log.warning(
+                    "Subscription %s no longer resolves to a subscribable feed", sub.name
+                )
+                await self.notifier.subscription_updated(sub)
+                return
 
         async with self._lock:
             cur = self._subs.get(sid)
