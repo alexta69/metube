@@ -347,7 +347,7 @@ example.com {
 
 ## 🔄 Updating yt-dlp
 
-MeTube is powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which requires frequent updates as video sites change their layouts. A nightly build automatically publishes a new Docker image whenever a new yt-dlp version is available, so keep your container up to date — [watchtower](https://github.com/nicholas-fedor/watchtower) works well for this.
+MeTube is powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which requires frequent updates as video sites change their layouts. A new MeTube Docker image is published automatically when a new yt-dlp stable release is available, so keep your container up to date — [watchtower](https://github.com/nicholas-fedor/watchtower) works well for this. To follow yt-dlp's nightly channel instead, set `YTDL_NIGHTLY_UPDATE_TIME`.
 
 ## 🔧 Troubleshooting and submitting issues
 
