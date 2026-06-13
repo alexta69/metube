@@ -231,10 +231,24 @@ class DownloadInfo:
         self.live_status = live_status
         self.live_release_timestamp = live_release_timestamp
         self.subtitle_files = []
+        # Actual media properties captured from yt-dlp's info_dict when the
+        # download finishes. Unlike `quality`/`codec` (the user's request),
+        # these reflect what yt-dlp actually resolved to. Set lazily by the
+        # MoveFiles postprocessor hook, so they stay None for in-flight,
+        # failed, or non-media (captions/thumbnail) downloads.
+        self.width = None
+        self.height = None
+        self.fps = None
+        self.vcodec_actual = None
+        self.abr = None
 
     def __setstate__(self, state):
         """BACKWARD COMPATIBILITY: migrate old DownloadInfo from persistent queue files."""
         self.__dict__.update(state)
+        # Backfill resolved-media fields for items persisted before this patch.
+        for field in ('width', 'height', 'fps', 'vcodec_actual', 'abr'):
+            if not hasattr(self, field):
+                setattr(self, field, None)
         if 'download_type' not in state:
             old_format = state.get('format', 'any')
             old_video_codec = state.get('video_codec', 'auto')
@@ -454,7 +468,21 @@ class Download:
                         filename = os.path.join(finaldir, os.path.basename(filepath))
                     else:
                         filename = filepath
-                    self.status_queue.put({'status': 'finished', 'filename': filename})
+                    status_update = {'status': 'finished', 'filename': filename}
+                    # Capture actual media properties resolved by yt-dlp so the
+                    # UI can show "Best · 1080p60" instead of just "Best".
+                    # Skip vcodec='none' (audio-only formats) — that's not the
+                    # video codec, it just means there isn't one.
+                    info = d['info_dict']
+                    for src, dst in (('width', 'width'), ('height', 'height'),
+                                     ('fps', 'fps'), ('abr', 'abr')):
+                        value = info.get(src)
+                        if value is not None:
+                            status_update[dst] = value
+                    vcodec = info.get('vcodec')
+                    if vcodec and vcodec != 'none':
+                        status_update['vcodec_actual'] = vcodec
+                    self.status_queue.put(status_update)
                     # For captions-only downloads, yt-dlp may still report a media-like
                     # filepath in MoveFiles. Capture subtitle outputs explicitly so the
                     # UI can link to real caption files.
@@ -585,6 +613,12 @@ class Download:
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
                 if getattr(self.info, 'download_type', '') == 'thumbnail':
                     self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
+            # Capture actual media properties yt-dlp resolved (width / height /
+            # fps / actual vcodec / audio bitrate). Pushed by the MoveFiles
+            # postprocessor hook; never overwrite a present value with None.
+            for field in ('width', 'height', 'fps', 'vcodec_actual', 'abr'):
+                if field in status and status[field] is not None:
+                    setattr(self.info, field, status[field])
 
             # Handle chapter files
             log.debug(f"Update status for {self.info.title}: {status}")

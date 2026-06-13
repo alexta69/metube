@@ -862,9 +862,34 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     const q = download.quality;
     if (!q) return '';
-    if (/^\d+$/.test(q) && download.download_type === 'audio') return `${q} kbps`;
+    const requested = this.formatRequestedQuality(q, download.download_type);
+    const actual = this.formatActualQuality(download);
+    // Show the actual value next to the requested one only when it differs
+    // — most useful for "Best" / "Worst" (no exact label) or when yt-dlp
+    // had to downgrade (user requested 1080p, only 720p was available).
+    if (!actual || actual === requested) return requested;
+    return `${requested} · ${actual}`;
+  }
+
+  private formatRequestedQuality(q: string, dl_type: string): string {
+    if (/^\d+$/.test(q) && dl_type === 'audio') return `${q} kbps`;
     if (/^\d+$/.test(q)) return `${q}p`;
     return q.charAt(0).toUpperCase() + q.slice(1);
+  }
+
+  // Returns the actually-resolved quality from yt-dlp's info_dict
+  // (height+fps for video, abr for audio). Returns null for old persisted
+  // entries that pre-date the backend patch, or for non-media types.
+  private formatActualQuality(download: Download): string | null {
+    if (download.download_type === 'audio') {
+      return download.abr ? `${Math.round(download.abr)} kbps` : null;
+    }
+    if (!download.height) return null;
+    let label = `${download.height}p`;
+    // High frame rates (50+) are worth highlighting; standard 24/25/30
+    // would clutter without telling the user anything new.
+    if (download.fps && download.fps >= 50) label += Math.round(download.fps);
+    return label;
   }
 
   downloadTypeLabel(download: Download): string {
