@@ -7,8 +7,9 @@ import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
+import time
 
-from ytdl import DownloadQueue
+from ytdl import DownloadInfo, DownloadQueue
 
 
 @pytest.fixture
@@ -386,3 +387,243 @@ async def test_add_sets_clip_bounds_on_download_info(dq_env):
     download = dq.pending.get("https://example.com/clip")
     assert download.info.clip_start == 10.0
     assert download.info.clip_end == 99.5
+
+
+def _upcoming_entry(url: str, *, release_timestamp: float | None = None) -> dict:
+    return {
+        "_type": "video",
+        "id": "live1",
+        "title": "Upcoming Stream",
+        "url": url,
+        "webpage_url": url,
+        "live_status": "is_upcoming",
+        "release_timestamp": release_timestamp if release_timestamp is not None else time.time() + 3600,
+    }
+
+
+@pytest.mark.asyncio
+async def test_add_upcoming_stream_scheduled_without_starting(dq_env):
+    notifier = AsyncMock()
+    url = "https://example.com/live-upcoming"
+    start_mock = AsyncMock()
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        result = await dq.add_entry(
+            _upcoming_entry(url),
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=True,
+        )
+
+    assert result["status"] == "ok"
+    assert dq.queue.exists(url)
+    download = dq.queue.get(url)
+    assert download.info.status == "scheduled"
+    assert download.info.live_status == "is_upcoming"
+    assert download.info.live_release_timestamp is not None
+    start_mock.assert_not_called()
+    assert url in dq._scheduled_probe_at
+
+
+@pytest.mark.asyncio
+async def test_probe_scheduled_starts_when_live(dq_env):
+    notifier = AsyncMock()
+    url = "https://example.com/live-upcoming"
+    start_mock = AsyncMock()
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq.add_entry(
+            _upcoming_entry(url),
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=True,
+        )
+
+    download = dq.queue.get(url)
+
+    def fake_probe_extract(self, probe_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        assert probe_url == url
+        return {
+            "_type": "video",
+            "id": "live1",
+            "title": "Live Now",
+            "url": url,
+            "webpage_url": url,
+            "live_status": "is_live",
+            "formats": [{"format_id": "22"}],
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_probe_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq._probe_scheduled_download(download)
+
+    assert url not in dq._scheduled_probe_at
+    assert download.info.live_status == "is_live"
+    assert download.info.status == "pending"
+    start_mock.assert_called_once_with(download)
+
+
+@pytest.mark.asyncio
+async def test_import_scheduled_re_registers_monitor(dq_env):
+    notifier = AsyncMock()
+    url = "https://example.com/live-restart"
+    release = time.time() + 7200
+
+    info = DownloadInfo(
+        id="live1",
+        title="Upcoming Stream",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        live_status="is_upcoming",
+        live_release_timestamp=release,
+    )
+    info.status = "scheduled"
+
+    dq = DownloadQueue(dq_env, notifier)
+    start_mock = AsyncMock()
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq._DownloadQueue__add_download(info, True)
+
+    assert dq.queue.exists(url)
+    assert dq.queue.get(url).info.status == "scheduled"
+    assert url in dq._scheduled_probe_at
+    start_mock.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_probe_transient_error_retries_without_failing(dq_env):
+    """A single probe failure must not abandon the scheduled stream."""
+    import ytdl
+
+    notifier = AsyncMock()
+    url = "https://example.com/live-transient"
+    start_mock = AsyncMock()
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq.add_entry(
+            _upcoming_entry(url),
+            "video", "auto", "any", "best", "", "", 0,
+            auto_start=True,
+        )
+    download = dq.queue.get(url)
+
+    def boom(self, *args, **kwargs):
+        raise ytdl.yt_dlp.utils.YoutubeDLError("temporary network glitch")
+
+    before = time.time()
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        await dq._probe_scheduled_download(download)
+
+    # Still scheduled, still monitored, probe rescheduled into the future.
+    assert download.info.status == "scheduled"
+    assert url in dq._scheduled_probe_at
+    assert dq._scheduled_probe_at[url] >= before
+    assert dq._scheduled_probe_failures[url] == 1
+    notifier.completed.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_probe_gives_up_after_max_failures(dq_env):
+    import ytdl
+
+    notifier = AsyncMock()
+    url = "https://example.com/live-dead"
+    start_mock = AsyncMock()
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq.add_entry(
+            _upcoming_entry(url),
+            "video", "auto", "any", "best", "", "", 0,
+            auto_start=True,
+        )
+    download = dq.queue.get(url)
+
+    def boom(self, *args, **kwargs):
+        raise ytdl.yt_dlp.utils.YoutubeDLError("stream was deleted")
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        for _ in range(ytdl._LIVE_PROBE_MAX_FAILURES):
+            await dq._probe_scheduled_download(download)
+
+    assert url not in dq._scheduled_probe_at
+    assert not dq.queue.exists(url)
+    assert dq.done.exists(url)
+    assert download.info.status == "error"
+    notifier.completed.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_probe_recovers_after_transient_then_starts(dq_env):
+    """A transient failure followed by a successful live probe should start the download."""
+    import ytdl
+
+    notifier = AsyncMock()
+    url = "https://example.com/live-recover"
+    start_mock = AsyncMock()
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq.add_entry(
+            _upcoming_entry(url),
+            "video", "auto", "any", "best", "", "", 0,
+            auto_start=True,
+        )
+    download = dq.queue.get(url)
+    # The scheduling placeholder error is set on add.
+    assert download.info.error
+
+    def boom(self, *args, **kwargs):
+        raise ytdl.yt_dlp.utils.YoutubeDLError("temporary glitch")
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        await dq._probe_scheduled_download(download)
+    assert dq._scheduled_probe_failures[url] == 1
+
+    def live_now(self, *args, **kwargs):
+        return {
+            "_type": "video", "id": "live1", "title": "Live Now",
+            "url": url, "webpage_url": url, "live_status": "is_live",
+            "formats": [{"format_id": "22"}],
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", live_now), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq._probe_scheduled_download(download)
+
+    assert url not in dq._scheduled_probe_at
+    assert url not in dq._scheduled_probe_failures
+    assert download.info.status == "pending"
+    # Placeholder error/msg cleared now that a real download is starting.
+    assert download.info.error is None
+    assert download.info.msg is None
+    start_mock.assert_called_once_with(download)
+
+
+def test_seconds_until_next_probe_none_when_empty(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    assert dq._seconds_until_next_probe() is None

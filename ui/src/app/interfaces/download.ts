@@ -18,6 +18,8 @@ export interface Download {
   ytdl_options_overrides?: Record<string, unknown>;
   clip_start?: number;
   clip_end?: number;
+  live_status?: string;
+  live_release_timestamp?: number;
   status: string;
   msg: string;
   percent: number;

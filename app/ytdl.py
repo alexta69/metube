@@ -24,6 +24,12 @@ from subscriptions import _entry_id
 
 log = logging.getLogger('ytdl')
 
+_LIVE_CHECK_INTERVAL = 60
+_LIVE_MAX_CHECK_INTERVAL = 3600
+# Consecutive probe failures (network blips, rate limits, transient extractor
+# errors) tolerated before a scheduled live download is abandoned as errored.
+_LIVE_PROBE_MAX_FAILURES = 5
+
 
 # Characters that are invalid in Windows/NTFS path components. These are pre-
 # sanitised when substituting playlist/channel titles into output templates so
@@ -194,6 +200,8 @@ class DownloadInfo:
         ytdl_options_overrides=None,
         clip_start=None,
         clip_end=None,
+        live_status=None,
+        live_release_timestamp=None,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -220,6 +228,8 @@ class DownloadInfo:
         self.ytdl_options_overrides = dict(ytdl_options_overrides or {})
         self.clip_start = clip_start
         self.clip_end = clip_end
+        self.live_status = live_status
+        self.live_release_timestamp = live_release_timestamp
         self.subtitle_files = []
 
     def __setstate__(self, state):
@@ -292,6 +302,10 @@ class DownloadInfo:
             self.clip_start = None
         if not hasattr(self, "clip_end"):
             self.clip_end = None
+        if not hasattr(self, "live_status"):
+            self.live_status = None
+        if not hasattr(self, "live_release_timestamp"):
+            self.live_release_timestamp = None
 
 
 _PERSISTED_DOWNLOAD_FIELDS = (
@@ -313,6 +327,8 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "ytdl_options_overrides",
     "clip_start",
     "clip_end",
+    "live_status",
+    "live_release_timestamp",
     "status",
     "timestamp",
     "error",
@@ -757,6 +773,10 @@ class DownloadQueue:
         self.done.load()
         self._add_generation = 0
         self._canceled_urls = set()  # URLs canceled during current playlist add
+        self._scheduled_probe_at: dict[str, float] = {}
+        self._scheduled_probe_failures: dict[str, int] = {}
+        self._live_monitor_task: Optional[asyncio.Task] = None
+        self._live_monitor_wakeup = asyncio.Event()
 
     def cancel_add(self):
         self._add_generation += 1
@@ -772,8 +792,164 @@ class DownloadQueue:
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
+        self._start_live_monitor()
         asyncio.create_task(self.__import_queue())
         asyncio.create_task(self.__import_pending())
+
+    def _start_live_monitor(self) -> None:
+        if self._live_monitor_task is not None and not self._live_monitor_task.done():
+            return
+        self._live_monitor_task = asyncio.create_task(self._live_monitor_loop())
+        self._live_monitor_task.add_done_callback(
+            lambda t: log.error("Live monitor loop failed: %s", t.exception())
+            if not t.cancelled() and t.exception()
+            else None
+        )
+
+    def _register_scheduled(self, download: Download) -> None:
+        self._scheduled_probe_at[download.info.url] = 0
+        self._scheduled_probe_failures.pop(download.info.url, None)
+        self._start_live_monitor()
+        self._wake_live_monitor()
+
+    def _unregister_scheduled(self, url: str) -> None:
+        self._scheduled_probe_at.pop(url, None)
+        self._scheduled_probe_failures.pop(url, None)
+
+    def _wake_live_monitor(self) -> None:
+        try:
+            self._live_monitor_wakeup.set()
+        except RuntimeError:
+            pass
+
+    def _probe_interval_seconds(self, release_timestamp: Any) -> float:
+        if release_timestamp is not None:
+            try:
+                diff = float(release_timestamp) - time.time()
+                if diff > 0:
+                    return max(_LIVE_CHECK_INTERVAL, min(diff, _LIVE_MAX_CHECK_INTERVAL))
+            except (TypeError, ValueError):
+                pass
+        return float(_LIVE_CHECK_INTERVAL)
+
+    def _seconds_until_next_probe(self) -> Optional[float]:
+        """Time until the earliest scheduled probe, or None when nothing is scheduled."""
+        if not self._scheduled_probe_at:
+            return None
+        return max(0.0, min(self._scheduled_probe_at.values()) - time.time())
+
+    async def _live_monitor_loop(self) -> None:
+        while True:
+            timeout = self._seconds_until_next_probe()
+            try:
+                await asyncio.wait_for(self._live_monitor_wakeup.wait(), timeout=timeout)
+            except asyncio.TimeoutError:
+                pass
+            self._live_monitor_wakeup.clear()
+            now = time.time()
+            due: list[Download] = []
+            for url, probe_at in list(self._scheduled_probe_at.items()):
+                if now < probe_at:
+                    continue
+                if not self.queue.exists(url):
+                    self._unregister_scheduled(url)
+                    continue
+                download = self.queue.get(url)
+                if download.info.status != 'scheduled' or download.canceled:
+                    self._unregister_scheduled(url)
+                    continue
+                due.append(download)
+            for download in due:
+                try:
+                    await self._probe_scheduled_download(download)
+                except Exception as exc:
+                    # Defensive: _probe_scheduled_download handles its own errors,
+                    # but never let an unexpected failure leave probe_at in the past
+                    # (which would spin this loop) or kill the monitor task.
+                    log.exception("Scheduled live probe crashed for %s: %s", download.info.url, exc)
+                    if download.info.url in self._scheduled_probe_at:
+                        self._scheduled_probe_at[download.info.url] = time.time() + _LIVE_CHECK_INTERVAL
+
+    async def _probe_scheduled_download(self, download: Download) -> None:
+        url = download.info.url
+        info = download.info
+        if info.status != 'scheduled' or download.canceled:
+            self._unregister_scheduled(url)
+            return
+
+        try:
+            entry = await asyncio.get_running_loop().run_in_executor(
+                None,
+                partial(
+                    self.__extract_info,
+                    url,
+                    getattr(info, 'ytdl_options_presets', None),
+                    getattr(info, 'ytdl_options_overrides', {}) or {},
+                ),
+            )
+        except Exception as exc:
+            # Treat all probe failures (transient network blips, rate limits,
+            # extractor errors) as recoverable up to a point: retry on the next
+            # interval and only give up after repeated consecutive failures so a
+            # momentary glitch doesn't abandon a stream the user is waiting for.
+            fails = self._scheduled_probe_failures.get(url, 0) + 1
+            self._scheduled_probe_failures[url] = fails
+            if fails >= _LIVE_PROBE_MAX_FAILURES:
+                log.warning(
+                    "Giving up on scheduled live probe for %s after %d consecutive failures: %s",
+                    info.title, fails, exc,
+                )
+                info.status = 'error'
+                info.msg = str(exc)
+                if not info.error:
+                    info.error = str(exc)
+                self._unregister_scheduled(url)
+                self.queue.delete(url)
+                self.done.put(download)
+                await self.notifier.completed(info)
+            else:
+                log.warning(
+                    "Scheduled live probe failed for %s (attempt %d/%d), will retry: %s",
+                    info.title, fails, _LIVE_PROBE_MAX_FAILURES, exc,
+                )
+                self._scheduled_probe_at[url] = time.time() + _LIVE_CHECK_INTERVAL
+            return
+
+        # Successful probe resets the transient-failure streak.
+        self._scheduled_probe_failures.pop(url, None)
+
+        release_ts = entry.get('release_timestamp')
+        live_status = entry.get('live_status')
+        if release_ts is not None:
+            info.live_release_timestamp = release_ts
+        if live_status is not None:
+            info.live_status = live_status
+
+        if live_status == 'is_upcoming':
+            self._scheduled_probe_at[url] = time.time() + self._probe_interval_seconds(release_ts)
+            await self.notifier.updated(info)
+            return
+
+        self._unregister_scheduled(url)
+        info.status = 'pending'
+        # Clear the "scheduled to start at ..." placeholder now that the stream
+        # is live and a real download is about to begin.
+        info.error = None
+        info.msg = None
+        await self.notifier.updated(info)
+        asyncio.create_task(self.__start_download(download))
+
+    def _schedule_upcoming_download(self, download: Download) -> None:
+        download.info.status = 'scheduled'
+        self.queue.put(download)
+        self._register_scheduled(download)
+
+    def _force_start_scheduled(self, download: Download) -> None:
+        self._unregister_scheduled(download.info.url)
+        download.info.status = 'pending'
+        download.info.error = None
+        download.info.msg = None
+        asyncio.create_task(self.__start_download(download))
 
     async def __start_download(self, download):
         if download.canceled:
@@ -886,9 +1062,16 @@ class DownloadQueue:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
         download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
+        is_upcoming = (
+            getattr(dl, 'live_status', None) == 'is_upcoming'
+            or getattr(dl, 'status', None) == 'scheduled'
+        )
         if auto_start is True:
-            self.queue.put(download)
-            asyncio.create_task(self.__start_download(download))
+            if is_upcoming:
+                self._schedule_upcoming_download(download)
+            else:
+                self.queue.put(download)
+                asyncio.create_task(self.__start_download(download))
         else:
             self.pending.put(download)
         await self.notifier.added(dl)
@@ -1036,6 +1219,8 @@ class DownloadQueue:
                     ytdl_options_overrides=ytdl_options_overrides,
                     clip_start=clip_start,
                     clip_end=clip_end,
+                    live_status=entry.get('live_status'),
+                    live_release_timestamp=entry.get('release_timestamp'),
                 )
                 await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -1156,13 +1341,21 @@ class DownloadQueue:
 
     async def start_pending(self, ids):
         for id in ids:
-            if not self.pending.exists(id):
-                log.warning(f'requested start for non-existent download {id}')
+            if self.pending.exists(id):
+                dl = self.pending.get(id)
+                self.pending.delete(id)
+                if getattr(dl.info, 'live_status', None) == 'is_upcoming':
+                    self._schedule_upcoming_download(dl)
+                else:
+                    self.queue.put(dl)
+                    asyncio.create_task(self.__start_download(dl))
                 continue
-            dl = self.pending.get(id)
-            self.queue.put(dl)
-            self.pending.delete(id)
-            asyncio.create_task(self.__start_download(dl))
+            if self.queue.exists(id):
+                dl = self.queue.get(id)
+                if dl.info.status == 'scheduled':
+                    self._force_start_scheduled(dl)
+                continue
+            log.warning(f'requested start for non-existent download {id}')
         return {'status': 'ok'}
 
     async def cancel(self, ids):
@@ -1177,6 +1370,8 @@ class DownloadQueue:
                 log.warning(f'requested cancel for non-existent download {id}')
                 continue
             dl = self.queue.get(id)
+            if dl.info.status == 'scheduled':
+                self._unregister_scheduled(id)
             if dl.started():
                 dl.cancel()
             else:
