@@ -1387,11 +1387,18 @@ class DownloadQueue:
                 continue
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
-                try:
-                    dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
-                    os.remove(os.path.join(dldirectory, dl.info.filename))
-                except Exception as e:
-                    log.warning(f'deleting file for download {id} failed with error message {e!r}')
+                # `filename` is only set once a download has produced a file; a
+                # download that errored (or was cleared) before that point never
+                # gets one. Skip deletion instead of dereferencing a missing
+                # attribute, which otherwise logs a misleading
+                # "deleting file ... failed: AttributeError" warning.
+                filename = getattr(dl.info, 'filename', None)
+                if filename:
+                    try:
+                        dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
+                        os.remove(os.path.join(dldirectory, filename))
+                    except Exception as e:
+                        log.warning(f'deleting file for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
