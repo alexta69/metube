@@ -512,6 +512,31 @@ def _forget_public_download(url: str | None = None, *, dl_id: str | None = None,
         public_visit_downloads.pop(visit_id, None)
 
 
+def _get_public_history(visit_id: str):
+    """Return (active_items, done_items) for *visit_id* in the same format
+    as ``dqueue.get()``: ``([(key, DownloadInfo), ...], [(key, DownloadInfo), ...])``.
+    Only downloads whose URL is registered to *visit_id* are included.
+    """
+    urls = public_visit_downloads.get(visit_id, set())
+    if not urls:
+        return ([], [])
+
+    active = []
+    for key, info in dqueue.queue.saved_items():
+        if info.url in urls:
+            active.append((key, info))
+    for key, info in dqueue.pending.saved_items():
+        if info.url in urls:
+            active.append((key, info))
+
+    done = []
+    for key, info in dqueue.done.saved_items():
+        if info.url in urls:
+            done.append((key, info))
+
+    return (active, done)
+
+
 async def _emit_download_event(event: str, payload, *, url: str | None = None, dl_id: str | None = None, dl_key: str | None = None):
     if not config.PUBLIC_MODE:
         await sio.emit(event, payload)
@@ -563,7 +588,13 @@ class Notifier(DownloadQueueNotifier):
     async def completed(self, dl):
         log.info(f"Notifier: Download completed - {dl.title}")
         await _emit_download_event('completed', serializer.encode(dl), url=dl.url, dl_id=dl.id, dl_key=getattr(dl, 'key', None))
-        _forget_public_download(dl.url, dl_id=dl.id, dl_key=getattr(dl, 'key', None))
+        # Remove transient id/key ownership — they were only needed for
+        # routing events to the owning session while the download was active.
+        # Keep public_download_owner[url] and public_visit_downloads[visit_id]
+        # intact so reconnecting clients can discover their completed downloads
+        # via _get_public_history().
+        public_download_owner_by_id.pop(dl.id, None)
+        public_download_owner_by_key.pop(getattr(dl, 'key', None), None)
 
     async def canceled(self, id):
         log.info(f"Notifier: Download canceled - {id}")
@@ -573,6 +604,7 @@ class Notifier(DownloadQueueNotifier):
     async def cleared(self, id):
         log.info(f"Notifier: Download cleared - {id}")
         await _emit_download_event('cleared', serializer.encode(id), url=id, dl_id=id)
+        _forget_public_download(id, dl_id=id, dl_key=id)
 
 dqueue = DownloadQueue(config, Notifier())
 
@@ -1131,14 +1163,20 @@ async def cookie_status(request):
 
 @routes.get(config.URL_PREFIX + 'history')
 async def history(request):
-    history = { 'done': [], 'queue': [], 'pending': []}
-
-    for _, v in dqueue.queue.saved_items():
-        history['queue'].append(v)
-    for _, v in dqueue.done.saved_items():
-        history['done'].append(v)
-    for _, v in dqueue.pending.saved_items():
-        history['pending'].append(v)
+    if config.PUBLIC_MODE:
+        visit_id = request.query.get('visit_id', '').strip()
+        if not visit_id:
+            return web.Response(text=serializer.encode({'done': [], 'queue': [], 'pending': []}))
+        active, done = _get_public_history(visit_id)
+        history = {'done': [v for _, v in done], 'queue': [v for _, v in active], 'pending': []}
+    else:
+        history = { 'done': [], 'queue': [], 'pending': []}
+        for _, v in dqueue.queue.saved_items():
+            history['queue'].append(v)
+        for _, v in dqueue.done.saved_items():
+            history['done'].append(v)
+        for _, v in dqueue.pending.saved_items():
+            history['pending'].append(v)
 
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
@@ -1146,13 +1184,17 @@ async def history(request):
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
+    visit_id = ''
     if config.PUBLIC_MODE:
         visit_id = _public_visit_from_environ(environ)
         if visit_id:
             public_sid_visit[sid] = visit_id
             public_visit_sids.setdefault(visit_id, set()).add(sid)
     if config.PUBLIC_MODE:
-        await sio.emit('all', serializer.encode(([], [])), to=sid)
+        if visit_id:
+            await sio.emit('all', serializer.encode(_get_public_history(visit_id)), to=sid)
+        else:
+            await sio.emit('all', serializer.encode(([], [])), to=sid)
     else:
         await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     if not config.PUBLIC_MODE:
@@ -1175,15 +1217,13 @@ async def disconnect(sid):
     if sids:
         return
     public_visit_sids.pop(visit_id, None)
-    owned = list(public_visit_downloads.pop(visit_id, set()))
-    for url in owned:
-        public_download_owner.pop(url, None)
-    # remove any lingering id ownership for this visit
-    for dl_id, owner in list(public_download_owner_by_id.items()):
-        if owner == visit_id:
-            public_download_owner_by_id.pop(dl_id, None)
-    if owned:
-        await dqueue.cancel(owned)
+    # Do NOT cancel downloads — they survive browser refresh.
+    # Do NOT remove visit→URL mappings — they are needed by
+    # _get_public_history() when the user reconnects with the
+    # same visit_id (persisted via browser cookie).
+    # Transient id/key ownership (public_download_owner_by_id,
+    # public_download_owner_by_key) is cleaned up by the
+    # completed / canceled / cleared notifiers.
 
 
 def get_custom_dirs():

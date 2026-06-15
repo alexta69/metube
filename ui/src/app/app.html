@@ -717,21 +717,31 @@
             </td>
             <td title="{{ download.value.filename }}">
               <div class="d-flex flex-column flex-sm-row align-items-center row-gap-2 column-gap-3">
-                <div>
-                  {{ download.value.title }}
-                  @if (downloadPhaseLabel(download.value)) {
-                    <span class="badge text-bg-secondary ms-2">{{ downloadPhaseLabel(download.value) }}</span>
+                <div class="d-flex align-items-center flex-wrap gap-2">
+                  <span>{{ download.value.title }}</span>
+                  @if (download.value.live_status === 'is_live' && download.value.status !== 'scheduled') {
+                    <span class="badge bg-danger">LIVE</span>
                   }
                 </div>
-                <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'" [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'" type="success"
-                [value]="download.value.status === 'preparing' ? 100 : download.value.percent" class="download-progressbar" />
+                @if (download.value.status === 'scheduled') {
+                  <span class="badge bg-warning text-dark">
+                    <fa-icon [icon]="faClock" />
+                    Waiting for stream
+                    @if (liveCountdownSeconds(download.value); as secs) {
+                      - starts in {{ secs | eta }}
+                    }
+                  </span>
+                } @else {
+                  <ngb-progressbar height="1.5rem" [showValue]="download.value.status !== 'preparing'" [striped]="download.value.status === 'preparing'" [animated]="download.value.status === 'preparing'" type="success"
+                  [value]="download.value.status === 'preparing' ? 100 : download.value.percent" class="download-progressbar" />
+                }
               </div>
             </td>
             <td>{{ download.value.speed | speed }}</td>
             <td>{{ download.value.eta | eta }}</td>
             <td>
               <div class="d-flex">
-                @if (download.value.status === 'pending') {
+                @if (download.value.status === 'pending' || download.value.status === 'scheduled') {
                   <button type="button" class="btn btn-link" [attr.aria-label]="'Start download for ' + download.value.title" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
                 }
                 @if (download.value.status === 'paused') {

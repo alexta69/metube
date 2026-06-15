@@ -184,6 +184,37 @@ describe('App', () => {
     expect(payload.ytdlOptionsOverrides).toBe('');
   });
 
+  it('shows waiting badge for scheduled live stream', () => {
+    downloads.queue.set('https://example.com/live', {
+      id: 'live1',
+      title: 'Upcoming Stream',
+      url: 'https://example.com/live',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'scheduled',
+      live_status: 'is_upcoming',
+      live_release_timestamp: Date.now() / 1000 + 3600,
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    });
+    downloads.queueChanged.next();
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const root = fixture.nativeElement as HTMLElement;
+    expect(root.textContent).toContain('Waiting for stream');
+    expect(root.textContent).toContain('starts in');
+  });
+
   it('includes titleRegex in subscribe payload', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;

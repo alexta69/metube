@@ -134,6 +134,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private previousDownloadType = 'video';
   private autoDownloadedResults = new Set<string>();
   private addRequestSub?: Subscription;
+  private liveCountdownTimer?: ReturnType<typeof setInterval>;
   private selectionsByType: Record<string, {
     codec: string;
     format: string;
@@ -290,6 +291,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Subscribe to download updates
     this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
+      this.syncLiveCountdownTimer();
       this.cdr.markForCheck();
     });
     this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -300,6 +302,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Subscribe to real-time updates
     this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
+      this.syncLiveCountdownTimer();
       this.cdr.markForCheck();
     });
     this.downloads.completedDownload.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((download) => {
@@ -345,6 +348,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.addRequestSub?.unsubscribe();
+    if (this.liveCountdownTimer) {
+      clearInterval(this.liveCountdownTimer);
+    }
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
   }
 
@@ -1152,6 +1158,27 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
+  liveCountdownSeconds(download: Download): number | null {
+    const ts = download.live_release_timestamp;
+    if (ts == null || download.status !== 'scheduled') {
+      return null;
+    }
+    return Math.max(0, ts - Date.now() / 1000);
+  }
+
+  private syncLiveCountdownTimer() {
+    const hasScheduled = Array.from(this.downloads.queue.values()).some(
+      (download) => download.status === 'scheduled',
+    );
+    if (hasScheduled && !this.liveCountdownTimer) {
+      this.liveCountdownTimer = setInterval(() => this.cdr.markForCheck(), 1000);
+    } else if (!hasScheduled && this.liveCountdownTimer) {
+      clearInterval(this.liveCountdownTimer);
+      this.liveCountdownTimer = undefined;
+    }
+  }
+  }
+
   retryDownload(key: string, download: Download) {
     this.addDownload({
       url: download.url,
@@ -1731,7 +1758,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         active++;
       } else if (download.status === 'postprocessing') {
         active++;
-      } else if (download.status === 'pending' || download.status === 'paused') {
+      } else if (download.status === 'pending' || download.status === 'paused' || download.status === 'scheduled') {
         queued++;
       }
     });
