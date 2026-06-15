@@ -1177,7 +1177,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.liveCountdownTimer = undefined;
     }
   }
-  }
 
   retryDownload(key: string, download: Download) {
     this.addDownload({
