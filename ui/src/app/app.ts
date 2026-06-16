@@ -1189,19 +1189,39 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
-  downloadSelectedFiles() {
-    // eslint-disable-next-line @typescript-eslint/no-unused-vars
-    this.downloads.done.forEach((dl, _) => {
+  // Chromium-based browsers silently drop programmatic downloads beyond ~10 when
+  // triggered in a tight loop. Trigger in batches with a short pause in between so
+  // large selections download cleanly. See issue #1008.
+  private static readonly DOWNLOAD_BATCH_SIZE = 10;
+  private static readonly DOWNLOAD_BATCH_DELAY_MS = 1000;
+
+  async downloadSelectedFiles() {
+    const selected: Download[] = [];
+    this.downloads.done.forEach((dl) => {
       if (dl.status === 'finished' && dl.checked) {
-        const link = document.createElement('a');
-        link.href = this.buildDownloadLink(dl);
-        link.setAttribute('download', dl.filename);
-        link.setAttribute('target', '_self');
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
+        selected.push(dl);
       }
     });
+
+    for (let i = 0; i < selected.length; i++) {
+      const dl = selected[i];
+      const link = document.createElement('a');
+      link.href = this.buildDownloadLink(dl);
+      link.setAttribute('download', dl.filename);
+      link.setAttribute('target', '_self');
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      if (
+        (i + 1) % App.DOWNLOAD_BATCH_SIZE === 0 &&
+        i + 1 < selected.length
+      ) {
+        await new Promise((resolve) =>
+          setTimeout(resolve, App.DOWNLOAD_BATCH_DELAY_MS),
+        );
+      }
+    }
   }
 
   buildDownloadLink(download: Download) {
