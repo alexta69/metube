@@ -112,6 +112,13 @@ class Config:
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 
+        # A blank PUBLIC_HOST_AUDIO_URL (e.g. set empty in a compose file) bypasses the
+        # default via os.environ.get, which would leave audio links root-relative and 404.
+        # Fall back to the 'audio_download/' route that serves AUDIO_DOWNLOAD_DIR. When
+        # PUBLIC_HOST_URL is also blank we leave it blank to preserve serving from web root.
+        if not self.PUBLIC_HOST_AUDIO_URL and self.PUBLIC_HOST_URL:
+            self.PUBLIC_HOST_AUDIO_URL = self._DEFAULTS['PUBLIC_HOST_AUDIO_URL']
+
         for attr in ('PUBLIC_HOST_URL', 'PUBLIC_HOST_AUDIO_URL'):
             val = getattr(self, attr)
             if val and not val.endswith('/'):
