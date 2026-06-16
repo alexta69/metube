@@ -305,6 +305,30 @@ describe('App', () => {
     expect(app.buildDownloadLink(makeDownload())).toBe('song.mp3');
   });
 
+  it('builds chapter audio link from PUBLIC_HOST_AUDIO_URL when set', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = 'audio_download/';
+    const app = TestBed.createComponent(App).componentInstance;
+    const link = app.buildChapterDownloadLink(makeDownload(), 'chapter1.mp3');
+    expect(link).toBe('audio_download/chapter1.mp3');
+  });
+
+  it('chapter audio link falls back to PUBLIC_HOST_URL when audio host is blank (regression)', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = '';
+    const app = TestBed.createComponent(App).componentInstance;
+    const link = app.buildChapterDownloadLink(makeDownload(), 'chapter1.mp3');
+    expect(link).not.toBe('chapter1.mp3');
+    expect(link).toBe('download/chapter1.mp3');
+  });
+
+  it('chapter audio link stays root-relative when both hosts are blank', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = '';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = '';
+    const app = TestBed.createComponent(App).componentInstance;
+    expect(app.buildChapterDownloadLink(makeDownload(), 'chapter1.mp3')).toBe('chapter1.mp3');
+  });
+
   it('blocks subscribe with invalid title regex', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     const fixture = TestBed.createComponent(App);
