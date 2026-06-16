@@ -627,3 +627,63 @@ def test_seconds_until_next_probe_none_when_empty(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)
     assert dq._seconds_until_next_probe() is None
+
+
+def test_calc_download_path_allows_subfolder(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    path, err = dq._DownloadQueue__calc_download_path("video", "sub/dir")
+    assert err is None
+    assert os.path.realpath(path) == os.path.join(os.path.realpath(dq_env.DOWNLOAD_DIR), "sub", "dir")
+
+
+def test_calc_download_path_rejects_sibling_prefix_escape(dq_env):
+    """A folder resolving to a sibling sharing a name prefix must be rejected.
+
+    Regression test: ``startswith`` would have accepted ``../downloads-secret``
+    when the base directory is ``.../downloads``.
+    """
+    notifier = AsyncMock()
+    base = os.path.realpath(dq_env.DOWNLOAD_DIR)
+    sibling = base + "-secret"
+    os.makedirs(sibling, exist_ok=True)
+    dq = DownloadQueue(dq_env, notifier)
+    escape_folder = os.path.join("..", os.path.basename(sibling), "x")
+    path, err = dq._DownloadQueue__calc_download_path("video", escape_folder)
+    assert path is None
+    assert err is not None and err["status"] == "error"
+
+
+def test_calc_download_path_rejects_parent_escape(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    path, err = dq._DownloadQueue__calc_download_path("video", "../../etc")
+    assert path is None
+    assert err is not None and err["status"] == "error"
+
+
+def test_download_info_to_public_dict_excludes_server_only_fields():
+    info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url="https://example.com/watch?v=1",
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry={"id": "vid1", "huge": "x" * 100000},
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    info.subtitle_files = [{"filename": "a.srt", "size": 10}]
+    public = info.to_public_dict()
+    assert "entry" not in public
+    assert "subtitle_files" not in public
+    # Client-facing fields are still present.
+    assert public["url"] == "https://example.com/watch?v=1"
+    assert public["title"] == "Test Video"
+    assert public["status"] == "pending"

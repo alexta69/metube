@@ -4,6 +4,7 @@ import { Subject, of } from 'rxjs';
 import { App } from './app';
 import { DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
+import { ToastService } from './services/toast.service';
 import { CookieService } from 'ngx-cookie-service';
 
 class DownloadsServiceStub {
@@ -263,7 +264,8 @@ describe('App', () => {
   });
 
   it('blocks subscribe with invalid title regex', () => {
-    const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
+    const toasts = TestBed.inject(ToastService);
+    const errorSpy = vi.spyOn(toasts, 'error').mockImplementation(() => undefined);
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
@@ -271,7 +273,7 @@ describe('App', () => {
     app.titleRegex = '[';
     app.addSubscription();
     expect(subs.subscribeCalls.length).toBe(0);
-    expect(alertSpy).toHaveBeenCalledWith('Invalid subscription title filter (regex)');
-    alertSpy.mockRestore();
+    expect(errorSpy).toHaveBeenCalledWith('Invalid subscription title filter (regex)');
+    errorSpy.mockRestore();
   });
 });

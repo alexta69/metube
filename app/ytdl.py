@@ -232,6 +232,20 @@ class DownloadInfo:
         self.live_release_timestamp = live_release_timestamp
         self.subtitle_files = []
 
+    # Fields that are useful server-side but must not be broadcast to browser
+    # clients: ``entry`` is the full yt-dlp info-dict (potentially large and
+    # re-sent on every progress tick) and ``subtitle_files`` is only used
+    # internally to derive the primary caption ``filename``.
+    _PUBLIC_EXCLUDED_FIELDS = ("entry", "subtitle_files")
+
+    def to_public_dict(self) -> dict:
+        """Return the client-facing view, omitting server-only/bulky fields."""
+        return {
+            k: v
+            for k, v in self.__dict__.items()
+            if k not in self._PUBLIC_EXCLUDED_FIELDS
+        }
+
     def __setstate__(self, state):
         """BACKWARD COMPATIBILITY: migrate old DownloadInfo from persistent queue files."""
         self.__dict__.update(state)
@@ -584,7 +598,10 @@ class Download:
                 self.info.filename = rel_name
                 self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
                 if getattr(self.info, 'download_type', '') == 'thumbnail':
-                    self.info.filename = re.sub(r'\.webm$', '.jpg', self.info.filename)
+                    # The thumbnail convertor always emits a .jpg, but yt-dlp may
+                    # report the pre-conversion media/thumbnail extension
+                    # (.webm/.mp4/.png/.webp/...). Normalise to .jpg regardless.
+                    self.info.filename = os.path.splitext(self.info.filename)[0] + '.jpg'
 
             # Handle chapter files
             log.debug(f"Update status for {self.info.title}: {status}")
@@ -647,8 +664,8 @@ class PersistentQueue:
     def __init__(self, name, path):
         self.identifier = name
         pdir = os.path.dirname(path)
-        if not os.path.isdir(pdir):
-            os.mkdir(pdir)
+        if pdir and not os.path.isdir(pdir):
+            os.makedirs(pdir, exist_ok=True)
         self.legacy_path = path
         self.path = f"{path}.json"
         self.store = AtomicJsonStore(self.path, kind=f"persistent_queue:{name}")
@@ -1026,7 +1043,16 @@ class DownloadQueue:
                 return None, {'status': 'error', 'msg': 'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
             dldirectory = os.path.realpath(os.path.join(base_directory, folder))
             real_base_directory = os.path.realpath(base_directory)
-            if not dldirectory.startswith(real_base_directory):
+            # Use commonpath rather than startswith so that a sibling directory
+            # sharing a name prefix (e.g. base "/downloads" vs "/downloads-secret")
+            # cannot be reached via "../downloads-secret".
+            try:
+                inside_base = os.path.commonpath([real_base_directory, dldirectory]) == real_base_directory
+            except ValueError:
+                # Raised when paths are on different drives (Windows) or mix
+                # absolute/relative; treat as outside the base directory.
+                inside_base = False
+            if not inside_base:
                 return None, {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
             if not os.path.isdir(dldirectory):
                 if not self.config.CREATE_CUSTOM_DIRS:
@@ -1387,11 +1413,28 @@ class DownloadQueue:
                 continue
             if self.config.DELETE_FILE_ON_TRASHCAN:
                 dl = self.done.get(id)
-                try:
-                    dldirectory, _ = self.__calc_download_path(dl.info.download_type, dl.info.folder)
-                    os.remove(os.path.join(dldirectory, dl.info.filename))
-                except Exception as e:
-                    log.warning(f'deleting file for download {id} failed with error message {e!r}')
+                dldirectory, calc_error = self.__calc_download_path(dl.info.download_type, dl.info.folder)
+                if calc_error is not None or not dldirectory:
+                    log.warning(f'deleting files for download {id} skipped: could not resolve download directory')
+                else:
+                    # Remove the primary output plus any per-chapter / per-subtitle
+                    # outputs. Each filename is relative to the download directory.
+                    rel_names = []
+                    if getattr(dl.info, 'filename', None):
+                        rel_names.append(dl.info.filename)
+                    for extra in (getattr(dl.info, 'chapter_files', None) or []):
+                        if isinstance(extra, dict) and extra.get('filename'):
+                            rel_names.append(extra['filename'])
+                    for extra in (getattr(dl.info, 'subtitle_files', None) or []):
+                        if isinstance(extra, dict) and extra.get('filename'):
+                            rel_names.append(extra['filename'])
+                    for rel_name in rel_names:
+                        try:
+                            os.remove(os.path.join(dldirectory, rel_name))
+                        except FileNotFoundError:
+                            pass
+                        except OSError as e:
+                            log.warning(f'deleting file "{rel_name}" for download {id} failed with error message {e!r}')
             self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}

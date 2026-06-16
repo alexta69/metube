@@ -130,6 +130,10 @@ class Config:
             )
             sys.exit(1)
 
+        self._validate_int('MAX_CONCURRENT_DOWNLOADS', minimum=1)
+        self._validate_int('PORT', minimum=1, maximum=65535)
+        self._validate_int('CLEAR_COMPLETED_AFTER', minimum=0)
+
         self._runtime_overrides = {}
 
         success,_ = self.load_ytdl_options()
@@ -137,6 +141,20 @@ class Config:
             sys.exit(1)
         success,_ = self.load_ytdl_option_presets()
         if not success:
+            sys.exit(1)
+
+    def _validate_int(self, key, *, minimum=None, maximum=None):
+        raw = getattr(self, key)
+        try:
+            value = int(raw)
+        except (TypeError, ValueError):
+            log.error('Environment variable "%s" must be an integer, got "%s"', key, raw)
+            sys.exit(1)
+        if minimum is not None and value < minimum:
+            log.error('Environment variable "%s" must be >= %d, got "%s"', key, minimum, raw)
+            sys.exit(1)
+        if maximum is not None and value > maximum:
+            log.error('Environment variable "%s" must be <= %d, got "%s"', key, maximum, raw)
             sys.exit(1)
 
     def set_runtime_override(self, key, value):
@@ -241,7 +259,13 @@ logging.getLogger().setLevel(parseLogLevel(str(config.LOGLEVEL)) or logging.INFO
 
 class ObjectSerializer(json.JSONEncoder):
     def default(self, obj):
-        # First try to use __dict__ for custom objects
+        # Prefer an explicit client-facing view when the object provides one
+        # (e.g. DownloadInfo / SubscriptionInfo) so server-only or bulky fields
+        # are never broadcast to browser clients.
+        to_public = getattr(obj, 'to_public_dict', None)
+        if callable(to_public):
+            return to_public()
+        # Fall back to __dict__ for other custom objects
         if hasattr(obj, '__dict__'):
             return obj.__dict__
         # Convert iterables (generators, dict_items, etc.) to lists
@@ -827,10 +851,7 @@ async def cancel_add(request):
 @routes.post(config.URL_PREFIX + 'subscribe')
 async def subscribe(request):
     post = await _read_json_request(request)
-    try:
-        o = parse_download_options(post)
-    except web.HTTPBadRequest:
-        raise
+    o = parse_download_options(post)
     cic = post.get('check_interval_minutes')
     if cic is None:
         cic = config.SUBSCRIPTION_DEFAULT_CHECK_INTERVAL
@@ -964,6 +985,12 @@ async def upload_cookies(request):
     tmp_cookie_path = f"{COOKIES_PATH}.tmp"
     with open(tmp_cookie_path, 'wb') as f:
         f.write(content)
+    # Cookies are sensitive auth material; restrict to owner read/write only
+    # (the container's default umask would otherwise leave them group/world readable).
+    try:
+        os.chmod(tmp_cookie_path, 0o600)
+    except OSError as exc:
+        log.warning(f'Could not restrict permissions on cookies file: {exc}')
     os.replace(tmp_cookie_path, COOKIES_PATH)
     config.set_runtime_override('cookiefile', COOKIES_PATH)
     log.info(f'Cookies file uploaded ({size} bytes)')

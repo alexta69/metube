@@ -312,6 +312,7 @@ class SubscriptionManager:
         self._subs: dict[str, SubscriptionInfo] = {}
         self._url_index: dict[str, str] = {}  # normalized url -> id
         self._pending_urls: set[str] = set()
+        self._checks_in_flight: set[str] = set()  # subscription ids being checked right now
         self._lock = asyncio.Lock()
         self._loop_task: Optional[asyncio.Task] = None
         self._load_all()
@@ -677,6 +678,22 @@ class SubscriptionManager:
         return {"status": "ok"}
 
     async def _check_one_unlocked(self, sub: SubscriptionInfo) -> None:
+        sid = sub.id
+        # Prevent overlapping checks for the same subscription (e.g. the periodic
+        # loop and a manual check-now firing together), which could double-queue
+        # entries and drop seen_ids via a read-modify-write race.
+        async with self._lock:
+            if sid in self._checks_in_flight:
+                log.info("Subscription check already in progress for %s, skipping", sub.name)
+                return
+            self._checks_in_flight.add(sid)
+        try:
+            await self._check_one_inner(sub)
+        finally:
+            async with self._lock:
+                self._checks_in_flight.discard(sid)
+
+    async def _check_one_inner(self, sub: SubscriptionInfo) -> None:
         sid = sub.id
         scan = int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50))
         log.info("Checking subscription: %s", sub.name)

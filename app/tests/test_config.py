@@ -123,6 +123,29 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     Config()
 
+    def test_invalid_max_concurrent_downloads_exits(self):
+        for bad in ("0", "-1", "abc"):
+            with patch.dict(os.environ, _base_env(MAX_CONCURRENT_DOWNLOADS=bad), clear=False):
+                with self.assertRaises(SystemExit):
+                    Config()
+
+    def test_invalid_port_exits(self):
+        for bad in ("0", "70000", "notaport"):
+            with patch.dict(os.environ, _base_env(PORT=bad), clear=False):
+                with self.assertRaises(SystemExit):
+                    Config()
+
+    def test_invalid_clear_completed_after_exits(self):
+        for bad in ("-5", "soon"):
+            with patch.dict(os.environ, _base_env(CLEAR_COMPLETED_AFTER=bad), clear=False):
+                with self.assertRaises(SystemExit):
+                    Config()
+
+    def test_clear_completed_after_zero_allowed(self):
+        with patch.dict(os.environ, _base_env(CLEAR_COMPLETED_AFTER="0"), clear=False):
+            c = Config()
+        self.assertEqual(c.CLEAR_COMPLETED_AFTER, "0")
+
     def test_runtime_override_roundtrip(self):
         with patch.dict(os.environ, _base_env(), clear=False):
             c = Config()
