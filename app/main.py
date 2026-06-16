@@ -117,6 +117,10 @@ class Config:
             if val and not val.endswith('/'):
                 setattr(self, attr, val + '/')
 
+        # A blank PUBLIC_HOST_AUDIO_URL inherits PUBLIC_HOST_URL so audio links aren't left root-relative; both blank stays blank.
+        if not self.PUBLIC_HOST_AUDIO_URL:
+            self.PUBLIC_HOST_AUDIO_URL = self.PUBLIC_HOST_URL
+
         # Convert relative addresses to absolute addresses to prevent the failure of file address comparison
         if self.YTDL_OPTIONS_FILE and self.YTDL_OPTIONS_FILE.startswith('.'):
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())

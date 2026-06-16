@@ -1203,7 +1203,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   buildDownloadLink(download: Download) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
     if (download.download_type === 'audio' || download.filename.endsWith('.mp3')) {
-      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
+      // Fall back to PUBLIC_HOST_URL when the audio host is blank, else the link goes root-relative and 404s.
+      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"]
+        || this.downloads.configuration["PUBLIC_HOST_URL"];
     }
 
     if (download.folder) {
@@ -1299,7 +1301,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   buildChapterDownloadLink(download: Download, chapterFilename: string) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
     if (download.download_type === 'audio' || chapterFilename.endsWith('.mp3')) {
-      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
+      // Fall back to PUBLIC_HOST_URL when the audio host is blank (see buildDownloadLink).
+      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"]
+        || this.downloads.configuration["PUBLIC_HOST_URL"];
     }
 
     if (download.folder) {

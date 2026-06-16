@@ -262,6 +262,49 @@ describe('App', () => {
     expect(payload.clipEnd).toBe('1:20');
   });
 
+  function makeDownload(overrides: Record<string, unknown> = {}) {
+    return {
+      download_type: 'audio',
+      filename: 'song.mp3',
+      folder: '',
+      title: 'Song',
+      ...overrides,
+    } as unknown as Parameters<App['buildDownloadLink']>[0];
+  }
+
+  it('builds audio link from PUBLIC_HOST_AUDIO_URL when set', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = 'audio_download/';
+    const app = TestBed.createComponent(App).componentInstance;
+    expect(app.buildDownloadLink(makeDownload())).toBe('audio_download/song.mp3');
+  });
+
+  it('builds video link from PUBLIC_HOST_URL', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = 'audio_download/';
+    const app = TestBed.createComponent(App).componentInstance;
+    const link = app.buildDownloadLink(makeDownload({ download_type: 'video', filename: 'video.mp4' }));
+    expect(link).toBe('download/video.mp4');
+  });
+
+  it('audio link falls back to PUBLIC_HOST_URL when audio host is blank (regression)', () => {
+    // The reported bug: a blank PUBLIC_HOST_AUDIO_URL produced a root-relative
+    // "song.mp3" that 404'd while video kept working. It must not be root-relative.
+    downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = '';
+    const app = TestBed.createComponent(App).componentInstance;
+    const link = app.buildDownloadLink(makeDownload());
+    expect(link).not.toBe('song.mp3');
+    expect(link).toBe('download/song.mp3');
+  });
+
+  it('audio link stays root-relative when both hosts are blank', () => {
+    downloads.configuration['PUBLIC_HOST_URL'] = '';
+    downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = '';
+    const app = TestBed.createComponent(App).componentInstance;
+    expect(app.buildDownloadLink(makeDownload())).toBe('song.mp3');
+  });
+
   it('blocks subscribe with invalid title regex', () => {
     const alertSpy = vi.spyOn(window, 'alert').mockImplementation(() => undefined);
     const fixture = TestBed.createComponent(App);

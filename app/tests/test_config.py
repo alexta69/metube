@@ -51,6 +51,43 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.PUBLIC_HOST_URL, "")
         self.assertEqual(c.PUBLIC_HOST_AUDIO_URL, "")
 
+    def test_blank_audio_host_inherits_public_host_url(self):
+        # Regression: a blank PUBLIC_HOST_AUDIO_URL must inherit PUBLIC_HOST_URL, not stay root-relative.
+        with patch.dict(
+            os.environ,
+            _base_env(PUBLIC_HOST_URL="download/", PUBLIC_HOST_AUDIO_URL=""),
+            clear=False,
+        ):
+            c = Config()
+        self.assertEqual(c.PUBLIC_HOST_URL, "download/")
+        self.assertEqual(c.PUBLIC_HOST_AUDIO_URL, "download/")
+
+    def test_blank_audio_host_audio_link_is_not_root_relative(self):
+        # Repro of the reported bug. buildDownloadLink uses configuration[PUBLIC_HOST_AUDIO_URL]
+        # as the base for audio, so a blank value made the link "song.mp3" (root-relative, 404)
+        # while video kept working off PUBLIC_HOST_URL. The base must be prefixed instead.
+        with patch.dict(
+            os.environ,
+            _base_env(PUBLIC_HOST_URL="download/", PUBLIC_HOST_AUDIO_URL=""),
+            clear=False,
+        ):
+            c = Config()
+        audio_link = c.PUBLIC_HOST_AUDIO_URL + "song.mp3"
+        video_link = c.PUBLIC_HOST_URL + "video.mp4"
+        self.assertEqual(video_link, "download/video.mp4")
+        self.assertNotEqual(audio_link, "song.mp3")
+        self.assertEqual(audio_link, "download/song.mp3")
+
+    def test_unset_audio_host_keeps_default_route(self):
+        # Truly unset (not blank) keeps the 'audio_download/' default route.
+        env = _base_env()
+        env.pop("PUBLIC_HOST_AUDIO_URL", None)
+        env.pop("PUBLIC_HOST_URL", None)
+        with patch.dict(os.environ, env, clear=True):
+            c = Config()
+        self.assertEqual(c.PUBLIC_HOST_URL, "download/")
+        self.assertEqual(c.PUBLIC_HOST_AUDIO_URL, "audio_download/")
+
     def test_public_host_url_already_slashed_unchanged(self):
         with patch.dict(
             os.environ,
