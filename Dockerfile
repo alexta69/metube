@@ -61,7 +61,6 @@ ENV PGID=1000
 ENV UMASK=022
 
 ENV DOWNLOAD_DIR=/downloads
-ENV AUDIO_DOWNLOAD_DIR=/downloads
 ENV STATE_DIR=/downloads/.metube
 ENV TEMP_DIR=/downloads
 ENV PORT=8081

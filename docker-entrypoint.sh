@@ -2,6 +2,7 @@
 
 PUID="${UID:-$PUID}"
 PGID="${GID:-$PGID}"
+AUDIO_DOWNLOAD_DIR="${AUDIO_DOWNLOAD_DIR:-$DOWNLOAD_DIR}"
 
 echo "Setting umask to ${UMASK}"
 umask ${UMASK}
