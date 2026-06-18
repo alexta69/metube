@@ -2,11 +2,12 @@
 
 PUID="${UID:-$PUID}"
 PGID="${GID:-$PGID}"
+AUDIO_DOWNLOAD_DIR="${AUDIO_DOWNLOAD_DIR:-$DOWNLOAD_DIR}"
 
 echo "Setting umask to ${UMASK}"
 umask ${UMASK}
-echo "Creating download directory (${DOWNLOAD_DIR}), state directory (${STATE_DIR}), and temp dir (${TEMP_DIR})"
-mkdir -p "${DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
+echo "Creating download directory (${DOWNLOAD_DIR}), audio download directory (${AUDIO_DOWNLOAD_DIR}), state directory (${STATE_DIR}), and temp dir (${TEMP_DIR})"
+mkdir -p "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
 
 do_upgrade() {
     echo "Upgrading yt-dlp to nightly channel..."
@@ -56,7 +57,7 @@ if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
     fi
     if [ "${CHOWN_DIRS:-true}" != "false" ]; then
         echo "Changing ownership of download and state directories to ${PUID}:${PGID}"
-        chown -R "${PUID}":"${PGID}" /app "${DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
+        chown -R "${PUID}":"${PGID}" /app "${DOWNLOAD_DIR}" "${AUDIO_DOWNLOAD_DIR}" "${STATE_DIR}" "${TEMP_DIR}"
     fi
     if nightly_enabled; then
         echo "YTDL_NIGHTLY_UPDATE_TIME is set to ${YTDL_NIGHTLY_UPDATE_TIME}; upgrading yt-dlp on startup"
