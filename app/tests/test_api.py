@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import json
+import os
+from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 
 import pytest
 from aiohttp import web
+from aiohttp.test_utils import TestClient, TestServer
 
 import main
 
@@ -306,3 +309,41 @@ async def test_subscribe_rejects_clip_options(mock_dqueue, monkeypatch):
     with pytest.raises(web.HTTPBadRequest):
         await main.subscribe(req)
     main.submgr.add_subscription.assert_not_awaited()
+
+
+def test_is_within_state_dir_blocks_state_subtree():
+    state_dir = main._STATE_DIR_REAL
+    assert main._is_within_state_dir(state_dir)
+    assert main._is_within_state_dir(os.path.join(state_dir, "cookies.txt"))
+    assert main._is_within_state_dir(os.path.join(state_dir, "queue", "item.json"))
+
+
+def test_is_within_state_dir_allows_sibling_downloads():
+    download_dir = os.path.realpath(main.config.DOWNLOAD_DIR)
+    assert not main._is_within_state_dir(os.path.join(download_dir, "video.mp4"))
+    assert not main._is_within_state_dir("/tmp/unrelated/video.mp4")
+
+
+@pytest.mark.asyncio
+async def test_download_blocks_state_dir_files(monkeypatch):
+    download_dir = Path(main.config.DOWNLOAD_DIR)
+    state_dir = download_dir / ".metube"
+    state_dir.mkdir(parents=True, exist_ok=True)
+    (state_dir / "cookies.txt").write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
+    (download_dir / "video.mp4").write_bytes(b"video")
+
+    monkeypatch.setattr(main.config, "STATE_DIR", str(state_dir))
+    monkeypatch.setattr(main, "_STATE_DIR_REAL", os.path.realpath(str(state_dir)))
+
+    try:
+        async with TestClient(TestServer(main.app)) as client:
+            blocked = await client.get("/download/.metube/cookies.txt")
+            assert blocked.status == 404
+
+            allowed = await client.get("/download/video.mp4")
+            assert allowed.status == 200
+            assert await allowed.read() == b"video"
+    finally:
+        (state_dir / "cookies.txt").unlink(missing_ok=True)
+        (download_dir / "video.mp4").unlink(missing_ok=True)
+        state_dir.rmdir()

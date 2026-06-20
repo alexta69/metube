@@ -16,7 +16,7 @@ import logging
 import json
 import pathlib
 import re
-from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
+from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
@@ -286,7 +286,30 @@ class ObjectSerializer(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 serializer = ObjectSerializer()
-app = web.Application()
+
+_STATE_DIR_REAL = os.path.realpath(config.STATE_DIR)
+
+
+def _is_within_state_dir(real_target: str) -> bool:
+    return real_target == _STATE_DIR_REAL or real_target.startswith(_STATE_DIR_REAL + os.sep)
+
+
+@web.middleware
+async def state_dir_guard(request, handler):
+    for prefix, base in (
+        (config.URL_PREFIX + 'download/', config.DOWNLOAD_DIR),
+        (config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR),
+    ):
+        if request.path.startswith(prefix):
+            rel = unquote(request.path[len(prefix):])
+            target = os.path.realpath(os.path.join(base, rel))
+            if _is_within_state_dir(target):
+                raise web.HTTPNotFound()
+            break
+    return await handler(request)
+
+
+app = web.Application(middlewares=[state_dir_guard])
 _cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
 sio = socketio.AsyncServer(cors_allowed_origins=_cors_origins if _cors_origins else [])
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
