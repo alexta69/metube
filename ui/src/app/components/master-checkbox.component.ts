@@ -1,4 +1,4 @@
-import { Component, ElementRef, viewChild, output, input } from "@angular/core";
+import { Component, ElementRef, viewChild, output, input, ChangeDetectionStrategy } from "@angular/core";
 import { Checkable } from "../interfaces";
 import { FormsModule } from "@angular/forms";
 
@@ -10,7 +10,10 @@ import { FormsModule } from "@angular/forms";
     <label class="form-check-label visually-hidden" for="{{id()}}-select-all">Select all</label>
   </div>
 `,
-imports: [
+    // Shared Checkable objects are mutated in place; Eager preserves pre-v22 behavior.
+    // eslint-disable-next-line @angular-eslint/prefer-on-push-component-change-detection
+    changeDetection: ChangeDetectionStrategy.Eager,
+    imports: [
   FormsModule
 ]
 })

@@ -9,7 +9,7 @@ If an addition would exceed the limit, trim existing prose elsewhere — prefer 
 ## Tech stack
 
 - **Backend:** Python 3.13+, aiohttp, python-socketio 5.x, yt-dlp
-- **Frontend:** Angular 21, TypeScript, Bootstrap 5, SASS, ngx-socket-io
+- **Frontend:** Angular 22, TypeScript, Bootstrap 5, SASS, ngx-socket-io
 - **Package managers:** uv (Python), pnpm (frontend)
 - **Container:** Multi-stage Docker (Node builder + Python runtime), multi-arch (amd64/arm64)
 
