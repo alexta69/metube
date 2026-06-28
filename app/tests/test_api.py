@@ -161,6 +161,15 @@ async def test_add_invalid_json_body(mock_dqueue):
 
 
 @pytest.mark.asyncio
+async def test_add_non_dict_json_body(mock_dqueue):
+    req = MagicMock(spec=web.Request)
+    req.json = AsyncMock(return_value=["not", "a", "dict"])
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(req)
+    mock_dqueue.add.assert_not_called()
+
+
+@pytest.mark.asyncio
 async def test_add_invalid_ytdl_options_override_json(mock_dqueue):
     req = _json_request(_valid_video_add_body(ytdl_options_overrides="{bad json}"))
     with pytest.raises(web.HTTPBadRequest):
