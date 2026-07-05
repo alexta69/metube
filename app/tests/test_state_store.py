@@ -41,6 +41,23 @@ class StateStoreTests(unittest.TestCase):
             payload = store.load()
             self.assertEqual(payload["items"], [{"key": "a"}])
 
+    def test_fallback_tightens_permissions_on_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("{}")
+            os.chmod(path, 0o644)
+
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                store.save({"items": [{"key": "a"}]})
+
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+            self.assertEqual(store.load()["items"], [{"key": "a"}])
+
     def test_save_falls_back_to_direct_write_when_replace_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue.json")

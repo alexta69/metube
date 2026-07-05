@@ -153,6 +153,14 @@ class AtomicJsonStore:
         # per-download option overrides that must not leak on shared mounts.
         fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
         with os.fdopen(fd, "w", encoding="utf-8") as f:
+            # The 0o600 mode above only applies when the file is created; force
+            # it on rewrites too so an existing, broadly-permissioned state file
+            # is tightened to match the atomic path. Best-effort because some
+            # network filesystems reject chmod, and that must not re-crash save.
+            try:
+                os.fchmod(f.fileno(), 0o600)
+            except OSError:
+                pass
             self._write_payload(payload, f)
             f.flush()
             self._best_effort_fsync(f.fileno())
