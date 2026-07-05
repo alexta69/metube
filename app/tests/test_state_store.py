@@ -71,6 +71,28 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual(ctx.exception.errno, 13)
             self.assertFalse(os.path.exists(path))
 
+    def test_save_reraises_and_preserves_state_on_non_atomic_errno(self):
+        # A storage failure such as ENOSPC is not an "atomic unavailable"
+        # signal, so it must surface instead of falling back to a direct write
+        # that would truncate the existing good state file.
+        import errno as _errno
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            store.save({"items": [{"key": "good"}]})
+
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=OSError(_errno.ENOSPC, "No space left on device"),
+            ):
+                with self.assertRaises(OSError) as ctx:
+                    store.save({"items": [{"key": "new"}]})
+
+            self.assertEqual(ctx.exception.errno, _errno.ENOSPC)
+            # Existing state is untouched.
+            self.assertEqual(store.load()["items"], [{"key": "good"}])
+
     def test_invalid_file_is_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue.json")

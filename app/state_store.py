@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import base64
 import collections.abc
+import errno
 import json
 import logging
 import os
@@ -16,6 +17,25 @@ log = logging.getLogger("state_store")
 STATE_SCHEMA_VERSION = 2
 _BYTES_MARKER = "__metube_bytes__"
 _DATETIME_MARKER = "__metube_datetime__"
+
+# Errnos that signal the filesystem cannot support the temp-file + rename
+# atomic-write strategy (for example an NFS-backed state dir returning EPERM on
+# mkstemp). These are safe to fall back on because they mean the atomic
+# mechanism is unavailable, not that the data write itself failed. Errors like
+# ENOSPC/EIO are deliberately excluded so a genuine storage failure surfaces
+# instead of silently truncating an existing good state file.
+_ATOMIC_UNSUPPORTED_ERRNOS = frozenset(
+    e
+    for e in (
+        errno.EPERM,
+        errno.EACCES,
+        errno.ENOSYS,
+        errno.EINVAL,
+        getattr(errno, "EOPNOTSUPP", None),
+        getattr(errno, "ENOTSUP", None),
+    )
+    if e is not None
+)
 
 
 def to_json_compatible(value: Any) -> Any:
@@ -100,6 +120,8 @@ class AtomicJsonStore:
         try:
             self._atomic_write(payload)
         except OSError as exc:
+            if exc.errno not in _ATOMIC_UNSUPPORTED_ERRNOS:
+                raise
             self._warn_direct_write_fallback(exc)
             self._direct_write(payload)
 
