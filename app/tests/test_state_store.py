@@ -4,6 +4,7 @@ import os
 import tempfile
 import unittest
 from datetime import datetime
+from unittest.mock import patch
 
 from state_store import AtomicJsonStore, from_json_compatible, to_json_compatible
 
@@ -20,6 +21,135 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual(payload["kind"], "persistent_queue:queue")
             self.assertEqual(payload["schema_version"], 2)
             self.assertEqual(payload["items"][0]["info"]["title"], "hello")
+
+    def test_save_falls_back_to_direct_write_when_mkstemp_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+
+            with self.assertLogs("state_store", level="WARNING") as logs:
+                with patch(
+                    "state_store.tempfile.mkstemp",
+                    side_effect=PermissionError(1, "Operation not permitted"),
+                ):
+                    store.save({"items": [{"key": "a"}]})
+
+            self.assertTrue(os.path.exists(path))
+            self.assertTrue(any(path in message for message in logs.output))
+            # Fallback keeps owner-only permissions, matching the atomic path.
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+            payload = store.load()
+            self.assertEqual(payload["items"], [{"key": "a"}])
+
+    def test_fallback_tightens_permissions_on_existing_file(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            with open(path, "w", encoding="utf-8") as f:
+                f.write("{}")
+            os.chmod(path, 0o644)
+
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                store.save({"items": [{"key": "a"}]})
+
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
+            self.assertEqual(store.load()["items"], [{"key": "a"}])
+
+    def test_save_falls_back_to_direct_write_when_replace_fails(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+
+            with patch(
+                "state_store.os.replace",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                store.save({"items": [{"key": "a"}]})
+
+            self.assertTrue(os.path.exists(path))
+            payload = store.load()
+            self.assertEqual(payload["items"], [{"key": "a"}])
+            self.assertEqual([], [name for name in os.listdir(tmp) if name.endswith(".tmp")])
+
+    def test_save_reraises_when_atomic_and_direct_write_fail(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                with patch(
+                    "state_store.os.open",
+                    side_effect=PermissionError(13, "Permission denied"),
+                ):
+                    with self.assertRaises(PermissionError) as ctx:
+                        store.save({"items": [{"key": "a"}]})
+
+            self.assertEqual(ctx.exception.errno, 13)
+            self.assertFalse(os.path.exists(path))
+
+    def test_unsupported_fsync_keeps_atomic_path(self):
+        # fsync being unsupported (EINVAL/ENOSYS) must not by itself trigger the
+        # direct-write fallback; the atomic temp-file + rename path still runs.
+        import errno as _errno
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+
+            with patch(
+                "state_store.os.fsync",
+                side_effect=OSError(_errno.EINVAL, "Invalid argument"),
+            ):
+                with self.assertNoLogs("state_store", level="WARNING"):
+                    store.save({"items": [{"key": "a"}]})
+
+            self.assertEqual(store.load()["items"], [{"key": "a"}])
+            self.assertEqual([], [name for name in os.listdir(tmp) if name.endswith(".tmp")])
+
+    def test_save_reraises_and_preserves_state_on_non_atomic_errno(self):
+        # A storage failure such as ENOSPC is not an "atomic unavailable"
+        # signal, so it must surface instead of falling back to a direct write
+        # that would truncate the existing good state file.
+        import errno as _errno
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            store.save({"items": [{"key": "good"}]})
+
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=OSError(_errno.ENOSPC, "No space left on device"),
+            ):
+                with self.assertRaises(OSError) as ctx:
+                    store.save({"items": [{"key": "new"}]})
+
+            self.assertEqual(ctx.exception.errno, _errno.ENOSPC)
+            # Existing state is untouched.
+            self.assertEqual(store.load()["items"], [{"key": "good"}])
+
+    def test_serialization_failure_preserves_existing_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            store.save({"items": [{"key": "good"}]})
+
+            # Even on the fallback path, a non-serializable payload must raise
+            # before the existing good state file is touched.
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                with self.assertRaises(TypeError):
+                    store.save({"items": object()})
+
+            self.assertEqual(store.load()["items"], [{"key": "good"}])
 
     def test_invalid_file_is_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp:
