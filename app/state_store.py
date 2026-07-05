@@ -148,7 +148,11 @@ class AtomicJsonStore:
             raise
 
     def _direct_write(self, payload: dict[str, Any]) -> None:
-        with open(self.path, "w", encoding="utf-8") as f:
+        # Create with 0o600 so the fallback keeps the owner-only permissions the
+        # atomic path gets from mkstemp; state files can contain URLs and
+        # per-download option overrides that must not leak on shared mounts.
+        fd = os.open(self.path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w", encoding="utf-8") as f:
             self._write_payload(payload, f)
             f.flush()
             self._best_effort_fsync(f.fileno())

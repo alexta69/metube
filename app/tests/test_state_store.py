@@ -36,6 +36,8 @@ class StateStoreTests(unittest.TestCase):
 
             self.assertTrue(os.path.exists(path))
             self.assertTrue(any(path in message for message in logs.output))
+            # Fallback keeps owner-only permissions, matching the atomic path.
+            self.assertEqual(os.stat(path).st_mode & 0o777, 0o600)
             payload = store.load()
             self.assertEqual(payload["items"], [{"key": "a"}])
 
@@ -64,7 +66,10 @@ class StateStoreTests(unittest.TestCase):
                 "state_store.tempfile.mkstemp",
                 side_effect=PermissionError(1, "Operation not permitted"),
             ):
-                with patch("builtins.open", side_effect=PermissionError(13, "Permission denied")):
+                with patch(
+                    "state_store.os.open",
+                    side_effect=PermissionError(13, "Permission denied"),
+                ):
                     with self.assertRaises(PermissionError) as ctx:
                         store.save({"items": [{"key": "a"}]})
 
