@@ -153,8 +153,13 @@ class AtomicJsonStore:
             f.flush()
             try:
                 os.fsync(f.fileno())
-            except OSError:
-                pass
+            except OSError as exc:
+                # Tolerate fsync being unsupported on the underlying filesystem
+                # (the same class of filesystem that forced this fallback), but
+                # let genuine storage failures such as ENOSPC/EIO surface rather
+                # than reporting a durable write that did not happen.
+                if exc.errno not in _ATOMIC_UNSUPPORTED_ERRNOS:
+                    raise
 
     @staticmethod
     def _write_payload(payload: dict[str, Any], f: Any) -> None:
