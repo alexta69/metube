@@ -21,6 +21,7 @@
       }
     ]
   },
+  "packageManager": "pnpm@11.5.2",
   "private": true,
   "dependencies": {
     "@angular/animations": "^22.0.4",
