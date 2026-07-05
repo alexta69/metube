@@ -62,6 +62,7 @@ class AtomicJsonStore:
         self.path = path
         self.kind = kind
         self.schema_version = schema_version
+        self._direct_write_fallback_warned = False
 
     def _ensure_parent(self) -> None:
         parent = os.path.dirname(self.path)
@@ -96,6 +97,13 @@ class AtomicJsonStore:
     def save(self, data: dict[str, Any]) -> None:
         self._ensure_parent()
         payload = self._build_payload(data)
+        try:
+            self._atomic_write(payload)
+        except OSError as exc:
+            self._warn_direct_write_fallback(exc)
+            self._direct_write(payload)
+
+    def _atomic_write(self, payload: dict[str, Any]) -> None:
         parent = os.path.dirname(self.path) or "."
         fd, tmp_path = tempfile.mkstemp(
             prefix=f".{os.path.basename(self.path)}.",
@@ -105,8 +113,7 @@ class AtomicJsonStore:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
-                f.write("\n")
+                self._write_payload(payload, f)
                 f.flush()
                 os.fsync(f.fileno())
             os.replace(tmp_path, self.path)
@@ -117,6 +124,30 @@ class AtomicJsonStore:
             except OSError:
                 pass
             raise
+
+    def _direct_write(self, payload: dict[str, Any]) -> None:
+        with open(self.path, "w", encoding="utf-8") as f:
+            self._write_payload(payload, f)
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:
+                pass
+
+    @staticmethod
+    def _write_payload(payload: dict[str, Any], f: Any) -> None:
+        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
+        f.write("\n")
+
+    def _warn_direct_write_fallback(self, exc: OSError) -> None:
+        if self._direct_write_fallback_warned:
+            return
+        self._direct_write_fallback_warned = True
+        log.warning(
+            "Atomic state write failed for %s (%s); falling back to direct write",
+            self.path,
+            exc,
+        )
 
     def quarantine_invalid_file(self, exc: Exception) -> None:
         if not os.path.exists(self.path):
