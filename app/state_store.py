@@ -137,7 +137,7 @@ class AtomicJsonStore:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
                 self._write_payload(payload, f)
                 f.flush()
-                os.fsync(f.fileno())
+                self._best_effort_fsync(f.fileno())
             os.replace(tmp_path, self.path)
             self._fsync_directory(parent)
         except Exception:
@@ -151,15 +151,20 @@ class AtomicJsonStore:
         with open(self.path, "w", encoding="utf-8") as f:
             self._write_payload(payload, f)
             f.flush()
-            try:
-                os.fsync(f.fileno())
-            except OSError as exc:
-                # Tolerate fsync being unsupported on the underlying filesystem
-                # (the same class of filesystem that forced this fallback), but
-                # let genuine storage failures such as ENOSPC/EIO surface rather
-                # than reporting a durable write that did not happen.
-                if exc.errno not in _ATOMIC_UNSUPPORTED_ERRNOS:
-                    raise
+            self._best_effort_fsync(f.fileno())
+
+    @staticmethod
+    def _best_effort_fsync(fileno: int) -> None:
+        # Tolerate fsync being unsupported on the underlying filesystem (for
+        # example a network mount that returns EINVAL/ENOSYS), but let genuine
+        # storage failures such as ENOSPC/EIO surface so a non-durable write is
+        # never reported as success. An unsupported fsync must not by itself
+        # abandon the atomic rename path.
+        try:
+            os.fsync(fileno)
+        except OSError as exc:
+            if exc.errno not in _ATOMIC_UNSUPPORTED_ERRNOS:
+                raise
 
     @staticmethod
     def _write_payload(payload: dict[str, Any], f: Any) -> None:

@@ -71,6 +71,25 @@ class StateStoreTests(unittest.TestCase):
             self.assertEqual(ctx.exception.errno, 13)
             self.assertFalse(os.path.exists(path))
 
+    def test_unsupported_fsync_keeps_atomic_path(self):
+        # fsync being unsupported (EINVAL/ENOSYS) must not by itself trigger the
+        # direct-write fallback; the atomic temp-file + rename path still runs.
+        import errno as _errno
+
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+
+            with patch(
+                "state_store.os.fsync",
+                side_effect=OSError(_errno.EINVAL, "Invalid argument"),
+            ):
+                with self.assertNoLogs("state_store", level="WARNING"):
+                    store.save({"items": [{"key": "a"}]})
+
+            self.assertEqual(store.load()["items"], [{"key": "a"}])
+            self.assertEqual([], [name for name in os.listdir(tmp) if name.endswith(".tmp")])
+
     def test_save_reraises_and_preserves_state_on_non_atomic_errno(self):
         # A storage failure such as ENOSPC is not an "atomic unavailable"
         # signal, so it must surface instead of falling back to a direct write
