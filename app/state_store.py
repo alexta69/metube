@@ -169,6 +169,8 @@ class AtomicJsonStore:
             f.write(text)
             f.flush()
             self._best_effort_fsync(f.fileno())
+        # Make the new directory entry durable too, matching the atomic path.
+        self._fsync_directory(os.path.dirname(self.path) or ".")
 
     @staticmethod
     def _best_effort_fsync(fileno: int) -> None:
