@@ -134,6 +134,23 @@ class StateStoreTests(unittest.TestCase):
             # Existing state is untouched.
             self.assertEqual(store.load()["items"], [{"key": "good"}])
 
+    def test_serialization_failure_preserves_existing_state(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue.json")
+            store = AtomicJsonStore(path, kind="persistent_queue:queue")
+            store.save({"items": [{"key": "good"}]})
+
+            # Even on the fallback path, a non-serializable payload must raise
+            # before the existing good state file is touched.
+            with patch(
+                "state_store.tempfile.mkstemp",
+                side_effect=PermissionError(1, "Operation not permitted"),
+            ):
+                with self.assertRaises(TypeError):
+                    store.save({"items": object()})
+
+            self.assertEqual(store.load()["items"], [{"key": "good"}])
+
     def test_invalid_file_is_quarantined(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue.json")

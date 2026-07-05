@@ -126,6 +126,7 @@ class AtomicJsonStore:
             self._direct_write(payload)
 
     def _atomic_write(self, payload: dict[str, Any]) -> None:
+        text = self._serialize(payload)
         parent = os.path.dirname(self.path) or "."
         fd, tmp_path = tempfile.mkstemp(
             prefix=f".{os.path.basename(self.path)}.",
@@ -135,7 +136,7 @@ class AtomicJsonStore:
         )
         try:
             with os.fdopen(fd, "w", encoding="utf-8") as f:
-                self._write_payload(payload, f)
+                f.write(text)
                 f.flush()
                 self._best_effort_fsync(f.fileno())
             os.replace(tmp_path, self.path)
@@ -148,6 +149,10 @@ class AtomicJsonStore:
             raise
 
     def _direct_write(self, payload: dict[str, Any]) -> None:
+        # Serialize before truncating so a serialization failure never destroys
+        # the existing state file (the atomic path gets this for free via its
+        # temp file).
+        text = self._serialize(payload)
         # Create with 0o600 so the fallback keeps the owner-only permissions the
         # atomic path gets from mkstemp; state files can contain URLs and
         # per-download option overrides that must not leak on shared mounts.
@@ -161,7 +166,7 @@ class AtomicJsonStore:
                 os.fchmod(f.fileno(), 0o600)
             except OSError:
                 pass
-            self._write_payload(payload, f)
+            f.write(text)
             f.flush()
             self._best_effort_fsync(f.fileno())
 
@@ -179,9 +184,8 @@ class AtomicJsonStore:
                 raise
 
     @staticmethod
-    def _write_payload(payload: dict[str, Any], f: Any) -> None:
-        json.dump(payload, f, ensure_ascii=False, separators=(",", ":"))
-        f.write("\n")
+    def _serialize(payload: dict[str, Any]) -> str:
+        return json.dumps(payload, ensure_ascii=False, separators=(",", ":")) + "\n"
 
     def _warn_direct_write_fallback(self, exc: OSError) -> None:
         if self._direct_write_fallback_warned:
