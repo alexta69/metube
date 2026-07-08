@@ -717,7 +717,7 @@ class SubscriptionManager:
         entries = [ent for ent in entries if _is_media_entry(ent)]
 
         etype = (info or {}).get("_type") or "video"
-        if etype == "video" or not entries:
+        if etype == "video":
             async with self._lock:
                 cur = self._subs.get(sid)
                 if cur:
@@ -730,6 +730,22 @@ class SubscriptionManager:
                         raise
                     sub = cur
             log.warning("Subscription %s no longer resolves to a subscribable feed", sub.name)
+            await self.notifier.subscription_updated(sub)
+            return
+        if not entries:
+            async with self._lock:
+                cur = self._subs.get(sid)
+                if cur:
+                    previous = copy.deepcopy(cur)
+                    cur.last_checked = time.time()
+                    cur.error = None
+                    try:
+                        self._save_locked()
+                    except Exception:
+                        self._subs[sid] = previous
+                        raise
+                    sub = cur
+            log.warning("Subscription check finished for %s: No entries found", sub.name)
             await self.notifier.subscription_updated(sub)
             return
 
