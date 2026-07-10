@@ -799,6 +799,16 @@ class DownloadQueue:
         self._add_generation += 1
         log.info('Playlist add operation canceled by user')
 
+    @staticmethod
+    def __is_channel_extraction(entry):
+        """Return True when yt-dlp reported a channel tab as a playlist.
+
+        YouTube channel tabs are extracted with ``_type: 'playlist'`` but set
+        ``id`` equal to ``channel_id``; real playlists keep a distinct id.
+        """
+        channel_id = entry.get('channel_id')
+        return bool(channel_id) and entry.get('id') == channel_id
+
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
             await self.__add_download(v, True)
@@ -1161,6 +1171,8 @@ class DownloadQueue:
                 _add_gen,
             )
         elif etype == 'playlist' or etype == 'channel':
+            if etype == 'playlist' and self.__is_channel_extraction(entry):
+                etype = 'channel'
             log.debug(f'Processing as a {etype}')
             entries = entry['entries']
             # Convert generator to list if needed (for len() and slicing operations)
@@ -1180,7 +1192,15 @@ class DownloadQueue:
                 if "id" not in etr:
                     etr["id"] = _entry_id(etr)
                 etr["_type"] = "video"
-                etr[etype] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
+                if etype == 'channel':
+                    etr["channel"] = (
+                        entry.get("channel")
+                        or entry.get("uploader")
+                        or entry.get("title")
+                        or entry.get("id")
+                    )
+                else:
+                    etr["playlist"] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
                 etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
                 etr[f"{etype}_count"] = total_entries
                 etr[f"{etype}_autonumber"] = index

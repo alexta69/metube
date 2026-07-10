@@ -223,6 +223,103 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_channel_download_uses_output_template_when_channel_template_empty(dq_env):
+    """Channel tabs reported as playlists must honor OUTPUT_TEMPLATE when OUTPUT_TEMPLATE_CHANNEL is empty."""
+    notifier = AsyncMock()
+    dq_env.OUTPUT_TEMPLATE = "%(channel)s [YT]/%(title)s.%(ext)s"
+    dq_env.OUTPUT_TEMPLATE_CHANNEL = ""
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = ""
+
+    channel_id = "UCabcd123"
+
+    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "playlist",
+            "id": channel_id,
+            "channel_id": channel_id,
+            "channel": "Odin",
+            "title": "Odin - Videos",
+            "entries": [
+                {
+                    "id": "vid1",
+                    "title": "Salvia Plath - Pondering",
+                    "url": "https://example.com/watch?v=1",
+                    "webpage_url": "https://example.com/watch?v=1",
+                    "channel": "Odin",
+                    "upload_date": "20130804",
+                },
+            ],
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://www.youtube.com/@odin/videos",
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    url = "https://example.com/watch?v=1"
+    assert dq.pending.exists(url)
+    download = dq.pending.get(url)
+    assert download.output_template.startswith("Odin [YT]/")
+    assert "Odin - Videos" not in download.output_template
+
+
+@pytest.mark.asyncio
+async def test_playlist_download_not_treated_as_channel(dq_env):
+    """Real playlists (id != channel_id) must not be promoted to channel downloads."""
+    notifier = AsyncMock()
+    dq_env.OUTPUT_TEMPLATE = "%(channel)s [YT]/%(title)s.%(ext)s"
+    dq_env.OUTPUT_TEMPLATE_CHANNEL = ""
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+
+    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "playlist",
+            "id": "PLxyz789",
+            "channel_id": "UCabcd123",
+            "channel": "Odin",
+            "title": "My Playlist",
+            "entries": [
+                {
+                    "id": "vid1",
+                    "title": "Test Video",
+                    "url": "https://example.com/watch?v=1",
+                    "webpage_url": "https://example.com/watch?v=1",
+                },
+            ],
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://www.youtube.com/playlist?list=PLxyz789",
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    url = "https://example.com/watch?v=1"
+    assert dq.pending.exists(url)
+    download = dq.pending.get(url)
+    assert download.output_template.startswith("My Playlist/")
+
+
+@pytest.mark.asyncio
 async def test_add_merges_global_preset_and_override_options(dq_env):
     notifier = AsyncMock()
     dq_env.YTDL_OPTIONS = {"writesubtitles": False, "cookiefile": "/tmp/global.txt"}
