@@ -16,9 +16,11 @@ import logging
 import json
 import pathlib
 import re
-from urllib.parse import parse_qs, unquote, urlencode, urlparse, urlunparse
+import time
+from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
+import bg_tasks
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -140,6 +142,10 @@ class Config:
         self._validate_int('MAX_CONCURRENT_DOWNLOADS', minimum=1)
         self._validate_int('PORT', minimum=1, maximum=65535)
         self._validate_int('CLEAR_COMPLETED_AFTER', minimum=0)
+        self._validate_int('DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT', minimum=0)
+        self._validate_int('SUBSCRIPTION_DEFAULT_CHECK_INTERVAL', minimum=1)
+        self._validate_int('SUBSCRIPTION_SCAN_PLAYLIST_END', minimum=1)
+        self._validate_int('SUBSCRIPTION_MAX_SEEN_IDS', minimum=1)
 
         self._runtime_overrides = {}
 
@@ -301,7 +307,10 @@ async def state_dir_guard(request, handler):
         (config.URL_PREFIX + 'audio_download/', config.AUDIO_DOWNLOAD_DIR),
     ):
         if request.path.startswith(prefix):
-            rel = unquote(request.path[len(prefix):])
+            # request.path is already percent-decoded by aiohttp; decoding it
+            # again would mangle a download whose filename contains a literal
+            # '%' (e.g. "%" turning into a truncated escape) into a false 404.
+            rel = request.path[len(prefix):]
             target = os.path.realpath(os.path.join(base, rel))
             if _is_within_state_dir(target):
                 raise web.HTTPNotFound()
@@ -425,11 +434,19 @@ def _clip_field_provided_in_post(raw) -> bool:
 
 
 def _extract_t_query_from_url(url: str) -> tuple[str, float | None]:
-    """If ``t=`` is present and parseable, return URL without ``t`` and start seconds."""
+    """If ``t=`` is present and parseable, return URL without ``t`` and start seconds.
+
+    Restricted to YouTube hosts: ``t`` is a generic query parameter name that
+    other sites may use for unrelated purposes, so rewriting it there would
+    silently mutate the URL and inject a bogus clip start.
+    """
     try:
         parsed = urlparse(url)
         params = parse_qs(parsed.query)
     except Exception:
+        return url, None
+    host = (parsed.hostname or '').lower()
+    if not (host in ('youtu.be', 'youtube.com') or host.endswith('.youtube.com')):
         return url, None
     t_values = params.get('t')
     if not t_values:
@@ -552,6 +569,7 @@ async def _download_queue_startup(app):
 
 
 async def _shutdown_download_manager(app):
+    dqueue.close()
     Download.shutdown_manager()
 
 
@@ -607,7 +625,7 @@ async def _schedule_nightly_update() -> None:
 
 
 async def _start_nightly_update_schedule(app):
-    asyncio.create_task(_schedule_nightly_update())
+    bg_tasks.create_task(_schedule_nightly_update(), name="nightly_update_schedule")
 
 
 app.on_startup.append(_start_nightly_update_schedule)
@@ -656,7 +674,7 @@ async def watch_files():
             await sio.emit('ytdl_options_changed', serializer.encode(result))
 
     log.info(f'Starting Watch File: {config.YTDL_OPTIONS_FILE}')
-    asyncio.create_task(_watch_files())
+    bg_tasks.create_task(_watch_files(), name="watch_ytdl_options_file")
 
 async def _watch_files_startup(app):
     await watch_files()
@@ -970,13 +988,20 @@ async def subscriptions_check(request):
     result = await submgr.check_now([str(i) for i in ids] if ids else None)
     return web.Response(text=serializer.encode(result))
 
+def _require_id_list(post: dict) -> list:
+    ids = post.get('ids')
+    if not isinstance(ids, list) or not ids or not all(isinstance(i, str) for i in ids):
+        raise web.HTTPBadRequest(reason="'ids' must be a non-empty list of strings")
+    return ids
+
+
 @routes.post(config.URL_PREFIX + 'delete')
 async def delete(request):
     post = await _read_json_request(request)
-    ids = post.get('ids')
+    ids = _require_id_list(post)
     where = post.get('where')
-    if not ids or where not in ['queue', 'done']:
-        log.error("Bad request: missing 'ids' or incorrect 'where' value")
+    if where not in ['queue', 'done']:
+        log.error("Bad request: incorrect 'where' value")
         raise web.HTTPBadRequest()
     status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
     log.info(f"Download delete request processed for ids: {ids}, where: {where}")
@@ -985,7 +1010,7 @@ async def delete(request):
 @routes.post(config.URL_PREFIX + 'start')
 async def start(request):
     post = await _read_json_request(request)
-    ids = post.get('ids')
+    ids = _require_id_list(post)
     log.info(f"Received request to start pending downloads for ids: {ids}")
     status = await dqueue.start_pending(ids)
     return web.Response(text=serializer.encode(status))
@@ -1065,12 +1090,15 @@ async def cookie_status(request):
 async def history(request):
     history = { 'done': [], 'queue': [], 'pending': []}
 
-    for _, v in dqueue.queue.saved_items():
-        history['queue'].append(v)
-    for _, v in dqueue.done.saved_items():
-        history['done'].append(v)
-    for _, v in dqueue.pending.saved_items():
-        history['pending'].append(v)
+    # Served from the in-memory queues (like the socket 'all' event) rather
+    # than saved_items(), which reloads and re-compacts the on-disk state on
+    # every call.
+    for _, v in dqueue.queue.items():
+        history['queue'].append(v.info)
+    for _, v in dqueue.done.items():
+        history['done'].append(v.info)
+    for _, v in dqueue.pending.items():
+        history['pending'].append(v.info)
 
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
@@ -1082,13 +1110,17 @@ async def connect(sid, environ):
     await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
     await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
     if config.CUSTOM_DIRS:
-        await sio.emit('custom_dirs', serializer.encode(get_custom_dirs()), to=sid)
+        # get_custom_dirs() can walk the whole download tree on a cache miss;
+        # keep that off the event loop so a large library doesn't stall every
+        # client's connect handshake.
+        dirs = await asyncio.get_running_loop().run_in_executor(None, get_custom_dirs)
+        await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
     if config.YTDL_OPTIONS_FILE:
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
 def get_custom_dirs():
     cache_ttl_seconds = 5
-    now = asyncio.get_running_loop().time()
+    now = time.monotonic()
     cache_key = (
         config.DOWNLOAD_DIR,
         config.AUDIO_DOWNLOAD_DIR,

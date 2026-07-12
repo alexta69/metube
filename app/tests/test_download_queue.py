@@ -3,13 +3,14 @@
 from __future__ import annotations
 
 import os
+import re
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 import time
 
-from ytdl import DownloadInfo, DownloadQueue
+from ytdl import Download, DownloadInfo, DownloadQueue
 
 
 @pytest.fixture
@@ -44,6 +45,37 @@ def test_cancel_add_increments_generation(dq_env):
     before = dq._add_generation
     dq.cancel_add()
     assert dq._add_generation == before + 1
+
+
+def test_download_queue_has_dedicated_executor_sized_from_config(dq_env):
+    notifier = MagicMock()
+    dq = DownloadQueue(dq_env, notifier)
+    assert dq._download_executor is not None
+    assert dq._download_executor._max_workers == 2 * int(dq_env.MAX_CONCURRENT_DOWNLOADS) + 2
+    dq.close()
+
+
+def test_close_cancels_running_downloads_before_shutdown(dq_env):
+    notifier = MagicMock()
+    dq = DownloadQueue(dq_env, notifier)
+
+    running = MagicMock()
+    running.started.return_value = True
+    running.running.return_value = True
+    idle = MagicMock()
+    idle.started.return_value = False
+    idle.running.return_value = False
+
+    dq.queue.dict["u-running"] = running
+    dq.queue.dict["u-idle"] = idle
+
+    dq.close()
+
+    # The active download's subprocess group is killed; the not-started one is
+    # left alone. Executor is shut down afterwards.
+    running.cancel.assert_called_once()
+    idle.cancel.assert_not_called()
+    assert dq._download_executor._shutdown
 
 
 def test_get_returns_tuple_of_lists(dq_env):
@@ -220,6 +252,58 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 
     assert result["status"] == "ok"
     assert dq.pending.exists("https://example.com/watch?v=1")
+
+
+@pytest.mark.asyncio
+async def test_add_entry_duplicate_while_pending_is_skipped_not_clobbered(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    entry = {
+        "_type": "video",
+        "id": "vid1",
+        "title": "Original Title",
+        "url": "https://example.com/watch?v=1",
+        "webpage_url": "https://example.com/watch?v=1",
+    }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")):
+        first = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+        assert first["status"] == "ok"
+        assert "msg" not in first
+
+        dupe_entry = {**entry, "title": "Different Title"}
+        second = await dq.add_entry(dupe_entry, "audio", "auto", "mp3", "best", "", "", 0, auto_start=False)
+
+    assert second["status"] == "ok"
+    assert "Already in queue" in second["msg"]
+    # The original pending download's options must survive untouched.
+    pending_dl = dq.pending.get("https://example.com/watch?v=1")
+    assert pending_dl.info.download_type == "video"
+    assert pending_dl.info.title == "Original Title"
+
+
+@pytest.mark.asyncio
+async def test_add_entry_duplicate_while_queued_is_skipped(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    entry = {
+        "_type": "video",
+        "id": "vid1",
+        "title": "Test Video",
+        "url": "https://example.com/watch?v=1",
+        "webpage_url": "https://example.com/watch?v=1",
+    }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        first = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+        assert first["status"] == "ok"
+        assert dq.queue.exists("https://example.com/watch?v=1")
+
+        second = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+
+    assert second["status"] == "ok"
+    assert "Already in queue" in second["msg"]
 
 
 @pytest.mark.asyncio
@@ -526,6 +610,9 @@ async def test_add_upcoming_stream_scheduled_without_starting(dq_env):
     assert download.info.live_release_timestamp is not None
     start_mock.assert_not_called()
     assert url in dq._scheduled_probe_at
+    # The "scheduled to start at ..." message must include a UTC offset
+    # (a naive datetime's %z would render as an empty string here).
+    assert re.search(r"[+-]\d{4}$", download.info.error)
 
 
 @pytest.mark.asyncio
@@ -784,3 +871,78 @@ def test_download_info_to_public_dict_excludes_server_only_fields():
     assert public["url"] == "https://example.com/watch?v=1"
     assert public["title"] == "Test Video"
     assert public["status"] == "pending"
+
+
+def _make_download(dq_env, *, download_type="video", status="downloading", filename=None):
+    info = DownloadInfo(
+        id="id1",
+        title="t",
+        url="http://example.com/v",
+        quality="best",
+        download_type=download_type,
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    info.status = status
+    info.filename = filename
+    info.size = 123 if filename else None
+    return Download(
+        dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", "any", {}, info
+    )
+
+
+@pytest.mark.asyncio
+async def test_post_download_cleanup_clears_filename_on_error(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    download = _make_download(dq_env, status="downloading", filename="../tmp/partial.mp4")
+    dq.queue.put(download)
+
+    dq._post_download_cleanup(download)
+
+    assert download.info.status == "error"
+    assert download.info.filename is None
+    assert download.info.size is None
+
+
+@pytest.mark.asyncio
+async def test_post_download_cleanup_keeps_captured_subtitles_on_error(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    download = _make_download(dq_env, download_type="captions", status="downloading", filename="en.srt")
+    download.info.subtitle_files = [{"filename": "en.srt", "size": 42}]
+    dq.queue.put(download)
+
+    dq._post_download_cleanup(download)
+
+    assert download.info.status == "error"
+    assert download.info.filename == "en.srt"
+
+
+@pytest.mark.asyncio
+async def test_clear_skips_deletion_outside_download_directory(dq_env):
+    notifier = AsyncMock()
+    dq_env.DELETE_FILE_ON_TRASHCAN = True
+    dq = DownloadQueue(dq_env, notifier)
+
+    outside_dir = tempfile.mkdtemp()
+    outside_file = os.path.join(outside_dir, "outside.txt")
+    with open(outside_file, "w") as f:
+        f.write("do not delete me")
+
+    # A crafted/legacy relative filename that escapes DOWNLOAD_DIR via '..'.
+    escaping_filename = os.path.relpath(outside_file, dq_env.DOWNLOAD_DIR)
+    download = _make_download(dq_env, status="finished", filename=escaping_filename)
+    dq.done.put(download)
+
+    await dq.clear([download.info.url])
+
+    assert os.path.exists(outside_file)
+    assert not dq.done.exists(download.info.url)

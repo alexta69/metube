@@ -8,9 +8,10 @@ export class FileSizePipe implements PipeTransform {
       if (isNaN(value) || value === 0) return '0 Bytes';
 
       const units = ['Bytes', 'KB', 'MB', 'GB', 'TB', 'PB', 'EB', 'ZB', 'YB'];
-      const unitIndex = Math.floor(Math.log(value) / Math.log(1000)); // Use 1000 for common units
+      const k = 1024; // Matches SpeedPipe's base so file sizes and transfer speeds agree.
+      const unitIndex = Math.floor(Math.log(value) / Math.log(k));
 
-      const unitValue = value / Math.pow(1000, unitIndex);
+      const unitValue = value / Math.pow(k, unitIndex);
       return `${unitValue.toFixed(2)} ${units[unitIndex]}`;
   }
 }

@@ -699,7 +699,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (download of downloads.queue | keyvalue: asIsOrder; track download.value.id) {
+        @for (download of downloads.queue | keyvalue: asIsOrder; track download.key) {
           <tr [class.disabled]='download.value.deleting'>
             <td>
               <app-item-checkbox [id]="download.key" [master]="queueMasterCheckboxRef" [checkable]="download.value" />
@@ -769,7 +769,7 @@
         </tr>
       </thead>
       <tbody>
-        @for (entry of cachedSortedDone; track entry[1].id) {
+        @for (entry of cachedSortedDone; track entry[0]) {
           <tr [class.disabled]='entry[1].deleting'>
             <td>
               <app-item-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />

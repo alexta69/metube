@@ -10,15 +10,16 @@ describe('FileSizePipe', () => {
   it('formats bytes and larger units', () => {
     const pipe = new FileSizePipe();
     expect(pipe.transform(500)).toContain('Bytes');
-    expect(pipe.transform(1000)).toContain('KB');
-    expect(pipe.transform(1000 * 1000)).toContain('MB');
-    expect(pipe.transform(1000 ** 3)).toContain('GB');
+    expect(pipe.transform(1000)).toContain('Bytes');
+    expect(pipe.transform(1024)).toContain('KB');
+    expect(pipe.transform(1024 ** 2)).toContain('MB');
+    expect(pipe.transform(1024 ** 3)).toContain('GB');
   });
 
   it('handles boundaries between units', () => {
     const pipe = new FileSizePipe();
-    expect(pipe.transform(999)).toContain('Bytes');
-    expect(pipe.transform(1000)).toContain('KB');
-    expect(pipe.transform(1001)).toContain('KB');
+    expect(pipe.transform(1023)).toContain('Bytes');
+    expect(pipe.transform(1024)).toContain('KB');
+    expect(pipe.transform(1025)).toContain('KB');
   });
 });

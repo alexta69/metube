@@ -3,12 +3,14 @@
 from __future__ import annotations
 
 import pickle
+import signal
 import sys
 import tempfile
 import threading
 import types
 import unittest
 from pathlib import Path
+from unittest.mock import MagicMock, patch
 
 fake_yt_dlp = types.ModuleType("yt_dlp")
 fake_networking = types.ModuleType("yt_dlp.networking")
@@ -37,6 +39,7 @@ sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
 sys.modules.setdefault("yt_dlp.utils", fake_utils)
 
 from ytdl import (
+    Download,
     DownloadInfo,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
@@ -160,6 +163,105 @@ class SanitizeEntryForPickleTests(unittest.TestCase):
         self.assertEqual(out, {"z": 1, "a": 2})
 
 
+def _make_test_download() -> Download:
+    info = DownloadInfo(
+        id="id1",
+        title="t",
+        url="http://example.com/v",
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    return Download("/tmp", "/tmp", "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", "any", {}, info)
+
+
+class ProgressThrottleTests(unittest.TestCase):
+    def test_downloading_ticks_are_throttled(self):
+        dl = _make_test_download()
+        forwarded = []
+        dl.status_queue = types.SimpleNamespace(put=forwarded.append)
+        hook = dl._make_progress_hook()
+
+        with patch("ytdl.time.monotonic", side_effect=[100.0, 100.1, 100.6, 100.7]):
+            hook({"status": "downloading", "downloaded_bytes": 1})
+            hook({"status": "downloading", "downloaded_bytes": 2})
+            hook({"status": "downloading", "downloaded_bytes": 3})
+            hook({"status": "downloading", "downloaded_bytes": 4})
+
+        # Only the 1st and 3rd ticks are >= 0.5s apart from the last forwarded one.
+        self.assertEqual(len(forwarded), 2)
+
+    def test_finished_and_error_statuses_always_forwarded(self):
+        dl = _make_test_download()
+        forwarded = []
+        dl.status_queue = types.SimpleNamespace(put=forwarded.append)
+        hook = dl._make_progress_hook()
+
+        with patch("ytdl.time.monotonic", side_effect=[200.0, 200.1]):
+            hook({"status": "downloading"})
+            hook({"status": "finished"})
+            hook({"status": "downloading"})
+            hook({"status": "error", "msg": "boom"})
+
+        statuses = [item.get("status") for item in forwarded]
+        self.assertIn("finished", statuses)
+        self.assertIn("error", statuses)
+
+
+class CancelProcessGroupTests(unittest.TestCase):
+    def test_cancel_kills_group_when_child_is_group_leader(self):
+        # Child successfully ran os.setpgrp(): its pgid equals its own pid.
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321)
+        dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+
+        with patch.object(Download, "running", return_value=True), \
+             patch("ytdl.os.getpgid", return_value=4321) as mock_getpgid, \
+             patch("ytdl.os.killpg") as mock_killpg:
+            dl.cancel()
+
+        mock_getpgid.assert_called_once_with(4321)
+        mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
+        self.assertTrue(dl.canceled)
+
+    def test_cancel_does_not_killpg_parent_group_kills_child_only(self):
+        # Child has NOT become its own group leader yet (pgid != pid, e.g. it is
+        # still in the server's process group). killpg must NOT be called — that
+        # would SIGKILL the whole server — and we fall back to proc.kill().
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321, kill=MagicMock())
+        dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+
+        with patch.object(Download, "running", return_value=True), \
+             patch("ytdl.os.getpgid", return_value=999), \
+             patch("ytdl.os.killpg") as mock_killpg:
+            dl.cancel()
+
+        mock_killpg.assert_not_called()
+        dl.proc.kill.assert_called_once()
+        self.assertTrue(dl.canceled)
+
+    def test_cancel_falls_back_to_proc_kill_when_getpgid_unavailable(self):
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321, kill=MagicMock())
+        dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+
+        with patch.object(Download, "running", return_value=True), \
+             patch("ytdl.os.getpgid", side_effect=OSError("no such process")):
+            dl.cancel()
+
+        dl.proc.kill.assert_called_once()
+        self.assertTrue(dl.canceled)
+
+
 class ConvertSrtToTxtTests(unittest.TestCase):
     def test_basic_conversion(self):
         srt = """1
@@ -179,6 +281,77 @@ Second line
             content = Path(txt_path).read_text(encoding="utf-8")
             self.assertIn("Hello world", content)
             self.assertIn("Second line", content)
+
+    def test_vtt_input_strips_header_and_metadata(self):
+        # yt-dlp can fall back to VTT even when srt/txt was requested (the
+        # extractor may not offer a native srt track); the converter must not
+        # leak VTT-only header/metadata lines into the plain-text output.
+        vtt = """WEBVTT
+Kind: captions
+Language: en
+
+NOTE
+This is a note block
+
+1
+00:00:01.000 --> 00:00:02.000
+Hello <b>world</b>
+
+2
+00:00:03.000 --> 00:00:04.000
+Second line
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sub.vtt"
+            path.write_text(vtt, encoding="utf-8")
+            txt_path = _convert_srt_to_txt_file(str(path))
+            self.assertIsNotNone(txt_path)
+            content = Path(txt_path).read_text(encoding="utf-8")
+            self.assertIn("Hello world", content)
+            self.assertIn("Second line", content)
+            self.assertNotIn("WEBVTT", content)
+            self.assertNotIn("Kind:", content)
+            self.assertNotIn("Language:", content)
+            self.assertNotIn("This is a note block", content)
+
+    def test_vtt_standalone_header_block_is_stripped(self):
+        # Some VTT files put a blank line after WEBVTT, so Kind:/Language: form
+        # their own block. That header block (before the first timed cue) must
+        # still be stripped.
+        vtt = """WEBVTT
+
+Kind: captions
+Language: en
+
+1
+00:00:01.000 --> 00:00:02.000
+Hello world
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sub.vtt"
+            path.write_text(vtt, encoding="utf-8")
+            content = Path(_convert_srt_to_txt_file(str(path))).read_text(encoding="utf-8")
+            self.assertIn("Hello world", content)
+            self.assertNotIn("Kind:", content)
+            self.assertNotIn("Language:", content)
+
+    def test_cue_text_starting_with_metadata_keyword_is_kept(self):
+        # A real caption line beginning with "Kind:"/"Language:" must NOT be
+        # dropped as if it were VTT header metadata.
+        srt = """1
+00:00:01,000 --> 00:00:02,000
+Kind: regards, everyone
+
+2
+00:00:03,000 --> 00:00:04,000
+Language: they spoke French
+"""
+        with tempfile.TemporaryDirectory() as tmp:
+            path = Path(tmp) / "sub.srt"
+            path.write_text(srt, encoding="utf-8")
+            content = Path(_convert_srt_to_txt_file(str(path))).read_text(encoding="utf-8")
+            self.assertIn("Kind: regards, everyone", content)
+            self.assertIn("Language: they spoke French", content)
 
 
 class DownloadInfoSetstateTests(unittest.TestCase):

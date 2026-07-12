@@ -1,4 +1,8 @@
-FROM node:lts-alpine AS builder
+# Pinned to a major version rather than the lts-alpine floating tag: that tag
+# has lagged behind and resolved to a Node patch older than the Angular CLI's
+# minimum supported version, breaking the build. node:22-alpine currently
+# satisfies @angular/cli's >=22.22.3 requirement.
+FROM node:22-alpine AS builder
 
 WORKDIR /metube
 COPY ui ./
@@ -66,7 +70,8 @@ ENV TEMP_DIR=/downloads
 ENV PORT=8081
 VOLUME /downloads
 EXPOSE 8081
-HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 CMD curl -fsS "http://localhost:${PORT}/" || exit 1
+HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
+  CMD case "$HTTPS" in true|True|on|1) curl -fsSk "https://localhost:${PORT}/";; *) curl -fsS "http://localhost:${PORT}/";; esac || exit 1
 
 # Add build-time argument for version
 ARG VERSION=dev

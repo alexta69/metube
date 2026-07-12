@@ -139,6 +139,12 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
+  it('asIsOrder returns a stable comparator value (insertion order preserved)', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    expect(app.asIsOrder()).toBe(0);
+  });
+
   it('hides manual override input when disabled', () => {
     const fixture = TestBed.createComponent(App);
     fixture.componentInstance.isAdvancedOpen = true;

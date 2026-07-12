@@ -1,10 +1,12 @@
 from __future__ import annotations
 
+import asyncio
 import json
 import os
 import shelve
 import sys
 import tempfile
+import time
 import types
 import unittest
 from unittest.mock import patch
@@ -29,6 +31,7 @@ sys.modules.setdefault("yt_dlp.networking", fake_networking)
 sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
 
 from subscriptions import (
+    SubscriptionInfo,
     SubscriptionManager,
     _is_subscriber_only_entry,
     coerce_optional_bool,
@@ -44,6 +47,7 @@ class _Config:
         self.DOWNLOAD_DIR = state_dir
         self.TEMP_DIR = state_dir
         self.YTDL_OPTIONS = {}
+        self.YTDL_OPTIONS_PRESETS = {}
 
 
 class _Queue:
@@ -571,8 +575,16 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 )
 
             sub_id = result["subscription"]["id"]
-            with self.assertRaises(ValueError):
-                await mgr.update_subscription(sub_id, {"enabled": "maybe"})
+            update_result = await mgr.update_subscription(sub_id, {"enabled": "maybe"})
+            self.assertEqual(update_result["status"], "error")
+            stored = mgr.get(sub_id)
+            self.assertTrue(stored.enabled)
+
+            update_result = await mgr.update_subscription(
+                sub_id, {"check_interval_minutes": "abc"}
+            )
+            self.assertEqual(update_result["status"], "error")
+            self.assertEqual(mgr.get(sub_id).check_interval_minutes, 60)
 
     async def test_add_subscription_rejects_invalid_title_regex(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1011,6 +1023,223 @@ class ExtractFlatPlaylistTests(unittest.TestCase):
 
         self.assertEqual(info.get("_type"), "playlist")
         self.assertEqual([entry["webpage_url"] for entry in entries], ["https://example.com/v1"])
+
+    def test_extra_opts_applied_on_top_of_config_options(self):
+        captured: dict = {}
+
+        class _FakeYDL:
+            def __init__(self, params):
+                captured.update(params)
+
+            def __enter__(self):
+                return self
+
+            def __exit__(self, exc_type, exc, tb):
+                return False
+
+            def extract_info(self, url, download=False):
+                return {"_type": "video"}
+
+        cfg = _Config(tempfile.mkdtemp())
+        with patch("subscriptions.yt_dlp.YoutubeDL", _FakeYDL, create=True):
+            extract_flat_playlist(cfg, "https://example.com/v1", 50, extra_opts={"cookiefile": "x"})
+
+        self.assertEqual(captured.get("cookiefile"), "x")
+
+
+def _make_scan_capturing_fake_ydl(captured_params: list, entries: list[dict]):
+    class _FakeYDL:
+        def __init__(self, params):
+            captured_params.append(params)
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, exc_type, exc, tb):
+            return False
+
+        def extract_info(self, url, download=False):
+            return {"_type": "channel", "title": "Channel", "entries": entries}
+
+    return _FakeYDL
+
+
+class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
+    async def test_add_subscription_scan_applies_presets_and_overrides(self):
+        captured_params: list = []
+        fake_ydl = _make_scan_capturing_fake_ydl(
+            captured_params,
+            [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"cookiefile": "preset.txt"}}
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+
+            with patch("subscriptions.yt_dlp.YoutubeDL", fake_ydl, create=True):
+                await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    ytdl_options_presets=["mypreset"],
+                    ytdl_options_overrides={"extra": "override"},
+                )
+
+        self.assertTrue(captured_params)
+        self.assertEqual(captured_params[0].get("cookiefile"), "preset.txt")
+        self.assertEqual(captured_params[0].get("extra"), "override")
+
+    async def test_check_now_scan_applies_stored_subscription_presets(self):
+        entries = [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}]
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"cookiefile": "preset.txt"}}
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+
+            add_captured: list = []
+            with patch(
+                "subscriptions.yt_dlp.YoutubeDL",
+                _make_scan_capturing_fake_ydl(add_captured, entries),
+                create=True,
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    ytdl_options_presets=["mypreset"],
+                )
+            sub_id = result["subscription"]["id"]
+
+            check_captured: list = []
+            with patch(
+                "subscriptions.yt_dlp.YoutubeDL",
+                _make_scan_capturing_fake_ydl(check_captured, entries),
+                create=True,
+            ):
+                await mgr.check_now([sub_id])
+
+        self.assertTrue(check_captured)
+        self.assertEqual(check_captured[0].get("cookiefile"), "preset.txt")
+
+
+class SubscriptionEventLoopTests(unittest.IsolatedAsyncioTestCase):
+    async def test_check_now_does_not_block_event_loop(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                return_value=(
+                    {"_type": "channel", "title": "Channel"},
+                    [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                ),
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+            sub_id = result["subscription"]["id"]
+
+            def _slow_extract(config, url, playlistend, **kwargs):
+                time.sleep(0.3)
+                return (
+                    {"_type": "channel", "title": "Channel"},
+                    [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                )
+
+            with patch("subscriptions.extract_flat_playlist", side_effect=_slow_extract):
+                check_task = asyncio.ensure_future(mgr.check_now([sub_id]))
+                # If check_now() blocked the event loop, this would not complete
+                # until after the slow extraction finishes.
+                await asyncio.wait_for(asyncio.sleep(0.05), timeout=0.2)
+                self.assertFalse(check_task.done())
+                await check_task
+
+    async def test_check_many_isolates_a_crashing_subscription(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+
+            good = SubscriptionInfo(id="good", name="Good", url="https://example.com/good")
+            bad = SubscriptionInfo(id="bad", name="Bad", url="https://example.com/bad")
+            other = SubscriptionInfo(id="other", name="Other", url="https://example.com/other")
+
+            checked: list[str] = []
+
+            async def fake_check(sub):
+                if sub.id == "bad":
+                    raise RuntimeError("boom")
+                checked.append(sub.id)
+
+            with patch.object(mgr, "_check_one_unlocked", side_effect=fake_check):
+                # The crashing subscription must not prevent the others running.
+                await mgr._check_many([good, bad, other])
+
+            self.assertIn("good", checked)
+            self.assertIn("other", checked)
+
+    async def test_check_many_bounded_concurrency(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            subs = [
+                SubscriptionInfo(id=str(i), name=str(i), url=f"https://example.com/{i}")
+                for i in range(10)
+            ]
+
+            import subscriptions as subs_mod
+
+            concurrent = 0
+            peak = 0
+
+            async def fake_check(sub):
+                nonlocal concurrent, peak
+                concurrent += 1
+                peak = max(peak, concurrent)
+                await asyncio.sleep(0.02)
+                concurrent -= 1
+
+            with patch.object(mgr, "_check_one_unlocked", side_effect=fake_check):
+                await mgr._check_many(subs)
+
+            # Never exceed the configured bound, but do run more than one at once.
+            self.assertLessEqual(peak, subs_mod._MAX_CONCURRENT_CHECKS)
+            self.assertGreater(peak, 1)
 
 
 if __name__ == "__main__":

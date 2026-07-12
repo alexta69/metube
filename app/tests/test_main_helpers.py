@@ -220,41 +220,60 @@ class ParseDownloadOptionsTests(unittest.TestCase):
 
     def test_clip_url_t_param_strips_query_and_sets_start(self):
         parsed = main.parse_download_options({
-            "url": "https://example.com/watch?v=1&t=855s",
+            "url": "https://www.youtube.com/watch?v=1&t=855s",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertEqual(parsed["url"], "https://example.com/watch?v=1")
+        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
         self.assertEqual(parsed["clip_start"], 855.0)
         self.assertIsNone(parsed["clip_end"])
 
     def test_clip_explicit_start_wins_over_url_t(self):
         parsed = main.parse_download_options({
-            "url": "https://example.com/watch?v=1&t=100",
+            "url": "https://www.youtube.com/watch?v=1&t=100",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
             "clip_start": "50",
         })
-        self.assertEqual(parsed["url"], "https://example.com/watch?v=1")
+        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
         self.assertEqual(parsed["clip_start"], 50.0)
         self.assertIsNone(parsed["clip_end"])
 
     def test_clip_end_only_sets_start_zero_and_strips_url_t(self):
         parsed = main.parse_download_options({
-            "url": "https://example.com/watch?v=1&t=999",
+            "url": "https://www.youtube.com/watch?v=1&t=999",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
             "clip_end": "60",
         })
-        self.assertEqual(parsed["url"], "https://example.com/watch?v=1")
+        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
         self.assertEqual(parsed["clip_start"], 0.0)
         self.assertEqual(parsed["clip_end"], 60.0)
+
+    def test_clip_url_t_param_ignored_on_non_youtube_host(self):
+        # 't' is a generic query param name; only rewrite it on YouTube hosts
+        # so an unrelated site's URL isn't silently mutated with a bogus clip.
+        parsed = main.parse_download_options({
+            "url": "https://example.com/watch?v=1&t=855s",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+        })
+        self.assertEqual(parsed["url"], "https://example.com/watch?v=1&t=855s")
+        self.assertIsNone(parsed["clip_start"])
+        self.assertIsNone(parsed["clip_end"])
+
+    def test_extract_t_query_youtu_be_short_host(self):
+        cleaned, start = main._extract_t_query_from_url("https://youtu.be/abc123?t=90")
+        self.assertEqual(cleaned, "https://youtu.be/abc123")
+        self.assertEqual(start, 90.0)
 
     def test_clip_rejects_end_before_start(self):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -278,6 +297,18 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                 "quality": "best",
                 "clip_start": "1",
             })
+
+
+class GetCustomDirsTests(unittest.TestCase):
+    def test_works_without_a_running_event_loop(self):
+        # get_custom_dirs() used to time its cache via
+        # asyncio.get_running_loop().time(), which raises RuntimeError outside
+        # a running loop (e.g. when called from a plain executor thread). It
+        # must work from a synchronous context too.
+        result = main.get_custom_dirs()
+        self.assertIn("download_dir", result)
+        self.assertIn("audio_download_dir", result)
+        self.assertIn("", result["download_dir"])
 
 
 if __name__ == "__main__":

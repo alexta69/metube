@@ -3,6 +3,21 @@ import copy
 AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav", "flac")
 CAPTION_MODES = ("auto_only", "manual_only", "prefer_manual", "prefer_auto")
 
+
+def merge_ytdl_option_layers(presets, overrides, presets_config) -> dict:
+    """Overlay named presets (in order) then per-item overrides onto a fresh dict.
+
+    Does NOT include any base ``YTDL_OPTIONS`` — callers layer this on top of
+    their own base (a per-download build adds the global base; a subscription
+    scan relies on ``**config.YTDL_OPTIONS`` already being present in its
+    params). ``presets_config`` maps a preset name to its options dict.
+    """
+    merged: dict = {}
+    for name in presets or []:
+        merged.update(presets_config.get(name, {}))
+    merged.update(overrides or {})
+    return merged
+
 CODEC_FILTER_MAP = {
     'h264': "[vcodec~='^(h264|avc)']",
     'h265': "[vcodec~='^(h265|hevc)']",
@@ -43,6 +58,10 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
     quality = (quality or "best").strip().lower()
 
     if format.startswith("custom:"):
+        # Unreachable via the HTTP API (format is validated against a fixed
+        # set in main.py), but legacy persisted downloads may carry a
+        # custom: format from before that validation existed; removing this
+        # would crash PersistentQueue.load() for those records.
         return format[7:]
 
     if download_type == "thumbnail":
@@ -137,7 +156,20 @@ def get_opts(
         requested_subtitle_format = (format or "srt").lower()
         if requested_subtitle_format == "txt":
             requested_subtitle_format = "srt"
-        opts["subtitlesformat"] = requested_subtitle_format
+        opts["subtitlesformat"] = f"{requested_subtitle_format}/best"
+        if requested_subtitle_format in ("srt", "vtt"):
+            # subtitlesformat above is only a preference: if the extractor
+            # doesn't natively offer this ext (e.g. YouTube has no native srt),
+            # yt-dlp silently falls back to whatever it has. ffmpeg can only
+            # convert to srt/vtt/ass/lrc, so only guarantee the requested
+            # container for those; other formats stay best-effort.
+            postprocessors.append(
+                {
+                    "key": "FFmpegSubtitlesConvertor",
+                    "format": requested_subtitle_format,
+                    "when": "before_dl",
+                }
+            )
         if mode == "manual_only":
             opts["writesubtitles"] = True
             opts["writeautomaticsub"] = False

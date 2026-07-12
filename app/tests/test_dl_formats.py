@@ -10,6 +10,7 @@ from app.dl_formats import (
     _normalize_subtitle_language,
     get_format,
     get_opts,
+    merge_ytdl_option_layers,
 )
 
 
@@ -118,7 +119,31 @@ class DlFormatsTests(unittest.TestCase):
 
     def test_get_opts_captions_txt_maps_to_srt_format(self):
         opts = get_opts("captions", "auto", "txt", "best", {})
-        self.assertEqual(opts["subtitlesformat"], "srt")
+        self.assertEqual(opts["subtitlesformat"], "srt/best")
+        keys = [p["key"] for p in opts["postprocessors"]]
+        self.assertIn("FFmpegSubtitlesConvertor", keys)
+        convertor = next(p for p in opts["postprocessors"] if p["key"] == "FFmpegSubtitlesConvertor")
+        self.assertEqual(convertor["format"], "srt")
+
+    def test_get_opts_captions_srt_guarantees_convertor(self):
+        opts = get_opts("captions", "auto", "srt", "best", {})
+        self.assertEqual(opts["subtitlesformat"], "srt/best")
+        keys = [p["key"] for p in opts["postprocessors"]]
+        self.assertIn("FFmpegSubtitlesConvertor", keys)
+
+    def test_get_opts_captions_vtt_guarantees_convertor(self):
+        opts = get_opts("captions", "auto", "vtt", "best", {})
+        self.assertEqual(opts["subtitlesformat"], "vtt/best")
+        keys = [p["key"] for p in opts["postprocessors"]]
+        self.assertIn("FFmpegSubtitlesConvertor", keys)
+        convertor = next(p for p in opts["postprocessors"] if p["key"] == "FFmpegSubtitlesConvertor")
+        self.assertEqual(convertor["format"], "vtt")
+
+    def test_get_opts_captions_ttml_has_no_convertor(self):
+        opts = get_opts("captions", "auto", "ttml", "best", {})
+        self.assertEqual(opts["subtitlesformat"], "ttml/best")
+        keys = [p["key"] for p in opts["postprocessors"]]
+        self.assertNotIn("FFmpegSubtitlesConvertor", keys)
 
     def test_get_opts_merges_existing_postprocessors(self):
         opts = get_opts("audio", "auto", "opus", "best", {"postprocessors": [{"key": "SponsorBlock"}]})
@@ -133,6 +158,24 @@ class DlFormatsTests(unittest.TestCase):
     def test_normalize_subtitle_language_empty_defaults_en(self):
         self.assertEqual(_normalize_subtitle_language(""), "en")
         self.assertEqual(_normalize_subtitle_language("  "), "en")
+
+
+class MergeYtdlOptionLayersTests(unittest.TestCase):
+    def test_presets_applied_in_order_then_overrides(self):
+        presets_config = {
+            "a": {"x": 1, "y": 1},
+            "b": {"y": 2, "z": 2},
+        }
+        merged = merge_ytdl_option_layers(["a", "b"], {"z": 3, "w": 4}, presets_config)
+        # b overrides a's y; explicit overrides win over presets.
+        self.assertEqual(merged, {"x": 1, "y": 2, "z": 3, "w": 4})
+
+    def test_no_base_options_included(self):
+        # The helper only produces the preset/override layer, never base opts.
+        self.assertEqual(merge_ytdl_option_layers(None, None, {}), {})
+
+    def test_unknown_preset_names_ignored(self):
+        self.assertEqual(merge_ytdl_option_layers(["missing"], {"a": 1}, {}), {"a": 1})
 
 
 if __name__ == "__main__":

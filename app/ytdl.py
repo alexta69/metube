@@ -9,26 +9,63 @@ from collections import OrderedDict
 import time
 import asyncio
 import multiprocessing
+from concurrent.futures import ThreadPoolExecutor
 from functools import partial
 import logging
 import re
+import signal
+import sys
 import types
 from typing import Any, Optional
 
 import yt_dlp.networking.impersonate
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
-from dl_formats import get_format, get_opts, AUDIO_FORMATS
+import bg_tasks
+from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_layers
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
 
 log = logging.getLogger('ytdl')
 
+# Python 3.14 switches the default multiprocessing start method on Linux
+# (this app's only supported deployment target, per the Dockerfile) from fork
+# to forkserver. Download._download relies on inheriting process state the
+# way fork provides, so pin it back on Linux specifically.
+#
+# This must NOT be widened to "prefer fork wherever available": on macOS the
+# platform default has long been spawn (never fork) precisely because forking
+# a multi-threaded parent is hazardous — inherited locks held by threads that
+# vanish in the child can deadlock it silently before it does any work. This
+# app creates background threads (executors, notifier callbacks) well before
+# any download starts, so forcing fork there reproduces exactly that hazard.
+_MP_CTX = (
+    multiprocessing.get_context("fork")
+    if sys.platform.startswith("linux") and "fork" in multiprocessing.get_all_start_methods()
+    else multiprocessing.get_context()
+)
+
 _LIVE_CHECK_INTERVAL = 60
 _LIVE_MAX_CHECK_INTERVAL = 3600
 # Consecutive probe failures (network blips, rate limits, transient extractor
 # errors) tolerated before a scheduled live download is abandoned as errored.
 _LIVE_PROBE_MAX_FAILURES = 5
+
+
+def _is_within_directory(real_base: str, real_target: str) -> bool:
+    """True if ``real_target`` is inside (or equal to) ``real_base``.
+
+    Both arguments must already be resolved with ``os.path.realpath``. Uses
+    ``commonpath`` rather than ``startswith`` so a sibling directory sharing a
+    name prefix (e.g. base ``/downloads`` vs ``/downloads-secret``) cannot be
+    reached via ``../downloads-secret``.
+    """
+    try:
+        return os.path.commonpath([real_base, real_target]) == real_base
+    except ValueError:
+        # Raised when paths are on different drives (Windows) or mix
+        # absolute/relative; treat as outside the base directory.
+        return False
 
 
 # Characters that are invalid in Windows/NTFS path components. These are pre-
@@ -133,10 +170,28 @@ def _convert_srt_to_txt_file(subtitle_path: str):
         # Normalize newlines so cue splitting is consistent across platforms.
         content = content.replace("\r\n", "\n").replace("\r", "\n")
         cues = []
+        # The caption format may resolve to a VTT file even when srt/txt was
+        # requested (yt-dlp falls back when the extractor doesn't offer the
+        # requested ext). VTT header metadata (WEBVTT/NOTE/STYLE and
+        # "Kind:"/"Language:" fields) only ever appears BEFORE the first timed
+        # cue, so only strip it while still in that header region — otherwise a
+        # real caption line like "Kind: regards" would be dropped as metadata.
+        seen_cue = False
         for block in re.split(r"\n{2,}", content):
             lines = [line.strip() for line in block.split("\n") if line.strip()]
             if not lines:
                 continue
+            has_timing = any("-->" in line for line in lines)
+            if not seen_cue and not has_timing:
+                # Still in the header region: drop metadata-only blocks
+                # (WEBVTT/NOTE/STYLE, or blocks made entirely of "Key: value"
+                # header fields such as a standalone "Kind:/Language:" block).
+                if re.match(r"^(WEBVTT|NOTE|STYLE)\b", lines[0]) or all(
+                    re.match(r"^[A-Za-z][\w-]*:\s", line) for line in lines
+                ):
+                    continue
+            if has_timing:
+                seen_cue = True
             if re.fullmatch(r"\d+", lines[0]):
                 lines = lines[1:]
             if lines and "-->" in lines[0]:
@@ -442,23 +497,50 @@ class Download:
         self.proc = None
         self.loop = None
         self.notifier = None
+        self._executor = None
+
+    # Minimum interval between forwarded 'downloading' progress ticks. yt-dlp
+    # emits these many times per second; without throttling, each active
+    # download broadcasts hundreds of socket.io events/sec to every client.
+    _PROGRESS_THROTTLE_SECONDS = 0.5
+
+    def _make_progress_hook(self):
+        last_forward = 0.0
+
+        def put_status(st):
+            nonlocal last_forward
+            if st.get('status') == 'downloading':
+                now = time.monotonic()
+                if now - last_forward < self._PROGRESS_THROTTLE_SECONDS:
+                    return
+                last_forward = now
+            self.status_queue.put({k: v for k, v in st.items() if k in (
+                'tmpfilename',
+                'filename',
+                'status',
+                'msg',
+                'total_bytes',
+                'total_bytes_estimate',
+                'downloaded_bytes',
+                'speed',
+                'eta',
+            )})
+
+        return put_status
 
     def _download(self):
+        # Run in our own process group so cancel() can SIGKILL the whole
+        # group (yt-dlp + any ffmpeg children it spawned for merge/postproc),
+        # instead of orphaning ffmpeg when only the yt-dlp process is killed.
+        if hasattr(os, 'setpgrp'):
+            try:
+                os.setpgrp()
+            except OSError:
+                pass
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
-            def put_status(st):
-                self.status_queue.put({k: v for k, v in st.items() if k in (
-                    'tmpfilename',
-                    'filename',
-                    'status',
-                    'msg',
-                    'total_bytes',
-                    'total_bytes_estimate',
-                    'downloaded_bytes',
-                    'speed',
-                    'eta',
-                )})
+            put_status = self._make_progress_hook()
 
             def put_status_postprocessor(d):
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
@@ -530,19 +612,20 @@ class Download:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
             self.status_queue.put({'status': 'error', 'msg': str(exc)})
 
-    async def start(self, notifier):
+    async def start(self, notifier, executor=None):
         log.info(f"Preparing download for: {self.info.title}")
         if Download.manager is None:
-            Download.manager = multiprocessing.Manager()
+            Download.manager = _MP_CTX.Manager()
         self.status_queue = Download.manager.Queue()
-        self.proc = multiprocessing.Process(target=self._download)
+        self.proc = _MP_CTX.Process(target=self._download)
         self.proc.start()
         self.loop = asyncio.get_running_loop()
         self.notifier = notifier
+        self._executor = executor
         self.info.status = 'preparing'
         await self.notifier.updated(self.info)
         self.status_task = asyncio.create_task(self.update_status())
-        await self.loop.run_in_executor(None, self.proc.join)
+        await self.loop.run_in_executor(self._executor, self.proc.join)
         # Signal update_status to stop and wait for it to finish
         # so that all status updates (including MoveFiles with correct
         # file size) are processed before _post_download_cleanup runs.
@@ -553,10 +636,26 @@ class Download:
     def cancel(self):
         log.info(f"Cancelling download: {self.info.title}")
         if self.running():
+            killed_group = False
             try:
-                self.proc.kill()
-            except Exception as e:
-                log.error(f"Error killing process for {self.info.title}: {e}")
+                pgid = os.getpgid(self.proc.pid)
+                # Only kill the whole group (yt-dlp + any ffmpeg children) when
+                # the child actually became its own group leader via
+                # os.setpgrp() in _download() — that sets its pgid equal to its
+                # own pid. If it hasn't run setpgrp() yet, or setpgrp() failed,
+                # its pgid is still the SERVER's group and killpg would SIGKILL
+                # the entire MeTube process (PID 1 in Docker). Fall back to
+                # killing just the child process by pid in that case.
+                if pgid == self.proc.pid:
+                    os.killpg(pgid, signal.SIGKILL)
+                    killed_group = True
+            except (OSError, AttributeError):
+                pass
+            if not killed_group:
+                try:
+                    self.proc.kill()
+                except Exception as e:
+                    log.error(f"Error killing process for {self.info.title}: {e}")
         self.canceled = True
         if self.status_queue is not None:
             self.status_queue.put(None)
@@ -577,7 +676,13 @@ class Download:
 
     async def update_status(self):
         while True:
-            status = await self.loop.run_in_executor(None, self.status_queue.get)
+            try:
+                status = await self.loop.run_in_executor(self._executor, self.status_queue.get)
+            except RuntimeError:
+                # The download executor was shut down (server shutting down);
+                # stop polling instead of raising a noisy background-task error.
+                log.info(f"Status polling stopped (executor shut down) for: {self.info.title}")
+                return
             if status is None:
                 log.info(f"Status update finished for: {self.info.title}")
                 return
@@ -771,10 +876,6 @@ class PersistentQueue:
                 self.dict[key] = old
                 raise
 
-    def next(self):
-        k, v = next(iter(self.dict.items()))
-        return k, v
-
     def empty(self):
         return not bool(self.dict)
 
@@ -787,6 +888,13 @@ class DownloadQueue:
         self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
         self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
+        # Each active download parks two threads for its whole duration
+        # (proc.join + status_queue.get). A dedicated pool keeps those from
+        # starving the default executor, which extract_info/live-probes also use.
+        self._download_executor = ThreadPoolExecutor(
+            max_workers=2 * int(self.config.MAX_CONCURRENT_DOWNLOADS) + 2,
+            thread_name_prefix="dl",
+        )
         self.done.load()
         self._add_generation = 0
         self._canceled_urls = set()  # URLs canceled during current playlist add
@@ -820,18 +928,14 @@ class DownloadQueue:
     async def initialize(self):
         log.info("Initializing DownloadQueue")
         self._start_live_monitor()
-        asyncio.create_task(self.__import_queue())
-        asyncio.create_task(self.__import_pending())
+        bg_tasks.create_task(self.__import_queue(), name="import_queue")
+        bg_tasks.create_task(self.__import_pending(), name="import_pending")
 
     def _start_live_monitor(self) -> None:
         if self._live_monitor_task is not None and not self._live_monitor_task.done():
             return
-        self._live_monitor_task = asyncio.create_task(self._live_monitor_loop())
-        self._live_monitor_task.add_done_callback(
-            lambda t: log.error("Live monitor loop failed: %s", t.exception())
-            if not t.cancelled() and t.exception()
-            else None
-        )
+        # bg_tasks.create_task already logs unexpected task failures with the name.
+        self._live_monitor_task = bg_tasks.create_task(self._live_monitor_loop(), name="live_monitor")
 
     def _register_scheduled(self, download: Download) -> None:
         self._scheduled_probe_at[download.info.url] = 0
@@ -964,7 +1068,7 @@ class DownloadQueue:
         info.error = None
         info.msg = None
         await self.notifier.updated(info)
-        asyncio.create_task(self.__start_download(download))
+        bg_tasks.create_task(self.__start_download(download), name="start_download")
 
     def _schedule_upcoming_download(self, download: Download) -> None:
         download.info.status = 'scheduled'
@@ -976,7 +1080,7 @@ class DownloadQueue:
         download.info.status = 'pending'
         download.info.error = None
         download.info.msg = None
-        asyncio.create_task(self.__start_download(download))
+        bg_tasks.create_task(self.__start_download(download), name="start_download")
 
     async def __start_download(self, download):
         if download.canceled:
@@ -986,7 +1090,7 @@ class DownloadQueue:
             if download.canceled:
                 log.info(f"Download {download.info.title} was canceled, skipping start.")
                 return
-            await download.start(self.notifier)
+            await download.start(self.notifier, self._download_executor)
             self._post_download_cleanup(download)
 
     def _post_download_cleanup(self, download):
@@ -997,22 +1101,35 @@ class DownloadQueue:
                 except OSError:
                     pass
             download.info.status = 'error'
+            # A progress tick may have set filename to a temp-directory
+            # relative path before the error occurred; clear it so the UI
+            # doesn't render a broken link (or, worse, so a later trashcan
+            # delete doesn't act on a path outside the download directory).
+            # Captions downloads may still have captured valid subtitle
+            # files even when the overall status is 'error' — keep those.
+            has_captured_subtitles = bool(getattr(download.info, 'subtitle_files', None))
+            if not (download.info.download_type == 'captions' and has_captured_subtitles):
+                download.info.filename = None
+                download.info.size = None
         download.close()
         if self.queue.exists(download.info.url):
             self.queue.delete(download.info.url)
             if download.canceled:
-                asyncio.create_task(self.notifier.canceled(download.info.url))
+                bg_tasks.create_task(self.notifier.canceled(download.info.url), name="notify_canceled")
             else:
                 self.done.put(download)
-                asyncio.create_task(self.notifier.completed(download.info))
+                bg_tasks.create_task(self.notifier.completed(download.info), name="notify_completed")
                 try:
                     clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
                 except ValueError:
                     log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
                     clear_after = 0
                 if clear_after > 0:
-                    task = asyncio.create_task(self.__auto_clear_after_delay(download.info.url, clear_after))
-                    task.add_done_callback(lambda t: log.error(f'Auto-clear task failed: {t.exception()}') if not t.cancelled() and t.exception() else None)
+                    # bg_tasks.create_task already logs unexpected task failures.
+                    bg_tasks.create_task(
+                        self.__auto_clear_after_delay(download.info.url, clear_after),
+                        name="auto_clear",
+                    )
 
     async def __auto_clear_after_delay(self, url, delay_seconds):
         await asyncio.sleep(delay_seconds)
@@ -1023,9 +1140,9 @@ class DownloadQueue:
     def _build_ytdl_options(self, ytdl_options_presets=None, ytdl_options_overrides=None):
         """Merge global options, presets (in order), and per-download overrides."""
         opts = dict(self.config.YTDL_OPTIONS)
-        for preset_name in ytdl_options_presets or []:
-            opts.update(self.config.YTDL_OPTIONS_PRESETS.get(preset_name, {}))
-        opts.update(ytdl_options_overrides or {})
+        opts.update(merge_ytdl_option_layers(
+            ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
+        ))
         return opts
 
     def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
@@ -1053,16 +1170,7 @@ class DownloadQueue:
                 return None, {'status': 'error', 'msg': 'A folder for the download was specified but CUSTOM_DIRS is not true in the configuration.'}
             dldirectory = os.path.realpath(os.path.join(base_directory, folder))
             real_base_directory = os.path.realpath(base_directory)
-            # Use commonpath rather than startswith so that a sibling directory
-            # sharing a name prefix (e.g. base "/downloads" vs "/downloads-secret")
-            # cannot be reached via "../downloads-secret".
-            try:
-                inside_base = os.path.commonpath([real_base_directory, dldirectory]) == real_base_directory
-            except ValueError:
-                # Raised when paths are on different drives (Windows) or mix
-                # absolute/relative; treat as outside the base directory.
-                inside_base = False
-            if not inside_base:
+            if not _is_within_directory(real_base_directory, dldirectory):
                 return None, {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
             if not os.path.isdir(dldirectory):
                 if not self.config.CREATE_CUSTOM_DIRS:
@@ -1107,7 +1215,7 @@ class DownloadQueue:
                 self._schedule_upcoming_download(download)
             else:
                 self.queue.put(download)
-                asyncio.create_task(self.__start_download(download))
+                bg_tasks.create_task(self.__start_download(download), name="start_download")
         else:
             self.pending.put(download)
         await self.notifier.added(dl)
@@ -1139,7 +1247,9 @@ class DownloadQueue:
 
         error = None
         if "live_status" in entry and "release_timestamp" in entry and entry.get("live_status") == "is_upcoming":
-            dt_ts = datetime.fromtimestamp(entry.get("release_timestamp")).strftime('%Y-%m-%d %H:%M:%S %z')
+            # astimezone() makes this an aware datetime in the server's local
+            # zone; a naive datetime's %z renders as an empty string.
+            dt_ts = datetime.fromtimestamp(entry.get("release_timestamp")).astimezone().strftime('%Y-%m-%d %H:%M:%S %z')
             error = f"Live stream is scheduled to start at {dt_ts}"
         else:
             if "msg" in entry:
@@ -1237,38 +1347,43 @@ class DownloadQueue:
             if any(res['status'] == 'error' for res in results):
                 return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
             return {'status': 'ok'}
-        elif etype == 'video' or (etype.startswith('url') and 'id' in entry and 'title' in entry):
+        elif etype == 'video':
             log.debug('Processing as a video')
             key = entry.get('webpage_url') or entry['url']
             if key in self._canceled_urls:
                 log.info(f'Skipping canceled URL: {entry.get("title") or key}')
                 return {'status': 'ok'}
-            if not self.queue.exists(key):
-                dl = DownloadInfo(
-                    id=entry['id'],
-                    title=entry.get('title') or entry['id'],
-                    url=key,
-                    quality=quality,
-                    download_type=download_type,
-                    codec=codec,
-                    format=format,
-                    folder=folder,
-                    custom_name_prefix=custom_name_prefix,
-                    error=error,
-                    entry=entry,
-                    playlist_item_limit=playlist_item_limit,
-                    split_by_chapters=split_by_chapters,
-                    chapter_template=chapter_template,
-                    subtitle_language=subtitle_language,
-                    subtitle_mode=subtitle_mode,
-                    ytdl_options_presets=ytdl_options_presets,
-                    ytdl_options_overrides=ytdl_options_overrides,
-                    clip_start=clip_start,
-                    clip_end=clip_end,
-                    live_status=entry.get('live_status'),
-                    live_release_timestamp=entry.get('release_timestamp'),
-                )
-                await self.__add_download(dl, auto_start)
+            if self.queue.exists(key) or self.pending.exists(key):
+                # Surface the skip instead of silently no-op'ing, and avoid
+                # clobbering an existing pending entry's options with a
+                # fresh DownloadInfo built from possibly-different args.
+                title = entry.get('title') or key
+                return {'status': 'ok', 'msg': f'Already in queue: {title}'}
+            dl = DownloadInfo(
+                id=entry['id'],
+                title=entry.get('title') or entry['id'],
+                url=key,
+                quality=quality,
+                download_type=download_type,
+                codec=codec,
+                format=format,
+                folder=folder,
+                custom_name_prefix=custom_name_prefix,
+                error=error,
+                entry=entry,
+                playlist_item_limit=playlist_item_limit,
+                split_by_chapters=split_by_chapters,
+                chapter_template=chapter_template,
+                subtitle_language=subtitle_language,
+                subtitle_mode=subtitle_mode,
+                ytdl_options_presets=ytdl_options_presets,
+                ytdl_options_overrides=ytdl_options_overrides,
+                clip_start=clip_start,
+                clip_end=clip_end,
+                live_status=entry.get('live_status'),
+                live_release_timestamp=entry.get('release_timestamp'),
+            )
+            await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
@@ -1394,7 +1509,7 @@ class DownloadQueue:
                     self._schedule_upcoming_download(dl)
                 else:
                     self.queue.put(dl)
-                    asyncio.create_task(self.__start_download(dl))
+                    bg_tasks.create_task(self.__start_download(dl), name="start_download")
                 continue
             if self.queue.exists(id):
                 dl = self.queue.get(id)
@@ -1448,9 +1563,14 @@ class DownloadQueue:
                     for extra in (getattr(dl.info, 'subtitle_files', None) or []):
                         if isinstance(extra, dict) and extra.get('filename'):
                             rel_names.append(extra['filename'])
+                    real_base_directory = os.path.realpath(dldirectory)
                     for rel_name in rel_names:
+                        full_path = os.path.realpath(os.path.join(dldirectory, rel_name))
+                        if not _is_within_directory(real_base_directory, full_path):
+                            log.warning(f'skipping deletion of "{rel_name}" for download {id}: resolves outside the download directory')
+                            continue
                         try:
-                            os.remove(os.path.join(dldirectory, rel_name))
+                            os.remove(full_path)
                         except FileNotFoundError:
                             pass
                         except OSError as e:
@@ -1463,3 +1583,13 @@ class DownloadQueue:
         return (list((k, v.info) for k, v in self.queue.items()) +
                 list((k, v.info) for k, v in self.pending.items()),
                 list((k, v.info) for k, v in self.done.items()))
+
+    def close(self):
+        # Kill any still-running download subprocesses (and their ffmpeg
+        # children) before tearing down the executor, so they aren't orphaned
+        # when the server exits. Their queue entries stay persisted and are
+        # re-imported/restarted on next startup.
+        for _key, download in list(self.queue.items()):
+            if download.started() and download.running():
+                download.cancel()
+        self._download_executor.shutdown(wait=False, cancel_futures=True)

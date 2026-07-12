@@ -351,13 +351,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
   }
 
-  // workaround to allow fetching of Map values in the order they were inserted
-  //  https://github.com/angular/angular/issues/31420
-
-
-
+  // keyvalue comparator that preserves insertion order (Angular's keyvalue
+  // pipe sorts by key by default): https://github.com/angular/angular/issues/31420
   asIsOrder() {
-    return 1;
+    return 0;
   }
 
   qualityChanged() {
@@ -430,8 +427,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.downloads.configurationChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe({
        // eslint-disable-next-line @typescript-eslint/no-explicit-any
       next: (config: any) => {
-        const playlistItemLimit = config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'];
-        if (playlistItemLimit !== '0') {
+        const playlistItemLimit = parseInt(String(config['DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT'] ?? '0'), 10);
+        if (!Number.isNaN(playlistItemLimit) && playlistItemLimit > 0) {
           this.playlistItemLimit = playlistItemLimit;
         }
         // Set chapter template from backend config if not already set by cookie
@@ -524,6 +521,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private getStatusError(res: unknown): string | null {
     const status = res as { status?: string; msg?: string };
     return status?.status === 'error' ? status.msg || null : null;
+  }
+
+  private handleActionResult(res: unknown, fallbackMsg: string) {
+    const error = this.getStatusError(res);
+    if (error) {
+      this.toasts.error(error || fallbackMsg);
+    }
+    this.cdr.markForCheck();
   }
 
   private refreshSubscriptionsWithAlert() {
@@ -1085,6 +1090,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       if (status.status === 'error' && !this.cancelRequested) {
         this.toasts.error(`Error adding URL: ${status.msg}`);
       } else if (status.status !== 'error') {
+        // e.g. "Already in queue: ..." when the backend skipped a duplicate.
+        if (status.msg) {
+          this.toasts.info(status.msg);
+        }
         this.addUrl = '';
       }
       this.resetAddState();
@@ -1113,7 +1122,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   downloadItemByKey(id: string) {
-    this.downloads.startById([id]).subscribe();
+    this.downloads.startById([id]).subscribe((res) => this.handleActionResult(res, 'Start download failed'));
   }
 
   liveCountdownSeconds(download: Download): number | null {
@@ -1137,7 +1146,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   retryDownload(key: string, download: Download) {
-    this.addDownload({
+    const payload = this.buildAddPayload({
       url: download.url,
       downloadType: download.download_type,
       codec: download.codec,
@@ -1158,27 +1167,38 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       clipStart: download.clip_start != null ? String(download.clip_start) : '',
       clipEnd: download.clip_end != null ? String(download.clip_end) : '',
     });
-    this.downloads.delById('done', [key]).subscribe();
+    // Only remove the done-list record once the retry is confirmed queued —
+    // deleting it eagerly would silently lose history if the re-add fails.
+    this.downloads.add(payload)
+      .pipe(takeUntilDestroyed(this.destroyRef))
+      .subscribe((status: Status) => {
+        if (status.status === 'error') {
+          this.toasts.error(`Error retrying ${download.title}: ${status.msg}`);
+          this.cdr.markForCheck();
+          return;
+        }
+        this.downloads.delById('done', [key]).subscribe();
+      });
   }
 
   delDownload(where: State, id: string) {
-    this.downloads.delById(where, [id]).subscribe();
+    this.downloads.delById(where, [id]).subscribe((res) => this.handleActionResult(res, 'Delete failed'));
   }
 
   startSelectedDownloads(where: State){
-    this.downloads.startByFilter(where, dl => !!dl.checked).subscribe();
+    this.downloads.startByFilter(where, dl => !!dl.checked).subscribe((res) => this.handleActionResult(res, 'Start download failed'));
   }
 
   delSelectedDownloads(where: State) {
-    this.downloads.delByFilter(where, dl => !!dl.checked).subscribe();
+    this.downloads.delByFilter(where, dl => !!dl.checked).subscribe((res) => this.handleActionResult(res, 'Delete failed'));
   }
 
   clearCompletedDownloads() {
-    this.downloads.delByFilter('done', dl => dl.status === 'finished').subscribe();
+    this.downloads.delByFilter('done', dl => dl.status === 'finished').subscribe((res) => this.handleActionResult(res, 'Clear completed failed'));
   }
 
   clearFailedDownloads() {
-    this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe();
+    this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe((res) => this.handleActionResult(res, 'Clear failed downloads failed'));
   }
 
   retryFailedDownloads() {

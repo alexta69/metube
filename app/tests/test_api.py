@@ -6,6 +6,7 @@ import json
 import os
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
+from urllib.parse import quote
 
 import pytest
 from aiohttp import web
@@ -20,6 +21,7 @@ def mock_dqueue(monkeypatch):
     d.initialize = AsyncMock(return_value=None)
     d.add = AsyncMock(return_value={"status": "ok"})
     d.cancel = AsyncMock(return_value={"status": "ok"})
+    d.clear = AsyncMock(return_value={"status": "ok"})
     d.start_pending = AsyncMock(return_value={"status": "ok"})
     d.cancel_add = MagicMock()
     d.queue = MagicMock()
@@ -28,6 +30,9 @@ def mock_dqueue(monkeypatch):
     d.queue.saved_items = MagicMock(return_value=[])
     d.done.saved_items = MagicMock(return_value=[])
     d.pending.saved_items = MagicMock(return_value=[])
+    d.queue.items = MagicMock(return_value=[])
+    d.done.items = MagicMock(return_value=[])
+    d.pending.items = MagicMock(return_value=[])
     d.get = MagicMock(return_value=([], []))
     monkeypatch.setattr(main, "dqueue", d)
     return d
@@ -216,15 +221,63 @@ async def test_start_pending(mock_dqueue):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{}, {"ids": "abc"}, {"ids": []}, {"ids": [1, 2]}])
+async def test_start_rejects_malformed_ids(mock_dqueue, body):
+    req = _json_request(body)
+    with pytest.raises(web.HTTPBadRequest):
+        await main.start(req)
+    mock_dqueue.start_pending.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "body",
+    [
+        {"where": "queue"},
+        {"where": "queue", "ids": "abc"},
+        {"where": "queue", "ids": []},
+        {"where": "queue", "ids": [1, 2]},
+    ],
+)
+async def test_delete_rejects_malformed_ids(mock_dqueue, body):
+    req = _json_request(body)
+    with pytest.raises(web.HTTPBadRequest):
+        await main.delete(req)
+    mock_dqueue.cancel.assert_not_awaited()
+    mock_dqueue.clear.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_history_shape(mock_dqueue):
-    mock_dqueue.queue.saved_items.return_value = []
-    mock_dqueue.done.saved_items.return_value = []
-    mock_dqueue.pending.saved_items.return_value = []
     req = MagicMock(spec=web.Request)
     resp = await main.history(req)
     assert resp.status == 200
     data = json.loads(resp.text)
     assert set(data.keys()) == {"done", "queue", "pending"}
+
+
+@pytest.mark.asyncio
+async def test_history_reads_in_memory_queues_not_disk_state(mock_dqueue):
+    fake_queue_dl = MagicMock()
+    fake_queue_dl.info = {"id": "q1", "title": "Queued"}
+    fake_done_dl = MagicMock()
+    fake_done_dl.info = {"id": "d1", "title": "Done"}
+    fake_pending_dl = MagicMock()
+    fake_pending_dl.info = {"id": "p1", "title": "Pending"}
+    mock_dqueue.queue.items.return_value = [("q1", fake_queue_dl)]
+    mock_dqueue.done.items.return_value = [("d1", fake_done_dl)]
+    mock_dqueue.pending.items.return_value = [("p1", fake_pending_dl)]
+
+    req = MagicMock(spec=web.Request)
+    resp = await main.history(req)
+    assert resp.status == 200
+    data = json.loads(resp.text)
+    assert [item["id"] for item in data["queue"]] == ["q1"]
+    assert [item["id"] for item in data["done"]] == ["d1"]
+    assert [item["id"] for item in data["pending"]] == ["p1"]
+    mock_dqueue.queue.saved_items.assert_not_called()
+    mock_dqueue.done.saved_items.assert_not_called()
+    mock_dqueue.pending.saved_items.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -311,6 +364,24 @@ async def test_subscribe_rejects_clip_options(mock_dqueue, monkeypatch):
     main.submgr.add_subscription.assert_not_awaited()
 
 
+@pytest.mark.asyncio
+async def test_subscriptions_update_invalid_enabled_returns_error_not_500(mock_dqueue):
+    req = _json_request({"id": "nonexistent", "enabled": "maybe"})
+    resp = await main.subscriptions_update(req)
+    assert resp.status == 200
+    body = json.loads(resp.text)
+    assert body["status"] == "error"
+
+
+@pytest.mark.asyncio
+async def test_subscriptions_update_invalid_interval_returns_error_not_500(mock_dqueue):
+    req = _json_request({"id": "nonexistent", "check_interval_minutes": "abc"})
+    resp = await main.subscriptions_update(req)
+    assert resp.status == 200
+    body = json.loads(resp.text)
+    assert body["status"] == "error"
+
+
 def test_is_within_state_dir_blocks_state_subtree():
     state_dir = main._STATE_DIR_REAL
     assert main._is_within_state_dir(state_dir)
@@ -331,6 +402,11 @@ async def test_download_blocks_state_dir_files(monkeypatch):
     state_dir.mkdir(parents=True, exist_ok=True)
     (state_dir / "cookies.txt").write_text("# Netscape HTTP Cookie File\n", encoding="utf-8")
     (download_dir / "video.mp4").write_bytes(b"video")
+    # request.path is already percent-decoded by aiohttp; state_dir_guard must
+    # not decode it a second time, or a filename containing a literal '%'
+    # gets mangled into a false 404.
+    percent_filename = "100% done.mp4"
+    (download_dir / percent_filename).write_bytes(b"percent video")
 
     monkeypatch.setattr(main.config, "STATE_DIR", str(state_dir))
     monkeypatch.setattr(main, "_STATE_DIR_REAL", os.path.realpath(str(state_dir)))
@@ -343,7 +419,12 @@ async def test_download_blocks_state_dir_files(monkeypatch):
             allowed = await client.get("/download/video.mp4")
             assert allowed.status == 200
             assert await allowed.read() == b"video"
+
+            percent_resp = await client.get("/download/" + quote(percent_filename))
+            assert percent_resp.status == 200
+            assert await percent_resp.read() == b"percent video"
     finally:
         (state_dir / "cookies.txt").unlink(missing_ok=True)
         (download_dir / "video.mp4").unlink(missing_ok=True)
+        (download_dir / percent_filename).unlink(missing_ok=True)
         state_dir.rmdir()
