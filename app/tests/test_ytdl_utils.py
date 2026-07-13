@@ -43,6 +43,7 @@ from ytdl import (
     DownloadInfo,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
+    _output_dir_escapes,
     _resolve_outtmpl_fields,
     _sanitize_entry_for_pickle,
     _sanitize_path_component,
@@ -60,6 +61,24 @@ class SanitizePathComponentTests(unittest.TestCase):
     def test_non_string_passthrough(self):
         self.assertIs(_sanitize_path_component(None), None)
         self.assertEqual(_sanitize_path_component(42), 42)
+
+    def test_strips_path_separators_and_traversal(self):
+        result = _sanitize_path_component('../../../../etc/x')
+        self.assertNotIn('..', result)
+        self.assertNotIn('/', result)
+        self.assertNotIn('\\', result)
+
+    def test_strips_leading_absolute_path_separator(self):
+        result = _sanitize_path_component('/tmp/x')
+        self.assertFalse(result.startswith('/'))
+        self.assertFalse(result.startswith('\\'))
+        self.assertEqual(result, '_tmp_x')
+
+    def test_collapses_slashes_in_legitimate_titles(self):
+        self.assertEqual(_sanitize_path_component('AC/DC'), 'AC_DC')
+
+    def test_empty_after_strip_becomes_underscore(self):
+        self.assertEqual(_sanitize_path_component('   '), '_')
 
 
 @unittest.skipUnless(_has_real_ytdlp, "requires real yt-dlp")
@@ -124,6 +143,37 @@ class ResolveOuttmplFieldsTests(unittest.TestCase):
             ("playlist",),
         )
         self.assertEqual(result, "5 - %(title)s.%(ext)s")
+
+    def test_malicious_playlist_title_cannot_escape_via_template(self):
+        malicious_title = '/tmp/METUBE_ARBITRARY_WRITE_POC'
+        entry = {
+            'playlist_title': malicious_title,
+            'playlist_index': '1',
+            'title': 'video',
+            'ext': 'mp4',
+        }
+        sanitized = {k: _sanitize_path_component(v) for k, v in entry.items()}
+        template = '%(playlist_title)s/%(title)s.%(ext)s'
+        result = _resolve_outtmpl_fields(template, sanitized, ('playlist',))
+        marker = result.find('%(')
+        literal_prefix = result[:marker] if marker != -1 else result
+        self.assertNotIn('..', literal_prefix)
+        self.assertFalse(literal_prefix.startswith('/'))
+        self.assertFalse(literal_prefix.startswith('\\'))
+
+
+class OutputDirEscapesTests(unittest.TestCase):
+    def setUp(self):
+        self.base_dir = tempfile.mkdtemp()
+
+    def test_relative_traversal_escapes(self):
+        self.assertTrue(_output_dir_escapes(self.base_dir, '../../tmp/x/%(title)s.%(ext)s'))
+
+    def test_absolute_path_escapes(self):
+        self.assertTrue(_output_dir_escapes(self.base_dir, '/tmp/x/%(title)s.%(ext)s'))
+
+    def test_normal_playlist_dir_stays_inside(self):
+        self.assertFalse(_output_dir_escapes(self.base_dir, 'Playlist/%(title)s.%(ext)s'))
 
 
 class SanitizeEntryForPickleTests(unittest.TestCase):

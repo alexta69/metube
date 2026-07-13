@@ -72,6 +72,7 @@ def _is_within_directory(real_base: str, real_target: str) -> bool:
 # sanitised when substituting playlist/channel titles into output templates so
 # that downloads do not fail on NTFS-mounted volumes or Windows Docker hosts.
 _WINDOWS_INVALID_PATH_CHARS = re.compile(r'[\\:*?"<>|]')
+_PATH_SEP_OR_TRAVERSAL = re.compile(r'[\\/]|\.\.')
 
 
 def _sanitize_path_component(value: Any) -> Any:
@@ -81,11 +82,27 @@ def _sanitize_path_component(value: Any) -> Any:
     that numeric format specs (e.g. ``%(playlist_index)02d``) still work.
     Only string values are sanitised because Windows-invalid characters are
     only a concern for human-readable strings (titles, channel names, etc.)
-    that may end up as directory names.
+    that may end up as directory names.  Path separators and ``..`` segments
+    are also collapsed so attacker-controlled playlist/channel titles cannot
+    escape the download directory via the output template.
     """
     if not isinstance(value, str):
         return value
-    return _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
+    value = _WINDOWS_INVALID_PATH_CHARS.sub('_', value)
+    value = _PATH_SEP_OR_TRAVERSAL.sub('_', value)
+    return value.lstrip('.').strip() or '_'
+
+
+def _output_dir_escapes(base_dir: str, output_template: str) -> bool:
+    """True when the literal directory prefix of *output_template* resolves outside *base_dir*."""
+    marker = output_template.find('%(')
+    literal = output_template if marker == -1 else output_template[:marker]
+    dir_prefix = os.path.dirname(literal)
+    if not dir_prefix:
+        return False
+    real_base = os.path.realpath(base_dir)
+    real_target = os.path.realpath(os.path.join(base_dir, dir_prefix))
+    return not _is_within_directory(real_base, real_target)
 
 
 # Regex matching yt-dlp output-template field references, e.g. ``%(title)s``
@@ -1205,6 +1222,8 @@ class DownloadQueue:
         if playlist_item_limit > 0:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
+        if _output_dir_escapes(dldirectory, output):
+            return {'status': 'error', 'msg': 'Refusing download: resolved output path escapes the download directory'}
         download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
         is_upcoming = (
             getattr(dl, 'live_status', None) == 'is_upcoming'
