@@ -36,6 +36,7 @@ function basePayload(): AddDownloadPayload {
     playlistItemLimit: 0,
     autoStart: true,
     splitByChapters: false,
+    sponsorblock: false,
     chapterTemplate: '',
     subtitleLanguage: 'en',
     subtitleMode: 'prefer_manual',

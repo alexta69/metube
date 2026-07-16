@@ -678,6 +678,69 @@ class DownloadResultTests(unittest.TestCase):
         )
 
 
+def _capture_ytdl_params(download: Download) -> dict:
+    """Run ``_download`` far enough to capture the params it builds."""
+    fake_ydl = MagicMock()
+    fake_ydl.download.return_value = 0
+    download.status_queue = types.SimpleNamespace(put=lambda _: None)
+
+    with patch('ytdl.install_socket_guard'), \
+            patch.object(Download, '_make_youtube_dl', return_value=fake_ydl) as make:
+        download._download()
+
+    params, = make.call_args.args
+    return params
+
+
+class SponsorBlockPostprocessorTests(unittest.TestCase):
+    def test_no_sponsorblock_postprocessors_when_disabled(self):
+        download = _make_test_download()
+
+        params = _capture_ytdl_params(download)
+
+        keys = [pp['key'] for pp in params.get('postprocessors', [])]
+        self.assertNotIn('SponsorBlock', keys)
+        self.assertNotIn('ModifyChapters', keys)
+
+    def test_sponsorblock_pair_matches_the_cli(self):
+        download = _make_test_download()
+        download.info.sponsorblock = True
+
+        params = _capture_ytdl_params(download)
+
+        self.assertEqual(
+            params['postprocessors'],
+            [
+                {
+                    'key': 'SponsorBlock',
+                    'categories': ['sponsor'],
+                    'when': 'after_filter',
+                },
+                {
+                    'key': 'ModifyChapters',
+                    'remove_sponsor_segments': ['sponsor'],
+                    'force_keyframes': False,
+                },
+            ],
+        )
+
+    def test_segment_removal_runs_before_the_chapter_split(self):
+        # yt-dlp runs same-stage postprocessors in list order, so ModifyChapters
+        # has to rewrite the chapter list before FFmpegSplitChapters cuts the
+        # file up -- the order the CLI builds for
+        # --sponsorblock-remove sponsor --split-chapters.
+        download = _make_test_download()
+        download.info.sponsorblock = True
+        download.info.split_by_chapters = True
+        download.info.chapter_template = '%(section_number)s.%(ext)s'
+
+        params = _capture_ytdl_params(download)
+
+        keys = [pp['key'] for pp in params['postprocessors']]
+        self.assertEqual(keys, ['SponsorBlock', 'ModifyChapters', 'FFmpegSplitChapters'])
+        self.assertEqual(params['outtmpl']['chapter'], '%(section_number)s.%(ext)s')
+
+
 class ProgressThrottleTests(unittest.TestCase):
     def test_downloading_ticks_are_throttled(self):
         dl = _make_test_download()

@@ -401,6 +401,16 @@
                   <div class="row g-2 align-items-center">
                     <div class="col-auto">
                       <div class="form-check form-switch">
+                        <input class="form-check-input" type="checkbox" role="switch" id="checkbox-sponsorblock"
+                          name="sponsorblock" [(ngModel)]="sponsorblock" (change)="sponsorblockChanged()"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                        <label class="form-check-label" for="checkbox-sponsorblock"
+                          ngbPopover="Cut out sponsor segments using SponsorBlock's crowd-sourced markers (YouTube only)."
+                          triggers="hover" container="body">Remove sponsor segments</label>
+                      </div>
+                    </div>
+                    <div class="col-auto">
+                      <div class="form-check form-switch">
                         <input class="form-check-input" type="checkbox" role="switch" id="checkbox-split-chapters"
                           name="splitByChapters" [(ngModel)]="splitByChapters" (change)="splitByChaptersChanged()"
                           [disabled]="addInProgress || subscribeInProgress || downloads.loading">
