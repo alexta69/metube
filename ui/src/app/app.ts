@@ -1429,6 +1429,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   musicTagGenres = '';
   musicTagOrganize = false;
   musicTagApplying = false;
+  // Discards out-of-order lookup responses: a slow earlier search must not
+  // overwrite the results of a faster later one.
+  private musicLookupToken = 0;
 
   isTaggableAudio(download: Download): boolean {
     return download.status === 'finished' && !!download.filename
@@ -1452,6 +1455,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.musicSearchQuery = download.title;
     this.musicSourceLoading = true;
     this.downloads.musicMetaSource(id).subscribe(source => {
+      if (this.musicTagId !== id) {
+        return; // the dialog was closed or reopened for another download
+      }
       this.musicSourceLoading = false;
       this.cdr.markForCheck();
       if (source.status !== 'ok') {
@@ -1486,6 +1492,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   closeMusicTagModal(): void {
     this.musicTagModalOpen = false;
     this.musicTagId = null;
+    this.musicLookupToken++;
     this.lastFocusedElement?.focus();
   }
 
@@ -1496,7 +1503,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     this.musicSearching = true;
     this.musicSearchMsg = '';
+    const token = ++this.musicLookupToken;
     this.downloads.musicMetaSearch(query).subscribe(result => {
+      if (token !== this.musicLookupToken) {
+        return; // a newer search or a modal close superseded this response
+      }
       this.musicSearching = false;
       this.musicCandidates = result.candidates || [];
       if (result.status !== 'ok') {
