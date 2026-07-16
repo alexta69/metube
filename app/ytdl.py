@@ -54,7 +54,9 @@ _LIVE_PROBE_MAX_FAILURES = 5
 
 
 class _AlbumArtistPostProcessor(PostProcessor):
-    """Fill missing album-artist metadata from yt-dlp's main track artist."""
+    """Fill missing album-artist metadata from yt-dlp's album-level signals."""
+
+    _TOPIC_SUFFIX = ' - Topic'
 
     @staticmethod
     def _has_value(value: Any) -> bool:
@@ -76,13 +78,23 @@ class _AlbumArtistPostProcessor(PostProcessor):
             return candidate.split(' · ', 1)[0].strip()
         return None
 
+    @classmethod
+    def _topic_artist(cls, info) -> Optional[str]:
+        for field in ('channel', 'uploader'):
+            value = info.get(field)
+            if not isinstance(value, str) or not value.endswith(cls._TOPIC_SUFFIX):
+                continue
+            if artist := value[:-len(cls._TOPIC_SUFFIX)].strip():
+                return artist
+        return None
+
     def run(self, info):
         if not self._has_value(info.get('album')):
             return [], info
         if self._has_value(info.get('album_artist')) or self._has_value(info.get('album_artists')):
             return [], info
 
-        if artist := self._main_artist(info):
+        if artist := self._topic_artist(info) or self._main_artist(info):
             info['album_artist'] = artist
         return [], info
 

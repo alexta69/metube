@@ -87,6 +87,40 @@ class AlbumArtistPostProcessorTests(unittest.TestCase):
 
         self.assertEqual(result['album_artist'], 'ScHoolboy Q')
 
+    def test_uses_topic_channel_artist_for_joint_album(self):
+        info = {
+            'album': 'Watch the Throne',
+            'artists': ['JAY-Z', 'Kanye West'],
+            'channel': 'JAY-Z & Kanye West - Topic',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'JAY-Z & Kanye West')
+
+    def test_uses_topic_uploader_and_strips_suffix_for_compilation(self):
+        info = {
+            'album': 'Compilation',
+            'artist': 'Track Artist',
+            'channel': 'Regular Channel',
+            'uploader': 'Various Artists - Topic',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Various Artists')
+
+    def test_regular_channel_falls_back_to_main_artist(self):
+        info = {
+            'album': 'Album',
+            'artist': 'Track Artist',
+            'channel': 'Label Channel',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Track Artist')
+
     def test_preserves_explicit_various_artists(self):
         info = {
             'album': 'Revenge of the Dreamers III',
