@@ -21,6 +21,7 @@ from typing import Any, Optional
 import yt_dlp.networking.impersonate
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
+import music_meta
 from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_layers
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
@@ -425,7 +426,16 @@ _PERSISTED_DOWNLOAD_FIELDS = (
 )
 
 
-_COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index"))
+# The song fields feed the music-tag dialog; keeping them in the persisted
+# entry lets finished audio downloads be tagged after a restart.
+_COMPACT_ENTRY_EXTRA_KEYS = frozenset((
+    "n_entries", "__last_playlist_index",
+    "artist", "track", "album", "release_year", "upload_date", "genre", "creator", "uploader",
+))
+
+# The source description also feeds the music-tag dialog, but can be huge;
+# persist only this much of it.
+_COMPACT_ENTRY_DESCRIPTION_MAX = 2000
 
 
 def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
@@ -436,6 +446,8 @@ def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
         for key, value in entry.items()
         if key.startswith("playlist") or key.startswith("channel") or key in _COMPACT_ENTRY_EXTRA_KEYS
     }
+    if isinstance(entry.get("description"), str) and entry["description"]:
+        compact["description"] = entry["description"][:_COMPACT_ENTRY_DESCRIPTION_MAX]
     return compact or None
 
 
@@ -814,7 +826,9 @@ class PersistentQueue:
         return sorted(items, key=lambda item: item[1].timestamp)
 
     def _should_persist_entry(self) -> bool:
-        return self.identifier != "completed"
+        # The completed queue also keeps the compact entry: its music fields
+        # and truncated description feed the music-tag dialog after a restart.
+        return True
 
     def _serialize_items(self):
         return [
@@ -1602,6 +1616,74 @@ class DownloadQueue:
         return (list((k, v.info) for k, v in self.queue.items()) +
                 list((k, v.info) for k, v in self.pending.items()),
                 list((k, v.info) for k, v in self.done.items()))
+
+    def music_source(self, id):
+        """Source material for the music-tag dialog of a finished download:
+        the video description plus whatever song metadata the site provided.
+        """
+        if not self.done.exists(id):
+            return {'status': 'error', 'msg': 'download not found'}
+        dl = self.done.get(id)
+        entry = getattr(dl.info, 'entry', None) or {}
+        return {
+            'status': 'ok',
+            'title': dl.info.title,
+            'filename': getattr(dl.info, 'filename', None),
+            'description': entry.get('description'),
+            'music': {
+                'artist': entry.get('artist') or entry.get('creator') or entry.get('uploader'),
+                'track': entry.get('track'),
+                'album': entry.get('album'),
+                'release_year': entry.get('release_year') or (str(entry.get('upload_date'))[:4] if entry.get('upload_date') else None),
+                'genre': entry.get('genre'),
+            },
+        }
+
+    async def music_tag(self, id, title, artists, album, date, genres, organize):
+        """Tag a finished audio download in place, optionally filing it into
+        an Artist/Album(Year) layout inside its download directory.
+        """
+        if not self.done.exists(id):
+            return {'status': 'error', 'msg': 'download not found'}
+        dl = self.done.get(id)
+        rel_name = getattr(dl.info, 'filename', None)
+        if dl.info.status != 'finished' or not rel_name:
+            return {'status': 'error', 'msg': 'download has no finished file to tag'}
+        ext = os.path.splitext(rel_name)[1].lower()
+        if ext not in music_meta.TAGGABLE_EXTS:
+            return {'status': 'error', 'msg': f'"{ext}" is not a taggable audio format'}
+        dldirectory, calc_error = self.__calc_download_path(dl.info.download_type, dl.info.folder)
+        if calc_error is not None or not dldirectory:
+            return {'status': 'error', 'msg': 'could not resolve download directory'}
+        real_base = os.path.realpath(dldirectory)
+        full_path = os.path.realpath(os.path.join(dldirectory, rel_name))
+        if not _is_within_directory(real_base, full_path) or not os.path.isfile(full_path):
+            return {'status': 'error', 'msg': 'file not found on disk'}
+
+        if not artists:
+            artists = ['Unknown Artist']
+        tags = music_meta.build_tags(title, artists, album, date, genres)
+        try:
+            await asyncio.to_thread(music_meta.tag_audio_file, full_path, tags)
+        except Exception as e:
+            log.warning(f'music tagging failed for {id}: {e!r}')
+            return {'status': 'error', 'msg': f'tagging failed: {e}'}
+
+        if organize:
+            new_rel = music_meta.organized_rel_path(artists, album, date, title, ext)
+            new_path = os.path.realpath(os.path.join(dldirectory, new_rel))
+            if _is_within_directory(real_base, new_path) and new_path != full_path:
+                try:
+                    os.makedirs(os.path.dirname(new_path), exist_ok=True)
+                    shutil.move(full_path, new_path)
+                    dl.info.filename = os.path.relpath(new_path, dldirectory)
+                except OSError as e:
+                    log.warning(f'organizing tagged file for {id} failed: {e!r}')
+                    return {'status': 'error', 'msg': f'tagged, but moving the file failed: {e}'}
+
+        self.done.put(dl)
+        await self.notifier.updated(dl.info)
+        return {'status': 'ok', 'filename': dl.info.filename}
 
     def close(self):
         # Kill any still-running download subprocesses (and their ffmpeg

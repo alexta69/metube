@@ -9,6 +9,7 @@ Key capabilities:
 * Download videos, audio, captions, and thumbnails from a browser UI.
 * Download playlists and channels, with configurable output and download options.
 * Subscribe to channels and playlists, periodically check for new items, and queue new uploads automatically.
+* Tag finished audio downloads with song metadata (looked up on iTunes/Deezer) and optionally file them into Artist/Album folders.
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
 

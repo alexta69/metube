@@ -498,7 +498,7 @@ class DownloadInfoSetstateTests(unittest.TestCase):
 
 
 class CompactPersistedEntryTests(unittest.TestCase):
-    def test_keeps_only_playlist_and_channel_keys(self):
+    def test_keeps_only_restart_relevant_keys(self):
         entry = {
             "playlist_index": "01",
             "playlist_title": "Playlist",
@@ -509,7 +509,6 @@ class CompactPersistedEntryTests(unittest.TestCase):
             "n_entries": 10,
             "__last_playlist_index": 10,
             "formats": [{"id": "huge"}],
-            "description": "big blob",
         }
 
         compact = _compact_persisted_entry(entry)
@@ -527,6 +526,26 @@ class CompactPersistedEntryTests(unittest.TestCase):
                 "__last_playlist_index": 10,
             },
         )
+
+    def test_keeps_music_fields_and_truncates_description(self):
+        entry = {
+            "artist": "Forss",
+            "track": "Flickermood",
+            "album": "Soulhack",
+            "release_year": 2003,
+            "genre": "Electronic",
+            "uploader": "forss",
+            "description": "x" * 5000,
+            "formats": [{"id": "huge"}],
+        }
+
+        compact = _compact_persisted_entry(entry)
+
+        self.assertEqual(compact["artist"], "Forss")
+        self.assertEqual(compact["track"], "Flickermood")
+        self.assertEqual(compact["genre"], "Electronic")
+        self.assertEqual(len(compact["description"]), 2000)
+        self.assertNotIn("formats", compact)
 
     def test_returns_none_when_no_restart_relevant_keys_exist(self):
         self.assertIsNone(_compact_persisted_entry({"id": "x", "title": "y"}))

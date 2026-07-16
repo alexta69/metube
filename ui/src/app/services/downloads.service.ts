@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket.service';
-import { Download, Status, State } from '../interfaces';
+import { Download, Status, State, MusicCandidate, MusicSource, MusicTagPayload } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface AddDownloadPayload {
@@ -159,6 +159,24 @@ export class DownloadsService {
     if (cs) body['clip_start'] = cs;
     if (ce) body['clip_end'] = ce;
     return this.http.post<Status>('add', body).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
+  public musicMetaSearch(q: string) {
+    return this.http.get<{ status: string; candidates: MusicCandidate[] }>('music-meta', { params: { q } }).pipe(
+      catchError((err: HttpErrorResponse) => of({ status: 'error', candidates: [] as MusicCandidate[], msg: err.error?.msg || err.message }))
+    );
+  }
+
+  public musicMetaSource(id: string) {
+    return this.http.get<MusicSource>('music-meta/source', { params: { id } }).pipe(
+      catchError((err: HttpErrorResponse) => of({ status: 'error', msg: err.error?.msg || err.message } as MusicSource))
+    );
+  }
+
+  public musicTag(payload: MusicTagPayload) {
+    return this.http.post<Status>('music-tag', payload).pipe(
       catchError(this.handleHTTPError)
     );
   }

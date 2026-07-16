@@ -7,3 +7,4 @@ export * from './checkable';
 export * from './format';
 export * from './formats';
 export * from './subscription';
+export * from './music';

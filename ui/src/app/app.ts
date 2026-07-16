@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes, faMusic } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -32,6 +32,7 @@ import {
   CAPTION_FORMATS,
   THUMBNAIL_FORMATS,
   State,
+  MusicCandidate,
 } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
 import { SelectAllCheckboxComponent, ItemCheckboxComponent, ToastContainerComponent } from './components/';
@@ -195,6 +196,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faPause = faPause;
   faPlay = faPlay;
   faShareNodes = faShareNodes;
+  faMusic = faMusic;
   subtitleLanguages = [
     { id: 'en', text: 'English' },
     { id: 'ar', text: 'Arabic' },
@@ -1407,6 +1409,141 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   closeBatchImportModal(): void {
     this.batchImportModalOpen = false;
     this.lastFocusedElement?.focus();
+  }
+
+  // ---- Music tagging (finished audio downloads) ----
+  musicTagModalOpen = false;
+  musicTagId: string | null = null;
+  musicTagSourceTitle = '';
+  musicTagDescription: string | null = null;
+  musicTagDescriptionExpanded = false;
+  musicSourceLoading = false;
+  musicSearchQuery = '';
+  musicSearching = false;
+  musicCandidates: MusicCandidate[] = [];
+  musicSearchMsg = '';
+  musicTagTitle = '';
+  musicTagArtists = '';
+  musicTagAlbum = '';
+  musicTagDate = '';
+  musicTagGenres = '';
+  musicTagOrganize = false;
+  musicTagApplying = false;
+
+  isTaggableAudio(download: Download): boolean {
+    return download.status === 'finished' && !!download.filename
+      && /\.(mp3|m4a|aac|opus|ogg|oga|flac|wav)$/i.test(download.filename);
+  }
+
+  openMusicTagModal(id: string, download: Download): void {
+    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    this.musicTagModalOpen = true;
+    this.musicTagId = id;
+    this.musicTagSourceTitle = download.title;
+    this.musicTagDescription = null;
+    this.musicTagDescriptionExpanded = false;
+    this.musicCandidates = [];
+    this.musicSearchMsg = '';
+    this.musicTagTitle = download.title;
+    this.musicTagArtists = '';
+    this.musicTagAlbum = '';
+    this.musicTagDate = '';
+    this.musicTagGenres = '';
+    this.musicSearchQuery = download.title;
+    this.musicSourceLoading = true;
+    this.downloads.musicMetaSource(id).subscribe(source => {
+      this.musicSourceLoading = false;
+      this.cdr.markForCheck();
+      if (source.status !== 'ok') {
+        return;
+      }
+      this.musicTagDescription = source.description || null;
+      const music = source.music || {};
+      // Site-provided song metadata prefills the fields; the search can
+      // overwrite them with a picked candidate.
+      if (music.track) {
+        this.musicTagTitle = music.track;
+      }
+      if (music.artist) {
+        this.musicTagArtists = music.artist;
+      }
+      if (music.album) {
+        this.musicTagAlbum = music.album;
+      }
+      if (music.release_year) {
+        this.musicTagDate = String(music.release_year);
+      }
+      if (music.genre) {
+        this.musicTagGenres = music.genre;
+      }
+      const query = [music.artist, music.track].filter(Boolean).join(' ');
+      if (query) {
+        this.musicSearchQuery = query;
+      }
+    });
+  }
+
+  closeMusicTagModal(): void {
+    this.musicTagModalOpen = false;
+    this.musicTagId = null;
+    this.lastFocusedElement?.focus();
+  }
+
+  searchMusicMeta(): void {
+    const query = this.musicSearchQuery.trim();
+    if (!query) {
+      return;
+    }
+    this.musicSearching = true;
+    this.musicSearchMsg = '';
+    this.downloads.musicMetaSearch(query).subscribe(result => {
+      this.musicSearching = false;
+      this.musicCandidates = result.candidates || [];
+      if (result.status !== 'ok') {
+        this.musicSearchMsg = 'Lookup failed — check the server connection.';
+      } else if (this.musicCandidates.length === 0) {
+        this.musicSearchMsg = 'No matches found.';
+      }
+      this.cdr.markForCheck();
+    });
+  }
+
+  applyMusicCandidate(candidate: MusicCandidate): void {
+    this.musicTagTitle = candidate.title || this.musicTagTitle;
+    this.musicTagArtists = candidate.artists.join(', ');
+    this.musicTagAlbum = candidate.album || '';
+    this.musicTagDate = candidate.date || '';
+    this.musicTagGenres = candidate.genres.join(', ');
+  }
+
+  private splitUserList(value: string): string[] {
+    return value.split(/[,;]/).map(part => part.trim()).filter(part => part.length > 0);
+  }
+
+  applyMusicTags(): void {
+    if (!this.musicTagId || !this.musicTagTitle.trim()) {
+      this.toasts.error('A song title is required.');
+      return;
+    }
+    this.musicTagApplying = true;
+    this.downloads.musicTag({
+      id: this.musicTagId,
+      title: this.musicTagTitle.trim(),
+      artists: this.splitUserList(this.musicTagArtists),
+      album: this.musicTagAlbum.trim(),
+      date: this.musicTagDate.trim() || null,
+      genres: this.splitUserList(this.musicTagGenres),
+      organize: this.musicTagOrganize,
+    }).subscribe(status => {
+      this.musicTagApplying = false;
+      if (status.status === 'ok') {
+        this.toasts.success('Music tags applied.');
+        this.closeMusicTagModal();
+      } else {
+        this.toasts.error(status.msg || 'Tagging failed.');
+      }
+      this.cdr.markForCheck();
+    });
   }
 
   // Start importing URLs from the batch modal textarea

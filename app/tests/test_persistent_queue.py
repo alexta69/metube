@@ -141,12 +141,13 @@ class PersistentQueueTests(unittest.TestCase):
                     "playlist_title": "Playlist",
                     "channel_index": "02",
                     "channel_title": "Channel",
+                    # Kept (truncated) for the music-tag dialog.
+                    "description": "very large payload",
                 },
             )
             self.assertNotIn("formats", record["entry"])
-            self.assertNotIn("description", record["entry"])
 
-    def test_completed_queue_does_not_persist_entry_or_transient_progress(self):
+    def test_completed_queue_persists_compact_entry_but_not_transient_progress(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "completed")
             pq = PersistentQueue("completed", path)
@@ -159,6 +160,8 @@ class PersistentQueueTests(unittest.TestCase):
                 "playlist_index": "01",
                 "playlist_title": "Playlist",
                 "formats": [{"id": "huge"}],
+                "artist": "Forss",
+                "track": "Flickermood",
             }
             info.filename = "done.mp4"
             pq.put(_FakeDownload(info))
@@ -167,7 +170,11 @@ class PersistentQueueTests(unittest.TestCase):
                 payload = json.load(f)
 
             record = payload["items"][0]["info"]
-            self.assertNotIn("entry", record)
+            # The compact entry survives (music-tag dialog needs it after a
+            # restart); the bulky and transient fields do not.
+            self.assertEqual(record["entry"]["artist"], "Forss")
+            self.assertEqual(record["entry"]["track"], "Flickermood")
+            self.assertNotIn("formats", record["entry"])
             self.assertNotIn("percent", record)
             self.assertNotIn("speed", record)
             self.assertNotIn("eta", record)

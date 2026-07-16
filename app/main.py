@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
 import bg_tasks
+import music_meta
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -1103,6 +1104,41 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
+@routes.get(config.URL_PREFIX + 'music-meta')
+async def music_meta_search(request):
+    query = request.query.get('q', '').strip()[:200]
+    if not query:
+        raise web.HTTPBadRequest(reason="missing 'q'")
+    try:
+        candidates = await music_meta.search_candidates(query)
+    except Exception as e:
+        log.warning(f'music metadata lookup failed: {e!r}')
+        raise web.HTTPBadGateway(reason='metadata lookup failed')
+    return web.Response(text=serializer.encode({'status': 'ok', 'candidates': candidates}))
+
+@routes.get(config.URL_PREFIX + 'music-meta/source')
+async def music_meta_source(request):
+    id = request.query.get('id')
+    if not id:
+        raise web.HTTPBadRequest(reason="missing 'id'")
+    return web.Response(text=serializer.encode(dqueue.music_source(id)))
+
+@routes.post(config.URL_PREFIX + 'music-tag')
+async def music_tag(request):
+    post = await _read_json_request(request)
+    id = post.get('id')
+    title = str(post.get('title') or '').strip()
+    if not id or not title:
+        raise web.HTTPBadRequest(reason="missing 'id' or 'title'")
+    artists = [str(a).strip() for a in (post.get('artists') or []) if str(a).strip()]
+    genres = [str(g).strip() for g in (post.get('genres') or []) if str(g).strip()]
+    album = str(post.get('album') or '').strip() or title
+    date = str(post.get('date') or '').strip()[:10] or None
+    organize = bool(post.get('organize'))
+    status = await dqueue.music_tag(id, title, artists, album, date, genres, organize)
+    log.info(f"Music tag request processed for id: {id}, organize: {organize}")
+    return web.Response(text=serializer.encode(status))
+
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
@@ -1235,6 +1271,7 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/update', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/delete', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/check', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'music-tag', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 

@@ -625,6 +625,104 @@
     </div>
   </form>
 
+  <!-- Music Tag Modal -->
+  <div class="modal fade" tabindex="-1" role="dialog"
+  aria-modal="true"
+  aria-labelledby="music-tag-modal-title"
+  [class.show]="musicTagModalOpen"
+  [style.display]="musicTagModalOpen ? 'block' : 'none'">
+    <div class="modal-dialog modal-lg" role="document">
+      <div class="modal-content">
+        <div class="modal-header">
+          <h5 id="music-tag-modal-title" class="modal-title">Music tags</h5>
+          <button type="button" class="btn-close" aria-label="Close" (click)="closeMusicTagModal()"></button>
+        </div>
+        <div class="modal-body">
+          <div class="mb-2">
+            <strong>{{ musicTagSourceTitle }}</strong>
+            @if (musicSourceLoading) {
+              <small class="text-muted d-block">Loading source metadata…</small>
+            }
+          </div>
+          @if (musicTagDescription) {
+            <div class="mb-3">
+              <button type="button" class="btn btn-link btn-sm p-0" (click)="musicTagDescriptionExpanded = !musicTagDescriptionExpanded">
+                {{ musicTagDescriptionExpanded ? 'Hide' : 'Show' }} source description
+              </button>
+              @if (musicTagDescriptionExpanded) {
+                <pre class="border rounded p-2 mt-1" style="max-height: 160px; overflow-y: auto; white-space: pre-wrap; font-size: 0.8em;">{{ musicTagDescription }}</pre>
+              }
+            </div>
+          }
+          <div class="input-group mb-2">
+            <input type="text" class="form-control" placeholder="Search song databases (artist title)"
+              [(ngModel)]="musicSearchQuery" [ngModelOptions]="{standalone: true}" (keydown.enter)="searchMusicMeta()">
+            <button type="button" class="btn btn-primary" (click)="searchMusicMeta()" [disabled]="musicSearching">
+              {{ musicSearching ? 'Searching…' : 'Search' }}
+            </button>
+          </div>
+          @if (musicSearchMsg) {
+            <small class="text-muted">{{ musicSearchMsg }}</small>
+          }
+          @if (musicCandidates.length > 0) {
+            <div class="list-group mb-3" style="max-height: 220px; overflow-y: auto;">
+              @for (candidate of musicCandidates; track $index) {
+                <button type="button" class="list-group-item list-group-item-action d-flex align-items-center gap-2"
+                  (click)="applyMusicCandidate(candidate)">
+                  @if (candidate.cover) {
+                    <img [src]="candidate.cover" alt="" width="40" height="40" class="rounded flex-shrink-0">
+                  }
+                  <span class="text-start">
+                    <strong>{{ candidate.title }}</strong> — {{ candidate.artists.join(', ') }}<br>
+                    <small class="text-muted">
+                      {{ candidate.album }}{{ candidate.date ? ' (' + candidate.date.slice(0, 4) + ')' : '' }}
+                      {{ candidate.genres.length ? '· ' + candidate.genres.join(', ') : '' }}
+                      · {{ candidate.source }}
+                    </small>
+                  </span>
+                </button>
+              }
+            </div>
+          }
+          <div class="row g-2">
+            <div class="col-md-6">
+              <label class="form-label mb-0" for="music-tag-title"><small>Title</small></label>
+              <input id="music-tag-title" type="text" class="form-control" [(ngModel)]="musicTagTitle" [ngModelOptions]="{standalone: true}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-0" for="music-tag-artists"><small>Artists (comma-separated)</small></label>
+              <input id="music-tag-artists" type="text" class="form-control" [(ngModel)]="musicTagArtists" [ngModelOptions]="{standalone: true}">
+            </div>
+            <div class="col-md-6">
+              <label class="form-label mb-0" for="music-tag-album"><small>Album</small></label>
+              <input id="music-tag-album" type="text" class="form-control" [(ngModel)]="musicTagAlbum" [ngModelOptions]="{standalone: true}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label mb-0" for="music-tag-date"><small>Date</small></label>
+              <input id="music-tag-date" type="text" class="form-control" placeholder="YYYY or YYYY-MM-DD" [(ngModel)]="musicTagDate" [ngModelOptions]="{standalone: true}">
+            </div>
+            <div class="col-md-3">
+              <label class="form-label mb-0" for="music-tag-genres"><small>Genres</small></label>
+              <input id="music-tag-genres" type="text" class="form-control" [(ngModel)]="musicTagGenres" [ngModelOptions]="{standalone: true}">
+            </div>
+          </div>
+          <div class="form-check mt-3">
+            <input type="checkbox" class="form-check-input" id="music-tag-organize" [(ngModel)]="musicTagOrganize" [ngModelOptions]="{standalone: true}">
+            <label class="form-check-label" for="music-tag-organize">
+              Move into Artist/Album folders
+            </label>
+          </div>
+        </div>
+        <div class="modal-footer">
+          <button type="button" class="btn btn-secondary" (click)="closeMusicTagModal()">Close</button>
+          <button type="button" class="btn btn-primary" (click)="applyMusicTags()" [disabled]="musicTagApplying">
+            {{ musicTagApplying ? 'Applying…' : 'Apply tags' }}
+          </button>
+        </div>
+      </div>
+    </div>
+  </div>
+
   <!-- Batch Import Modal -->
   <div class="modal fade" tabindex="-1" role="dialog"
   aria-modal="true"
@@ -858,6 +956,9 @@
                 }
                 @if (entry[1].filename && canShareDownloads()) {
                   <button type="button" class="btn btn-link" [attr.aria-label]="'Share result file for ' + entry[1].title" (click)="shareDownload(entry[1])"><fa-icon [icon]="faShareNodes" /></button>
+                }
+                @if (isTaggableAudio(entry[1])) {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Edit music tags for ' + entry[1].title" (click)="openMusicTagModal(entry[0], entry[1])"><fa-icon [icon]="faMusic" /></button>
                 }
                 <a href="{{entry[1].url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + entry[1].title"><fa-icon [icon]="faExternalLinkAlt" /></a>
                 <button type="button" class="btn btn-link" [attr.aria-label]="'Delete completed item ' + entry[1].title" (click)="delDownload('done', entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
