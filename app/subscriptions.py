@@ -19,6 +19,7 @@ import yt_dlp.networking.impersonate
 import bg_tasks
 from dl_formats import merge_ytdl_option_layers
 from state_store import AtomicJsonStore, read_legacy_shelf
+from url_guard import validate_url
 
 log = logging.getLogger("subscriptions")
 
@@ -112,6 +113,9 @@ def extract_flat_playlist(
             for ent in entries[:5]:
                 nested_url = _entry_video_url(ent)
                 if not nested_url:
+                    continue
+                # nested_url comes from remote playlist content; guard it too.
+                if validate_url(nested_url) is not None:
                     continue
                 nested_info, nested_entries = extract_flat_playlist(
                     config,
@@ -542,6 +546,12 @@ class SubscriptionManager:
         url = self._normalize_url(url)
         if not url:
             return {"status": "error", "msg": "Missing URL"}
+        # SSRF guard: block non-http(s) schemes and internal/metadata hosts
+        # before yt-dlp fetches the feed. May do a DNS lookup, so run off-loop.
+        url_error = await asyncio.get_running_loop().run_in_executor(None, validate_url, url)
+        if url_error is not None:
+            log.warning('Rejected subscription URL "%s": %s', url, url_error)
+            return {"status": "error", "msg": url_error}
         try:
             title_regex_stored = validate_title_regex(title_regex)
         except re.error as exc:

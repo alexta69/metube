@@ -25,6 +25,7 @@ from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_la
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
+from url_guard import validate_url
 
 log = logging.getLogger('ytdl')
 
@@ -1444,6 +1445,13 @@ class DownloadQueue:
             return {'status': 'ok'}
         else:
             already.add(url)
+        # SSRF guard: reject non-http(s) schemes and hosts resolving to
+        # internal/loopback/link-local/metadata addresses before yt-dlp fetches
+        # anything. run_in_executor because validate_url may perform a DNS lookup.
+        url_error = await asyncio.get_running_loop().run_in_executor(None, validate_url, url)
+        if url_error is not None:
+            log.warning('Rejected URL "%s": %s', url, url_error)
+            return {'status': 'error', 'msg': url_error}
         try:
             entry = await asyncio.get_running_loop().run_in_executor(
                 None,
