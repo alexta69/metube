@@ -15,6 +15,8 @@ from unittest.mock import MagicMock, patch
 fake_yt_dlp = types.ModuleType("yt_dlp")
 fake_networking = types.ModuleType("yt_dlp.networking")
 fake_impersonate = types.ModuleType("yt_dlp.networking.impersonate")
+fake_postprocessor = types.ModuleType("yt_dlp.postprocessor")
+fake_postprocessor_common = types.ModuleType("yt_dlp.postprocessor.common")
 fake_utils = types.ModuleType("yt_dlp.utils")
 
 
@@ -24,18 +26,27 @@ class _ImpersonateTarget:
         return value
 
 
+class _PostProcessor:
+    def __init__(self, downloader=None):
+        self._downloader = downloader
+
+
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
+fake_postprocessor_common.PostProcessor = _PostProcessor
 # The inner ``key`` group mirrors the real ``STR_FORMAT_RE_TMPL`` so that
 # ``_OUTTMPL_FIELD_RE`` (compiled at import time) has the named group that
 # ``_resolve_outtmpl_fields`` reads via ``match.group('key')``.
 fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>(?P<key>{}))\)(?P<format>[-0-9.]*{})"
 fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
 fake_yt_dlp.networking = fake_networking
+fake_yt_dlp.postprocessor = fake_postprocessor
 fake_yt_dlp.utils = fake_utils
 sys.modules.setdefault("yt_dlp", fake_yt_dlp)
 sys.modules.setdefault("yt_dlp.networking", fake_networking)
 sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
+sys.modules.setdefault("yt_dlp.postprocessor", fake_postprocessor)
+sys.modules.setdefault("yt_dlp.postprocessor.common", fake_postprocessor_common)
 sys.modules.setdefault("yt_dlp.utils", fake_utils)
 
 from ytdl import (
@@ -43,6 +54,7 @@ from ytdl import (
     DownloadInfo,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
+    _AlbumArtistPostProcessor,
     _output_dir_escapes,
     _resolve_outtmpl_fields,
     _sanitize_entry_for_pickle,
@@ -52,6 +64,132 @@ from ytdl import (
 # Detect whether the real yt-dlp is loaded (as opposed to the minimal fake
 # shim above).  _resolve_outtmpl_fields needs YoutubeDL at runtime.
 _has_real_ytdlp = hasattr(sys.modules.get("yt_dlp"), "YoutubeDL")
+
+
+class AlbumArtistPostProcessorTests(unittest.TestCase):
+    def setUp(self):
+        self.postprocessor = _AlbumArtistPostProcessor()
+
+    def test_fills_album_artist_from_artist(self):
+        info = {'album': 'CrasH Talk', 'artist': 'ScHoolboy Q'}
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'ScHoolboy Q')
+
+    def test_uses_main_artist_for_featured_track(self):
+        info = {
+            'album': 'CrasH Talk',
+            'artists': ['ScHoolboy Q · Travis Scott'],
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'ScHoolboy Q')
+
+    def test_uses_topic_channel_artist_for_joint_album(self):
+        info = {
+            'album': 'Watch the Throne',
+            'artists': ['JAY-Z', 'Kanye West'],
+            'channel': 'JAY-Z & Kanye West - Topic',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'JAY-Z & Kanye West')
+
+    def test_uses_topic_uploader_and_strips_suffix_for_compilation(self):
+        info = {
+            'album': 'Compilation',
+            'artist': 'Track Artist',
+            'channel': 'Regular Channel',
+            'uploader': 'Various Artists - Topic',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Various Artists')
+
+    def test_regular_channel_falls_back_to_main_artist(self):
+        info = {
+            'album': 'Album',
+            'artist': 'Track Artist',
+            'channel': 'Label Channel',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Track Artist')
+
+    def test_preserves_explicit_various_artists(self):
+        info = {
+            'album': 'Revenge of the Dreamers III',
+            'artist': 'J. Cole',
+            'album_artist': 'Various Artists',
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Various Artists')
+
+    def test_preserves_existing_album_artists_list(self):
+        info = {
+            'album': 'Album',
+            'artist': 'Track Artist',
+            'album_artists': ['Album Artist'],
+        }
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artists'], ['Album Artist'])
+        self.assertNotIn('album_artist', result)
+
+    def test_uses_first_artist_when_artist_list_has_multiple_entries(self):
+        info = {'album': 'Album', 'artists': ['Main Artist', 'Featured Artist']}
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertEqual(result['album_artist'], 'Main Artist')
+
+    def test_does_not_fill_without_album(self):
+        info = {'artist': 'Standalone Artist'}
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertNotIn('album_artist', result)
+        self.assertNotIn('album_artists', result)
+
+    def test_does_not_fill_without_artist(self):
+        info = {'album': 'Instrumental Album'}
+
+        _, result = self.postprocessor.run(info)
+
+        self.assertNotIn('album_artist', result)
+        self.assertNotIn('album_artists', result)
+
+
+class AlbumArtistRegistrationTests(unittest.TestCase):
+    def test_audio_download_registers_pre_process_postprocessor(self):
+        download = _make_test_download()
+        download.info.download_type = 'audio'
+        fake_ydl = MagicMock()
+
+        with patch('ytdl.yt_dlp.YoutubeDL', return_value=fake_ydl):
+            result = download._make_youtube_dl({'quiet': True})
+
+        self.assertIs(result, fake_ydl)
+        postprocessor, = fake_ydl.add_post_processor.call_args.args
+        self.assertIsInstance(postprocessor, _AlbumArtistPostProcessor)
+        self.assertEqual(fake_ydl.add_post_processor.call_args.kwargs, {'when': 'pre_process'})
+
+    def test_video_download_does_not_register_postprocessor(self):
+        download = _make_test_download()
+        fake_ydl = MagicMock()
+
+        with patch('ytdl.yt_dlp.YoutubeDL', return_value=fake_ydl):
+            download._make_youtube_dl({'quiet': True})
+
+        fake_ydl.add_post_processor.assert_not_called()
 
 
 class SanitizePathComponentTests(unittest.TestCase):

@@ -19,6 +19,7 @@ import types
 from typing import Any, Optional
 
 import yt_dlp.networking.impersonate
+from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
 from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_layers
@@ -51,6 +52,52 @@ _LIVE_MAX_CHECK_INTERVAL = 3600
 # Consecutive probe failures (network blips, rate limits, transient extractor
 # errors) tolerated before a scheduled live download is abandoned as errored.
 _LIVE_PROBE_MAX_FAILURES = 5
+
+
+class _AlbumArtistPostProcessor(PostProcessor):
+    """Fill missing album-artist metadata from yt-dlp's album-level signals."""
+
+    _TOPIC_SUFFIX = ' - Topic'
+
+    @staticmethod
+    def _has_value(value: Any) -> bool:
+        if isinstance(value, str):
+            return bool(value.strip())
+        if isinstance(value, (list, tuple)):
+            return any(_AlbumArtistPostProcessor._has_value(item) for item in value)
+        return value is not None
+
+    @staticmethod
+    def _main_artist(info) -> Optional[str]:
+        artists = info.get('artists')
+        candidates = artists if isinstance(artists, list) else [info.get('artist')]
+        for candidate in candidates:
+            if not isinstance(candidate, str) or not candidate.strip():
+                continue
+            # YouTube Music uses a spaced middle dot between credited artists.
+            # The first credit is the primary artist for normal albums.
+            return candidate.split(' · ', 1)[0].strip()
+        return None
+
+    @classmethod
+    def _topic_artist(cls, info) -> Optional[str]:
+        for field in ('channel', 'uploader'):
+            value = info.get(field)
+            if not isinstance(value, str) or not value.endswith(cls._TOPIC_SUFFIX):
+                continue
+            if artist := value[:-len(cls._TOPIC_SUFFIX)].strip():
+                return artist
+        return None
+
+    def run(self, info):
+        if not self._has_value(info.get('album')):
+            return [], info
+        if self._has_value(info.get('album_artist')) or self._has_value(info.get('album_artists')):
+            return [], info
+
+        if artist := self._topic_artist(info) or self._main_artist(info):
+            info['album_artist'] = artist
+        return [], info
 
 
 def _is_within_directory(real_base: str, real_target: str) -> bool:
@@ -546,6 +593,12 @@ class Download:
 
         return put_status
 
+    def _make_youtube_dl(self, params):
+        ydl = yt_dlp.YoutubeDL(params=params)
+        if getattr(self.info, 'download_type', '') == 'audio':
+            ydl.add_post_processor(_AlbumArtistPostProcessor(ydl), when='pre_process')
+        return ydl
+
     def _download(self):
         # Run in our own process group so cancel() can SIGKILL the whole
         # group (yt-dlp + any ffmpeg children it spawned for merge/postproc),
@@ -623,7 +676,7 @@ class Download:
                     [(start, end)],
                 )
 
-            ret = yt_dlp.YoutubeDL(params=ytdl_params).download([self.info.url])
+            ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
             self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
