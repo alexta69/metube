@@ -229,6 +229,14 @@ In case you need to use your browser's cookies with MeTube, for example to downl
 * After upload, the cookie indicator should show as active.
 * Use **Delete Cookies** in the same section to remove uploaded cookies.
 
+## 🎵 Pairing with a music tagger
+
+MeTube deliberately stops once the file is written — tagging and library organization belong to dedicated tools. Point one at your audio download folder (`AUDIO_DOWNLOAD_DIR`):
+
+* [beets](https://beets.io) — `beet import` matches tracks against MusicBrainz, fixes tags, and files them into an Artist/Album library; headless and scriptable.
+* [MusicBrainz Picard](https://picard.musicbrainz.org) — GUI tagger with acoustic fingerprinting.
+* [Lidarr](https://lidarr.audio) — full music library manager; add the folder as an import path.
+
 ## 🔌 Browser extensions
 
 Browser extensions allow right-clicking videos and sending them directly to MeTube. If you're on an HTTPS page, your MeTube instance must be behind an HTTPS reverse proxy (see below) for extensions to work.
