@@ -1,0 +1,21 @@
+name: readme-size
+
+on:
+  push:
+    paths:
+      - 'README.md'
+  pull_request:
+    paths:
+      - 'README.md'
+
+jobs:
+  check-size:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Check README stays under Docker Hub's 25k character limit
+        run: |
+          size=$(wc -c < README.md)
+          echo "README.md is ${size} bytes (limit 25000)"
+          test "$size" -lt 25000
