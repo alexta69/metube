@@ -23,6 +23,7 @@ from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
 from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_layers
+from music_metadata import MusicMetadataPreProcessor, MusicMetadataWriterPostProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
@@ -597,6 +598,15 @@ class Download:
         ydl = yt_dlp.YoutubeDL(params=params)
         if getattr(self.info, 'download_type', '') == 'audio':
             ydl.add_post_processor(_AlbumArtistPostProcessor(ydl), when='pre_process')
+            ydl.add_post_processor(
+                MusicMetadataPreProcessor(
+                    ydl,
+                    source_url=getattr(self.info, 'url', None),
+                    source_entry=getattr(self.info, 'entry', None),
+                ),
+                when='pre_process',
+            )
+            ydl.add_post_processor(MusicMetadataWriterPostProcessor(ydl), when='after_move')
         return ydl
 
     def _download(self):

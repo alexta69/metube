@@ -31,6 +31,10 @@ class _PostProcessor:
         self._downloader = downloader
 
 
+class _PostProcessingError(Exception):
+    pass
+
+
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
 fake_postprocessor_common.PostProcessor = _PostProcessor
@@ -39,6 +43,7 @@ fake_postprocessor_common.PostProcessor = _PostProcessor
 # ``_resolve_outtmpl_fields`` reads via ``match.group('key')``.
 fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>(?P<key>{}))\)(?P<format>[-0-9.]*{})"
 fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
+fake_utils.PostProcessingError = _PostProcessingError
 fake_yt_dlp.networking = fake_networking
 fake_yt_dlp.postprocessor = fake_postprocessor
 fake_yt_dlp.utils = fake_utils
@@ -52,6 +57,8 @@ sys.modules.setdefault("yt_dlp.utils", fake_utils)
 from ytdl import (
     Download,
     DownloadInfo,
+    MusicMetadataPreProcessor,
+    MusicMetadataWriterPostProcessor,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
     _AlbumArtistPostProcessor,
@@ -178,9 +185,18 @@ class AlbumArtistRegistrationTests(unittest.TestCase):
             result = download._make_youtube_dl({'quiet': True})
 
         self.assertIs(result, fake_ydl)
-        postprocessor, = fake_ydl.add_post_processor.call_args.args
+        album_artist_call = fake_ydl.add_post_processor.call_args_list[0]
+        postprocessor, = album_artist_call.args
         self.assertIsInstance(postprocessor, _AlbumArtistPostProcessor)
-        self.assertEqual(fake_ydl.add_post_processor.call_args.kwargs, {'when': 'pre_process'})
+        self.assertEqual(album_artist_call.kwargs, {'when': 'pre_process'})
+        metadata_pre_call = fake_ydl.add_post_processor.call_args_list[1]
+        metadata_preprocessor, = metadata_pre_call.args
+        self.assertIsInstance(metadata_preprocessor, MusicMetadataPreProcessor)
+        self.assertEqual(metadata_pre_call.kwargs, {'when': 'pre_process'})
+        metadata_writer_call = fake_ydl.add_post_processor.call_args_list[2]
+        metadata_writer, = metadata_writer_call.args
+        self.assertIsInstance(metadata_writer, MusicMetadataWriterPostProcessor)
+        self.assertEqual(metadata_writer_call.kwargs, {'when': 'after_move'})
 
     def test_video_download_does_not_register_postprocessor(self):
         download = _make_test_download()
