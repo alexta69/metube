@@ -1,5 +1,53 @@
 # Agent Guidelines
 
+## Project scope — read this before planning a feature
+
+MeTube's contract is: give it a URL, it runs yt-dlp well, and correct files appear.
+The maintainer holds a deliberate line on what belongs inside that contract, and PRs
+on the wrong side of it are declined **regardless of code quality**. Check your plan
+against this line before writing any code.
+
+**In scope — improving the write itself:**
+
+- Features that make the file yt-dlp writes at download time come out more correct,
+  using only data the extractor already provides (e.g. filling a missing album-artist
+  tag from the extractor's own metadata).
+- Surfacing functionality yt-dlp itself owns and maintains as first-class UI options
+  (e.g. a SponsorBlock toggle that just passes yt-dlp postprocessor params).
+- Download queue, subscriptions, output templates, and UI improvements to the
+  download workflow.
+
+**Out of scope — managing files after they exist:**
+
+- Tag editors, metadata dialogs, or any workflow that rewrites files after the
+  download has finished. This holds even for slimmed-down versions.
+- Lookups against external metadata services (iTunes, Deezer, MusicBrainz, etc.).
+  More broadly: any new dependency on a third-party API, or new network egress from
+  self-hosted instances, beyond what yt-dlp itself performs.
+- Library organization: moving/renaming existing files into Artist/Album layouts,
+  watch-folder processing, and similar media-manager features. Dedicated tools
+  (beets, MusicBrainz Picard, Lidarr) do this properly; the README points users
+  to them.
+
+**Corollaries that shape borderline PRs:**
+
+- Site-specific intelligence (parsing playlist-ID prefixes, URL path conventions,
+  and other platform internals) is extractor work and belongs upstream in yt-dlp,
+  not re-implemented here — it silently breaks when the platform changes and
+  MeTube would own the breakage.
+- Prefer enriching yt-dlp's info dict and letting its existing pipeline
+  (FFmpegMetadata etc.) do the writing, over adding custom per-format tag-writing
+  code to MeTube.
+- Supplemental processing must never fail a download that otherwise succeeded:
+  warn and continue, don't raise.
+- Keep feature scope minimal on first submission. A hardcoded sensible default
+  beats a configuration surface; follow-ups can add options when users actually
+  ask. PRs that bundle several "reasonable next steps" invite rejection of the
+  whole.
+
+If a feature idea fails this test, the accepted alternative is usually a README
+section documenting how to pair MeTube with the right dedicated tool.
+
 ## README.md size constraint
 
 The README.md is synced to Docker Hub, which has a **25,000 character limit**.
