@@ -47,6 +47,10 @@ _MP_CTX = (
     else multiprocessing.get_context()
 )
 
+# Grace period between SIGINT (lets yt-dlp/ffmpeg finalize the partial file,
+# e.g. when cancelling a livestream) and SIGKILL escalation.
+_CANCEL_GRACE_SECONDS = 15
+
 _LIVE_CHECK_INTERVAL = 60
 _LIVE_MAX_CHECK_INTERVAL = 3600
 # Consecutive probe failures (network blips, rate limits, transient extractor
@@ -704,29 +708,50 @@ class Download:
             self.status_queue.put(None)
         await self.status_task
 
+    def _signal_group(self, sig):
+        """Send *sig* to the download's process group, falling back to the
+        process itself. Returns True if a signal was delivered.
+
+        Only signal the whole group when the child actually became its own
+        group leader via os.setpgrp() in _download() — that sets its pgid
+        equal to its own pid. If it hasn't run setpgrp() yet, or setpgrp()
+        failed, its pgid is still the SERVER's group and killpg would signal
+        the entire MeTube process (PID 1 in Docker). Fall back to signalling
+        just the child process by pid in that case.
+        """
+        try:
+            pgid = os.getpgid(self.proc.pid)
+            if pgid == self.proc.pid:
+                os.killpg(pgid, sig)
+                return True
+        except (OSError, AttributeError):
+            pass
+        try:
+            if sig == signal.SIGINT:
+                os.kill(self.proc.pid, sig)
+            else:
+                self.proc.kill()
+            return True
+        except Exception as e:
+            log.error(f"Error signalling process for {self.info.title}: {e}")
+            return False
+
+    def _kill_if_alive(self):
+        if self.running():
+            log.info(f"Escalating cancel to SIGKILL for: {self.info.title}")
+            self._signal_group(signal.SIGKILL)
+
     def cancel(self):
         log.info(f"Cancelling download: {self.info.title}")
         if self.running():
-            killed_group = False
-            try:
-                pgid = os.getpgid(self.proc.pid)
-                # Only kill the whole group (yt-dlp + any ffmpeg children) when
-                # the child actually became its own group leader via
-                # os.setpgrp() in _download() — that sets its pgid equal to its
-                # own pid. If it hasn't run setpgrp() yet, or setpgrp() failed,
-                # its pgid is still the SERVER's group and killpg would SIGKILL
-                # the entire MeTube process (PID 1 in Docker). Fall back to
-                # killing just the child process by pid in that case.
-                if pgid == self.proc.pid:
-                    os.killpg(pgid, signal.SIGKILL)
-                    killed_group = True
-            except (OSError, AttributeError):
-                pass
-            if not killed_group:
-                try:
-                    self.proc.kill()
-                except Exception as e:
-                    log.error(f"Error killing process for {self.info.title}: {e}")
+            # SIGINT first so yt-dlp/ffmpeg can finalize the partial file
+            # (livestream recordings stay playable); SIGKILL after a grace
+            # period if the process ignores it.
+            interrupted = self._signal_group(signal.SIGINT)
+            if interrupted and self.loop is not None:
+                self.loop.call_later(_CANCEL_GRACE_SECONDS, self._kill_if_alive)
+            else:
+                self._kill_if_alive()
         self.canceled = True
         if self.status_queue is not None:
             self.status_queue.put(None)

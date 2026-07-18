@@ -49,6 +49,7 @@ sys.modules.setdefault("yt_dlp.postprocessor", fake_postprocessor)
 sys.modules.setdefault("yt_dlp.postprocessor.common", fake_postprocessor_common)
 sys.modules.setdefault("yt_dlp.utils", fake_utils)
 
+import ytdl
 from ytdl import (
     Download,
     DownloadInfo,
@@ -405,11 +406,16 @@ class ProgressThrottleTests(unittest.TestCase):
 
 
 class CancelProcessGroupTests(unittest.TestCase):
-    def test_cancel_kills_group_when_child_is_group_leader(self):
+    # cancel() now sends SIGINT first (so yt-dlp/ffmpeg can finalize the
+    # partial file) and schedules a SIGKILL escalation via the event loop
+    # after ytdl._CANCEL_GRACE_SECONDS, instead of SIGKILLing immediately.
+
+    def test_cancel_sends_sigint_to_group_and_schedules_sigkill_escalation(self):
         # Child successfully ran os.setpgrp(): its pgid equals its own pid.
         dl = _make_test_download()
         dl.proc = types.SimpleNamespace(pid=4321)
         dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+        dl.loop = MagicMock()
 
         with patch.object(Download, "running", return_value=True), \
              patch("ytdl.os.getpgid", return_value=4321) as mock_getpgid, \
@@ -417,37 +423,108 @@ class CancelProcessGroupTests(unittest.TestCase):
             dl.cancel()
 
         mock_getpgid.assert_called_once_with(4321)
-        mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
+        mock_killpg.assert_called_once_with(4321, signal.SIGINT)
+        dl.loop.call_later.assert_called_once_with(ytdl._CANCEL_GRACE_SECONDS, dl._kill_if_alive)
         self.assertTrue(dl.canceled)
 
-    def test_cancel_does_not_killpg_parent_group_kills_child_only(self):
+    def test_cancel_does_not_killpg_parent_group_signals_child_only(self):
         # Child has NOT become its own group leader yet (pgid != pid, e.g. it is
         # still in the server's process group). killpg must NOT be called — that
-        # would SIGKILL the whole server — and we fall back to proc.kill().
+        # would signal the whole server — and we fall back to os.kill(pid, SIGINT).
         dl = _make_test_download()
-        dl.proc = types.SimpleNamespace(pid=4321, kill=MagicMock())
+        dl.proc = types.SimpleNamespace(pid=4321)
         dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+        dl.loop = MagicMock()
 
         with patch.object(Download, "running", return_value=True), \
              patch("ytdl.os.getpgid", return_value=999), \
-             patch("ytdl.os.killpg") as mock_killpg:
+             patch("ytdl.os.killpg") as mock_killpg, \
+             patch("ytdl.os.kill") as mock_kill:
             dl.cancel()
 
         mock_killpg.assert_not_called()
-        dl.proc.kill.assert_called_once()
+        mock_kill.assert_called_once_with(4321, signal.SIGINT)
+        dl.loop.call_later.assert_called_once_with(ytdl._CANCEL_GRACE_SECONDS, dl._kill_if_alive)
         self.assertTrue(dl.canceled)
 
-    def test_cancel_falls_back_to_proc_kill_when_getpgid_unavailable(self):
+    def test_cancel_falls_back_to_pid_signal_when_getpgid_unavailable(self):
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321)
+        dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+        dl.loop = MagicMock()
+
+        with patch.object(Download, "running", return_value=True), \
+             patch("ytdl.os.getpgid", side_effect=OSError("no such process")), \
+             patch("ytdl.os.kill") as mock_kill:
+            dl.cancel()
+
+        mock_kill.assert_called_once_with(4321, signal.SIGINT)
+        dl.loop.call_later.assert_called_once_with(ytdl._CANCEL_GRACE_SECONDS, dl._kill_if_alive)
+        self.assertTrue(dl.canceled)
+
+    def test_cancel_kills_immediately_when_signal_delivery_fails(self):
+        # Neither killpg nor os.kill succeed (process already gone): cancel()
+        # must fall through to an immediate SIGKILL attempt instead of
+        # scheduling a pointless escalation.
         dl = _make_test_download()
         dl.proc = types.SimpleNamespace(pid=4321, kill=MagicMock())
         dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+        dl.loop = MagicMock()
 
         with patch.object(Download, "running", return_value=True), \
-             patch("ytdl.os.getpgid", side_effect=OSError("no such process")):
+             patch("ytdl.os.getpgid", side_effect=OSError("no such process")), \
+             patch("ytdl.os.kill", side_effect=ProcessLookupError()):
             dl.cancel()
 
+        dl.loop.call_later.assert_not_called()
         dl.proc.kill.assert_called_once()
         self.assertTrue(dl.canceled)
+
+    def test_cancel_schedules_escalation_even_without_running_loop(self):
+        # dl.loop is None (e.g. cancel() called before start()'s run_in_executor
+        # set it up): _kill_if_alive() must run synchronously instead of being
+        # scheduled, since there's no loop to schedule it on.
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321)
+        dl.status_queue = types.SimpleNamespace(put=lambda _item: None)
+        self.assertIsNone(dl.loop)
+
+        with patch.object(Download, "running", side_effect=[True, True]), \
+             patch("ytdl.os.getpgid", return_value=4321), \
+             patch("ytdl.os.killpg") as mock_killpg:
+            dl.cancel()
+
+        # First SIGINT, then _kill_if_alive() ran inline and sent SIGKILL.
+        mock_killpg.assert_has_calls([
+            unittest.mock.call(4321, signal.SIGINT),
+            unittest.mock.call(4321, signal.SIGKILL),
+        ])
+        self.assertTrue(dl.canceled)
+
+
+class KillIfAliveTests(unittest.TestCase):
+    def test_kill_if_alive_sigkills_running_process(self):
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321)
+
+        with patch.object(Download, "running", return_value=True), \
+             patch("ytdl.os.getpgid", return_value=4321), \
+             patch("ytdl.os.killpg") as mock_killpg:
+            dl._kill_if_alive()
+
+        mock_killpg.assert_called_once_with(4321, signal.SIGKILL)
+
+    def test_kill_if_alive_noop_when_process_already_exited(self):
+        dl = _make_test_download()
+        dl.proc = types.SimpleNamespace(pid=4321)
+
+        with patch.object(Download, "running", return_value=False), \
+             patch("ytdl.os.killpg") as mock_killpg, \
+             patch("ytdl.os.kill") as mock_kill:
+            dl._kill_if_alive()
+
+        mock_killpg.assert_not_called()
+        mock_kill.assert_not_called()
 
 
 class ConvertSrtToTxtTests(unittest.TestCase):
