@@ -1,0 +1,31 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Read this first — MeTube's scope
+
+        MeTube's scope is deliberately narrow: **it downloads well and stops once the file is written.**
+        Ideas that improve the download itself are welcome — usually as community PRs, since the
+        maintainer is unlikely to implement requests ([details](https://github.com/alexta69/metube#-submitting-feature-requests)).
+        Post-download file management is out of scope regardless of implementation quality.
+
+        **Already decided — please don't re-request:**
+        - 🔒 Built-in authentication / password → use a reverse proxy ([#931](https://github.com/alexta69/metube/issues/931), [wiki](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations))
+        - 🔔 Notifications on download completion → available today via the `Exec` postprocessor ([recipe](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook))
+        - ✏️ Renaming, converting, tagging, or organizing files after download → out of scope ([#495](https://github.com/alexta69/metube/issues/495), [#1027](https://github.com/alexta69/metube/issues/1027))
+        - 🎚️ Pre-download format/quality/audio-track picker → tracked in [#1032](https://github.com/alexta69/metube/issues/1032)
+        - 📋 Pre-download playlist item browser → tracked in [#1030](https://github.com/alexta69/metube/issues/1030)
+        - 🎛️ Config switches to disable individual features → declined ([#976](https://github.com/alexta69/metube/issues/976))
+        - ⏰ Download scheduler → declined; add items with auto-start off and start them when you like ([#838](https://github.com/alexta69/metube/issues/838))
+
+  - type: textarea
+    id: idea
+    attributes:
+      label: Your Idea
+      description: Describe the idea and what problem it solves
+      placeholder: |
+        What would you like to see?
+        What problem does it solve?
+        Would you be willing to implement it as a PR?
+    validations:
+      required: true

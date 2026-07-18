@@ -9,24 +9,20 @@ body:
     id: prerequisites
     attributes:
       label: Prerequisites
-      description: Please confirm you have completed these steps before submitting your bug report
+      description: Please confirm before submitting
       options:
         - label: I have searched existing issues and discussions to ensure this bug hasn't been reported before
           required: true
-        - label: I have read the [troubleshooting section](https://github.com/alexta69/metube#-troubleshooting-and-submitting-issues) in the README
-          required: true
-        - label: I have tested this issue with yt-dlp directly (not just through MeTube UI) as described in the README
-          required: true
-        - label: I have checked that this is not a yt-dlp issue (if it is, please report it to [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues) instead)
+        - label: If the download itself fails, I have tested the same URL and options with yt-dlp directly (see the note below) — or this bug is not download-related
           required: true
 
   - type: markdown
     attributes:
       value: |
         ## Important Notes
-        - **MeTube is only a UI for yt-dlp** - issues with authentication, postprocessing, permissions, or other yt-dlp functionality should be reported to the [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues)
-        - Before reporting, please test with yt-dlp directly using: `docker exec -ti metube sh` then `cd /downloads` and run yt-dlp commands
-        - If yt-dlp works directly but MeTube doesn't, then it's a MeTube issue
+        - **MeTube is only a UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp)** — issues with authentication, postprocessing, site support, or other download functionality should be reported to the [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues)
+        - To test with yt-dlp directly: `docker exec -ti metube sh`, then `cd /downloads` and run `yt-dlp` with your URL and options
+        - If yt-dlp works directly but MeTube doesn't, then it's a MeTube issue — report it here
 
   - type: textarea
     id: bug-description
@@ -47,10 +43,13 @@ body:
     id: ytdl-test-results
     attributes:
       label: yt-dlp Direct Test Results
-      description: Results of testing the same URL/configuration directly with yt-dlp (required)
+      description: >-
+        If the download itself fails: paste the exact yt-dlp command you ran AND its output —
+        download-failure reports without this will be closed as needs-info.
+        If this is a UI or app bug that doesn't involve a failing download, just write "UI bug".
       placeholder: |
         Command used: yt-dlp [your-command-here]
-        Result: [success/error and output]
+        Result: [paste the output here]
     validations:
       required: true
 
@@ -64,12 +63,12 @@ body:
         - MeTube version: [e.g., latest, specific version]
         - Docker image: [e.g., ghcr.io/alexta69/metube:latest]
         - Operating System: [e.g., Ubuntu 20.04, Windows 10, macOS 12]
-        
+
         Configuration:
         ```yaml
         # Your docker-compose.yml or environment variables
         ```
-        
+
         Logs:
         ```bash
         docker logs metube

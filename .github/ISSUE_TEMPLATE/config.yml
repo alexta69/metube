@@ -1,8 +1,11 @@
 blank_issues_enabled: false
 contact_links:
-  - name: MeTube Community Discussions
-    url: https://github.com/alexta69/metube/discussions
-    about: Ask questions and discuss MeTube with the community
-  - name: yt-dlp Issues
+  - name: ❓ Questions & Support
+    url: https://github.com/alexta69/metube/discussions/categories/q-a
+    about: Ask usage and configuration questions in Discussions Q&A — issues are for bugs and feature requests
+  - name: 📖 Troubleshooting FAQ
+    url: https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ
+    about: Common problems and their fixes
+  - name: ⬇️ yt-dlp Issues
     url: https://github.com/yt-dlp/yt-dlp/issues
     about: Report issues related to video downloading, authentication, or site support

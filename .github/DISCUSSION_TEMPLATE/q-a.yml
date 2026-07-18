@@ -1,0 +1,23 @@
+body:
+  - type: markdown
+    attributes:
+      value: |
+        ## Quick Resources
+
+        Your question may already be answered here:
+        - **[README](https://github.com/alexta69/metube#readme)** — complete setup and configuration guide
+        - **[Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ)** — common problems and their fixes
+        - **[YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)** — common yt-dlp configurations (notifications, metadata, audio extraction, ...)
+        - **[OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)** — filename template examples
+
+  - type: textarea
+    id: question
+    attributes:
+      label: Your Question
+      description: What would you like to know about MeTube?
+      placeholder: |
+        What are you trying to achieve?
+        What's your current setup (docker-compose / environment variables)?
+        What have you tried so far, and what happened (errors, logs)?
+    validations:
+      required: true
