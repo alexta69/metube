@@ -898,6 +898,40 @@ def _make_download(dq_env, *, download_type="video", status="downloading", filen
     )
 
 
+def test_download_close_releases_status_queue(dq_env):
+    download = _make_download(dq_env)
+    status_queue = MagicMock()
+    proc = MagicMock()
+    download.status_queue = status_queue
+    download.proc = proc
+
+    download.close()
+
+    proc.close.assert_called_once()
+    assert download.status_queue is None
+
+
+def test_download_close_releases_status_queue_without_process(dq_env):
+    download = _make_download(dq_env)
+    download.status_queue = MagicMock()
+
+    download.close()
+
+    assert download.status_queue is None
+
+
+def test_download_close_releases_status_queue_when_process_close_fails(dq_env):
+    download = _make_download(dq_env)
+    download.status_queue = MagicMock()
+    download.proc = MagicMock()
+    download.proc.close.side_effect = RuntimeError('close failed')
+
+    with pytest.raises(RuntimeError, match='close failed'):
+        download.close()
+
+    assert download.status_queue is None
+
+
 @pytest.mark.asyncio
 async def test_post_download_cleanup_clears_filename_on_error(dq_env):
     notifier = AsyncMock()
