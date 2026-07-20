@@ -93,9 +93,10 @@ class AddressResolutionTests(unittest.TestCase):
         # If any resolved address is internal, reject the whole URL.
         self.assertIsNotNone(self._validate_with_addrs("http://mixed/x", "142.250.1.1", "127.0.0.1"))
 
-    def test_resolution_failure_defers_to_ytdlp(self):
+    def test_resolution_failure_is_rejected(self):
+        # Fail closed: an unresolvable host cannot be verified as non-internal.
         with mock.patch("url_guard.socket.getaddrinfo", side_effect=socket.gaierror):
-            self.assertIsNone(validate_url("http://does-not-resolve.example/x"))
+            self.assertIsNotNone(validate_url("http://does-not-resolve.example/x"))
 
 
 if __name__ == "__main__":

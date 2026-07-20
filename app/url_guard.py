@@ -76,8 +76,10 @@ def validate_url(url: str) -> str | None:
     try:
         addrinfo = socket.getaddrinfo(hostname, parts.port, proto=socket.IPPROTO_TCP)
     except socket.gaierror:
-        # Let yt-dlp surface a normal resolution error rather than masking it.
-        return None
+        # Fail closed: a host we cannot resolve is a host we cannot verify as
+        # non-internal, so refuse it rather than letting the download proceed
+        # to a target that may resolve differently at fetch time.
+        return f'Could not resolve host "{hostname}"'
     except (UnicodeError, ValueError):
         return f'Invalid host "{hostname}"'
 
