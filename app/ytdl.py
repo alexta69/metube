@@ -145,16 +145,36 @@ def _sanitize_path_component(value: Any) -> Any:
     return value.lstrip('.').strip() or '_'
 
 
-def _output_dir_escapes(base_dir: str, output_template: str) -> bool:
-    """True when the literal directory prefix of *output_template* resolves outside *base_dir*."""
-    marker = output_template.find('%(')
-    literal = output_template if marker == -1 else output_template[:marker]
-    dir_prefix = os.path.dirname(literal)
-    if not dir_prefix:
-        return False
-    real_base = os.path.realpath(base_dir)
-    real_target = os.path.realpath(os.path.join(base_dir, dir_prefix))
-    return not _is_within_directory(real_base, real_target)
+class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
+    """A ``YoutubeDL`` that refuses to emit any output path outside the allowed roots.
+
+    This is the single authoritative enforcement of MeTube's download-directory
+    containment invariant. yt-dlp expands output templates at download time using
+    metadata that is fully attacker-controlled (``%(title)s``, ``%(uploader)s``,
+    ``%(section_title)s`` from chapter titles, …) and, on POSIX hosts, does *not*
+    neutralise a ``..`` path component — so any template segment resolving to
+    ``..`` next to a literal separator (or an absolute template) can traverse out
+    of the download directory. Every output path — main file, split-chapter files,
+    thumbnails, subtitles, infojson — is produced by ``prepare_filename``, so
+    validating its result here covers them all, regardless of which template or
+    metadata field carries the traversal. Checking the resolved path (rather than
+    the template string) is what makes this robust: the ``..`` only exists after
+    expansion, so no ingress string check can see it.
+    """
+
+    def __init__(self, params=None, *, allowed_roots=(), **kwargs):
+        self._allowed_roots = [os.path.realpath(r) for r in allowed_roots if r]
+        super().__init__(params=params, **kwargs)
+
+    def prepare_filename(self, *args, **kwargs):
+        filename = super().prepare_filename(*args, **kwargs)
+        if filename and filename != '-' and self._allowed_roots:
+            resolved = os.path.realpath(filename)
+            if not any(_is_within_directory(root, resolved) for root in self._allowed_roots):
+                raise yt_dlp.utils.DownloadError(
+                    f'Refusing to write outside the download directory: {filename}'
+                )
+        return filename
 
 
 # Regex matching yt-dlp output-template field references, e.g. ``%(title)s``
@@ -598,7 +618,10 @@ class Download:
         return put_status
 
     def _make_youtube_dl(self, params):
-        ydl = yt_dlp.YoutubeDL(params=params)
+        ydl = _ConfinedYoutubeDL(
+            params=params,
+            allowed_roots=(self.download_dir, self.temp_dir),
+        )
         if getattr(self.info, 'download_type', '') == 'audio':
             ydl.add_post_processor(_AlbumArtistPostProcessor(ydl), when='pre_process')
         return ydl
@@ -1301,8 +1324,6 @@ class DownloadQueue:
         if playlist_item_limit > 0:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
-        if _output_dir_escapes(dldirectory, output):
-            return {'status': 'error', 'msg': 'Refusing download: resolved output path escapes the download directory'}
         download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
         is_upcoming = (
             getattr(dl, 'live_status', None) == 'is_upcoming'

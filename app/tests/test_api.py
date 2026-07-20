@@ -139,25 +139,6 @@ async def test_add_invalid_subtitle_language(mock_dqueue):
 
 
 @pytest.mark.asyncio
-async def test_add_custom_name_prefix_path_traversal(mock_dqueue):
-    req = _json_request(_valid_video_add_body(custom_name_prefix="../evil"))
-    with pytest.raises(web.HTTPBadRequest):
-        await main.add(req)
-
-
-@pytest.mark.asyncio
-async def test_add_chapter_template_path_traversal(mock_dqueue):
-    req = _json_request(
-        _valid_video_add_body(
-            split_by_chapters=True,
-            chapter_template="/etc/passwd%(title)s",
-        )
-    )
-    with pytest.raises(web.HTTPBadRequest):
-        await main.add(req)
-
-
-@pytest.mark.asyncio
 async def test_add_invalid_json_body(mock_dqueue):
     req = MagicMock(spec=web.Request)
     req.json = AsyncMock(side_effect=json.JSONDecodeError("msg", "", 0))

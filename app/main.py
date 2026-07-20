@@ -717,8 +717,6 @@ def parse_download_options(post: dict) -> dict:
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
-    if custom_name_prefix and ('..' in custom_name_prefix or custom_name_prefix.startswith('/') or custom_name_prefix.startswith('\\')):
-        raise web.HTTPBadRequest(reason='custom_name_prefix must not contain ".." or start with a path separator')
     if auto_start is None:
         auto_start = True
     if playlist_item_limit is None:
@@ -743,8 +741,6 @@ def parse_download_options(post: dict) -> dict:
         enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
     )
 
-    if chapter_template and ('..' in chapter_template or chapter_template.startswith('/') or chapter_template.startswith('\\')):
-        raise web.HTTPBadRequest(reason='chapter_template must not contain ".." or start with a path separator')
     if not SUBTITLE_LANGUAGE_RE.fullmatch(subtitle_language):
         raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
     if subtitle_mode not in VALID_SUBTITLE_MODES:

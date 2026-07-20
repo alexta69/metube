@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import os
 import pickle
 import signal
 import sys
@@ -31,6 +32,25 @@ class _PostProcessor:
         self._downloader = downloader
 
 
+class _YoutubeDL:
+    """Minimal stand-in so ``_ConfinedYoutubeDL`` can subclass it under the shim.
+
+    ``prepare_filename`` is patched per-test; the real containment logic lives in
+    the ``_ConfinedYoutubeDL`` override, which is what the tests exercise.
+    """
+
+    def __init__(self, params=None, **kwargs):
+        self.params = params or {}
+
+    def prepare_filename(self, *args, **kwargs):
+        return ""
+
+    def add_post_processor(self, *args, **kwargs):
+        pass
+
+
+fake_utils.DownloadError = type("DownloadError", (Exception,), {})
+fake_yt_dlp.YoutubeDL = _YoutubeDL
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
 fake_postprocessor_common.PostProcessor = _PostProcessor
@@ -56,15 +76,17 @@ from ytdl import (
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
     _AlbumArtistPostProcessor,
-    _output_dir_escapes,
     _resolve_outtmpl_fields,
     _sanitize_entry_for_pickle,
     _sanitize_path_component,
 )
 
 # Detect whether the real yt-dlp is loaded (as opposed to the minimal fake
-# shim above).  _resolve_outtmpl_fields needs YoutubeDL at runtime.
-_has_real_ytdlp = hasattr(sys.modules.get("yt_dlp"), "YoutubeDL")
+# shim above).  _resolve_outtmpl_fields needs YoutubeDL.evaluate_outtmpl at
+# runtime, which the shim's YoutubeDL stand-in deliberately does not provide.
+_has_real_ytdlp = hasattr(
+    getattr(sys.modules.get("yt_dlp"), "YoutubeDL", None), "evaluate_outtmpl"
+)
 
 
 class AlbumArtistPostProcessorTests(unittest.TestCase):
@@ -175,7 +197,7 @@ class AlbumArtistRegistrationTests(unittest.TestCase):
         download.info.download_type = 'audio'
         fake_ydl = MagicMock()
 
-        with patch('ytdl.yt_dlp.YoutubeDL', return_value=fake_ydl):
+        with patch('ytdl._ConfinedYoutubeDL', return_value=fake_ydl):
             result = download._make_youtube_dl({'quiet': True})
 
         self.assertIs(result, fake_ydl)
@@ -187,7 +209,7 @@ class AlbumArtistRegistrationTests(unittest.TestCase):
         download = _make_test_download()
         fake_ydl = MagicMock()
 
-        with patch('ytdl.yt_dlp.YoutubeDL', return_value=fake_ydl):
+        with patch('ytdl._ConfinedYoutubeDL', return_value=fake_ydl):
             download._make_youtube_dl({'quiet': True})
 
         fake_ydl.add_post_processor.assert_not_called()
@@ -301,18 +323,50 @@ class ResolveOuttmplFieldsTests(unittest.TestCase):
         self.assertFalse(literal_prefix.startswith('\\'))
 
 
-class OutputDirEscapesTests(unittest.TestCase):
+class ConfinedYoutubeDLTests(unittest.TestCase):
+    """The chokepoint: ``_ConfinedYoutubeDL.prepare_filename`` validates the
+    *resolved* output path (after yt-dlp expands the template) and refuses any
+    write outside the allowed roots. This is the single guard for the download-
+    directory invariant across the main file, split-chapter files, thumbnails,
+    subtitles, etc. — the ``..`` only exists post-expansion, so it is caught here
+    rather than by any ingress string check.
+    """
+
     def setUp(self):
-        self.base_dir = tempfile.mkdtemp()
+        self.base = os.path.realpath(tempfile.mkdtemp())
 
-    def test_relative_traversal_escapes(self):
-        self.assertTrue(_output_dir_escapes(self.base_dir, '../../tmp/x/%(title)s.%(ext)s'))
+    def _prepared_path(self, resolved, roots=None):
+        ydl = ytdl._ConfinedYoutubeDL.__new__(ytdl._ConfinedYoutubeDL)
+        ydl._allowed_roots = [self.base] if roots is None else roots
+        with patch.object(
+            ytdl.yt_dlp.YoutubeDL, "prepare_filename", return_value=resolved
+        ):
+            return ydl.prepare_filename({})
 
-    def test_absolute_path_escapes(self):
-        self.assertTrue(_output_dir_escapes(self.base_dir, '/tmp/x/%(title)s.%(ext)s'))
+    def test_chapter_traversal_via_metadata_is_blocked(self):
+        # e.g. chapter_template '%(section_title)s/%(section_title)s/pwned.%(ext)s'
+        # with a chapter titled '..' expands to '../../pwned.mp4'.
+        escaping = os.path.join(self.base, "..", "..", "pwned.mp4")
+        with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+            self._prepared_path(escaping)
 
-    def test_normal_playlist_dir_stays_inside(self):
-        self.assertFalse(_output_dir_escapes(self.base_dir, 'Playlist/%(title)s.%(ext)s'))
+    def test_absolute_output_path_is_blocked(self):
+        with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+            self._prepared_path("/etc/cron.d/evil")
+
+    def test_path_inside_download_dir_is_allowed(self):
+        ok = os.path.join(self.base, "Playlist", "video.mp4")
+        self.assertEqual(self._prepared_path(ok), ok)
+
+    def test_sibling_prefix_directory_is_blocked(self):
+        # base '/x/downloads' must not be escapable to '/x/downloads-secret'.
+        sibling = self.base + "-secret"
+        with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+            self._prepared_path(os.path.join(sibling, "video.mp4"))
+
+    def test_empty_and_stdout_targets_pass_through(self):
+        self.assertEqual(self._prepared_path(""), "")
+        self.assertEqual(self._prepared_path("-"), "-")
 
 
 class SanitizeEntryForPickleTests(unittest.TestCase):
