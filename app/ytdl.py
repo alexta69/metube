@@ -27,6 +27,7 @@ from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
 from url_guard import validate_url
+from urllib.parse import urlsplit
 
 log = logging.getLogger('ytdl')
 
@@ -475,6 +476,17 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "size",
     "chapter_files",
 )
+
+
+def _short_title_for_failed_url(url: str) -> str:
+    """A concise display title for a URL that failed before yt-dlp could extract a
+    real title (unsupported URL, SSRF-rejected, extraction error). The full URL
+    remains available in DownloadInfo.url and the error-detail panel."""
+    try:
+        hostname = urlsplit(url).hostname
+    except ValueError:
+        hostname = None
+    return hostname or url
 
 
 _COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index"))
@@ -1485,6 +1497,58 @@ class DownloadQueue:
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
+    async def __record_add_failure(
+        self,
+        url,
+        msg,
+        download_type,
+        codec,
+        format,
+        quality,
+        folder,
+        custom_name_prefix,
+        playlist_item_limit,
+        split_by_chapters,
+        chapter_template,
+        subtitle_language,
+        subtitle_mode,
+        ytdl_options_presets,
+        ytdl_options_overrides,
+        clip_start,
+        clip_end,
+    ):
+        """Surface a URL that failed before a DownloadInfo could be created (unsupported
+        URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
+        frontend shows it with the same red-cross/retry/error-detail treatment as a
+        download that failed mid-stream, instead of only a toast and a server log line."""
+        info = DownloadInfo(
+            id=url,
+            title=_short_title_for_failed_url(url),
+            url=url,
+            quality=quality,
+            download_type=download_type,
+            codec=codec,
+            format=format,
+            folder=folder,
+            custom_name_prefix=custom_name_prefix,
+            error=msg,
+            entry=None,
+            playlist_item_limit=playlist_item_limit,
+            split_by_chapters=split_by_chapters,
+            chapter_template=chapter_template,
+            subtitle_language=subtitle_language,
+            subtitle_mode=subtitle_mode,
+            ytdl_options_presets=ytdl_options_presets,
+            ytdl_options_overrides=ytdl_options_overrides,
+            clip_start=clip_start,
+            clip_end=clip_end,
+        )
+        info.status = 'error'
+        info.msg = msg
+        download = Download(None, None, None, None, quality, format, {}, info)
+        self.done.put(download)
+        await self.notifier.completed(info)
+
     async def add(
         self,
         url,
@@ -1529,6 +1593,12 @@ class DownloadQueue:
         url_error = await asyncio.get_running_loop().run_in_executor(None, validate_url, url)
         if url_error is not None:
             log.warning('Rejected URL "%s": %s', url, url_error)
+            await self.__record_add_failure(
+                url, url_error, download_type, codec, format, quality, folder,
+                custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
+                subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
+                clip_start, clip_end,
+            )
             return {'status': 'error', 'msg': url_error}
         try:
             entry = await asyncio.get_running_loop().run_in_executor(
@@ -1536,7 +1606,14 @@ class DownloadQueue:
                 partial(self.__extract_info, url, ytdl_options_presets, ytdl_options_overrides),
             )
         except yt_dlp.utils.YoutubeDLError as exc:
-            return {'status': 'error', 'msg': str(exc)}
+            msg = str(exc)
+            await self.__record_add_failure(
+                url, msg, download_type, codec, format, quality, folder,
+                custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
+                subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
+                clip_start, clip_end,
+            )
+            return {'status': 'error', 'msg': msg}
         return await self.__add_entry(
             entry,
             download_type,

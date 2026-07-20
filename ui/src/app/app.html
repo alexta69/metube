@@ -794,11 +794,6 @@
                 @if (entry[1].status === 'error') {
                   <button type="button" class="btn btn-link p-0 text-start align-baseline" (click)="toggleErrorDetail(entry[0])">
                     {{entry[1].title}}
-                    @if (!isErrorExpanded(entry[0])) {
-                      <small class="text-danger ms-2">
-                        <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
-                      </small>
-                    }
                   </button>
                 } @else {
                   <span>{{entry[1].title}}</span>
