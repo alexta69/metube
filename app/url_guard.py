@@ -13,8 +13,18 @@ This module provides two layers:
   covers redirects, DNS rebinding, and media URLs yt-dlp derives from remote
   metadata — for any backend that resolves through Python's socket module.
 
-Native resolvers (curl_cffi/libcurl via ``--impersonate``) bypass the socket
-guard; network isolation (e.g. Docker) remains the backstop for those.
+Known limitations — network isolation (e.g. Docker) remains the backstop for
+all of these:
+
+* The socket guard is installed only in the download subprocess. Metadata
+  extraction (``ytdl.DownloadQueue.__extract_info``) runs in the main process,
+  where installing a process-wide guard would reject the server's own bind on
+  ``HOST=0.0.0.0``. So extraction — which also follows redirects — is covered
+  only by ``validate_url`` at ingress, not at connect time; a redirect from an
+  allowed host to an internal one during extraction is not blocked (a lower-
+  impact, blind SSRF, since the extraction response is not written to disk).
+* Native resolvers (curl_cffi/libcurl via ``--impersonate``) resolve outside
+  Python's socket module and bypass the connect-time guard entirely.
 """
 
 import ipaddress

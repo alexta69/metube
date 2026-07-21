@@ -1269,6 +1269,11 @@ class DownloadQueue:
         return opts
 
     def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        # NOTE: extraction runs in the main process, so the connect-time socket
+        # guard (installed only in the download subprocess) does not apply here.
+        # The ingress validate_url check guards the submitted URL, but redirects
+        # followed during extraction are not re-validated. See url_guard's module
+        # docstring for why the guard can't be installed process-wide.
         debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
         user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides)
         params = {
