@@ -557,11 +557,12 @@ class Download:
             cls.manager.shutdown()
             cls.manager = None
 
-    def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info):
+    def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info, allow_private=False):
         self.download_dir = download_dir
         self.temp_dir = temp_dir
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
+        self.allow_private = allow_private
         self.info = info
         self.format = get_format(
             getattr(info, 'download_type', 'video'),
@@ -637,8 +638,9 @@ class Download:
                 pass
         # Re-validate every outbound connection at fetch time. validate_url only
         # saw the submitted URL string; this catches redirects and DNS rebinding
-        # to internal hosts (cloud metadata, RFC1918) that it cannot.
-        install_socket_guard()
+        # to internal hosts (cloud metadata, RFC1918) that it cannot. Skipped when
+        # ALLOW_PRIVATE_ADDRESSES trusts the environment (e.g. Fake-IP proxies).
+        install_socket_guard(self.allow_private)
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
@@ -1333,7 +1335,7 @@ class DownloadQueue:
         if playlist_item_limit > 0:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
-        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl)
+        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl, allow_private=self.config.ALLOW_PRIVATE_ADDRESSES)
         is_upcoming = (
             getattr(dl, 'live_status', None) == 'is_upcoming'
             or getattr(dl, 'status', None) == 'scheduled'
@@ -1556,7 +1558,8 @@ class DownloadQueue:
         # SSRF guard: reject non-http(s) schemes and hosts resolving to
         # internal/loopback/link-local/metadata addresses before yt-dlp fetches
         # anything. run_in_executor because validate_url may perform a DNS lookup.
-        url_error = await asyncio.get_running_loop().run_in_executor(None, validate_url, url)
+        url_error = await asyncio.get_running_loop().run_in_executor(
+            None, partial(validate_url, url, allow_private=self.config.ALLOW_PRIVATE_ADDRESSES))
         if url_error is not None:
             log.warning('Rejected URL "%s": %s', url, url_error)
             return {'status': 'error', 'msg': url_error}

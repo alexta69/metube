@@ -145,6 +145,32 @@ class GuardedGetaddrinfoTests(unittest.TestCase):
         self.assertEqual([r[4][0] for r in results], ["127.0.0.1"])
 
 
+class AllowPrivateBypassTests(unittest.TestCase):
+    """ALLOW_PRIVATE_ADDRESSES: trusted proxy/VPN environments opt out of the
+    SSRF address checks (e.g. Fake-IP clients that resolve to 198.18.0.0/15)."""
+
+    def test_internal_address_allowed_when_bypassed(self):
+        # Fake-IP benchmarking range that is_global rejects by default.
+        self.assertIsNone(validate_url("http://www.youtube.com/x", allow_private=True))
+
+    def test_private_host_allowed_when_bypassed(self):
+        # No DNS lookup needed: the bypass returns before resolution.
+        with mock.patch("url_guard.socket.getaddrinfo") as gai:
+            self.assertIsNone(validate_url("http://192.168.1.1/x", allow_private=True))
+            gai.assert_not_called()
+
+    def test_scheme_still_enforced_when_bypassed(self):
+        self.assertIsNotNone(validate_url("file:///etc/passwd", allow_private=True))
+
+    def test_socket_guard_not_installed_when_bypassed(self):
+        original = socket.getaddrinfo
+        try:
+            install_socket_guard(allow_private=True)
+            self.assertIs(socket.getaddrinfo, original)
+        finally:
+            socket.getaddrinfo = original
+
+
 class InstallSocketGuardTests(unittest.TestCase):
     def test_install_replaces_and_is_idempotent(self):
         original = socket.getaddrinfo

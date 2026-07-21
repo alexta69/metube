@@ -92,7 +92,7 @@ def _guarded_getaddrinfo(host, *args, **kwargs):
     return allowed
 
 
-def install_socket_guard() -> None:
+def install_socket_guard(allow_private: bool = False) -> None:
     """Enforce the no-internal-hosts policy at actual connection time.
 
     ``validate_url`` only checks the *submitted* URL string; yt-dlp then follows
@@ -102,16 +102,27 @@ def install_socket_guard() -> None:
     for any networking backend that resolves through Python's socket module
     (urllib, requests). Native resolvers — notably curl_cffi/libcurl used by
     ``--impersonate`` — bypass this and rely on network isolation as the backstop.
+
+    When *allow_private* is set (``ALLOW_PRIVATE_ADDRESSES``), the guard is not
+    installed at all, so proxy/VPN setups that route through private or Fake-IP
+    ranges keep working.
     """
+    if allow_private:
+        return
     socket.getaddrinfo = _guarded_getaddrinfo
 
 
-def validate_url(url: str) -> str | None:
+def validate_url(url: str, allow_private: bool = False) -> str | None:
     """Return an error message if the URL is disallowed, else ``None``.
 
     Inputs without a ``://`` scheme separator (bare video IDs, ``ytsearch:``
     and other yt-dlp search/extractor prefixes) are allowed unchanged so that
     non-URL entries keep working.
+
+    When *allow_private* is set (``ALLOW_PRIVATE_ADDRESSES``), the internal-host
+    and internal-address checks are skipped so that trusted proxy/VPN setups —
+    e.g. Fake-IP clients that resolve YouTube to ``198.18.0.0/15`` — can be used.
+    Scheme validation (http/https only) still applies.
     """
     if not isinstance(url, str):
         return 'Invalid URL'
@@ -129,6 +140,10 @@ def validate_url(url: str) -> str | None:
     hostname = parts.hostname
     if not hostname:
         return 'URL is missing a host'
+
+    if allow_private:
+        # Environment is explicitly trusted: skip the SSRF address checks.
+        return None
 
     if _hostname_is_blocked(hostname):
         return f'Refusing to fetch internal host "{hostname}"'
