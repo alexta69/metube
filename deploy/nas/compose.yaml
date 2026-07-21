@@ -1,0 +1,20 @@
+services:
+  metube:
+    image: ${METUBE_IMAGE:-ghcr.io/alexta69/metube:latest}
+    container_name: ${METUBE_CONTAINER_NAME:-metube}
+    restart: unless-stopped
+    ports:
+      - "${METUBE_BIND_ADDRESS:-0.0.0.0}:${METUBE_PORT:-8081}:8081"
+    volumes:
+      - "${METUBE_DOWNLOAD_DIR:?Set METUBE_DOWNLOAD_DIR in deploy/nas/.env}:/downloads"
+    environment:
+      PUID: "${METUBE_PUID:-1000}"
+      PGID: "${METUBE_PGID:-1000}"
+      DOWNLOAD_DIR: /downloads
+      STATE_DIR: /downloads/.metube
+      TEMP_DIR: /downloads
+      HTTP_PROXY: "${METUBE_HTTP_PROXY:-}"
+      HTTPS_PROXY: "${METUBE_HTTPS_PROXY:-}"
+      NO_PROXY: "${METUBE_NO_PROXY:-localhost,127.0.0.1,bilibili.com,.bilibili.com,bilivideo.com,.bilivideo.com}"
+      YTDL_OPTIONS: '${METUBE_YTDL_OPTIONS:-{}}'
+      YTDL_NIGHTLY_UPDATE_TIME: "${METUBE_YTDL_NIGHTLY_UPDATE_TIME:-04:00}"
