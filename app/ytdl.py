@@ -26,7 +26,7 @@ from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_la
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
-from url_guard import validate_url
+from url_guard import validate_url, install_socket_guard
 
 log = logging.getLogger('ytdl')
 
@@ -635,6 +635,10 @@ class Download:
                 os.setpgrp()
             except OSError:
                 pass
+        # Re-validate every outbound connection at fetch time. validate_url only
+        # saw the submitted URL string; this catches redirects and DNS rebinding
+        # to internal hosts (cloud metadata, RFC1918) that it cannot.
+        install_socket_guard()
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)

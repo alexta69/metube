@@ -6,7 +6,13 @@ import socket
 import unittest
 from unittest import mock
 
-from url_guard import validate_url
+import url_guard
+from url_guard import (
+    validate_url,
+    _address_allowed_at_connect,
+    _guarded_getaddrinfo,
+    install_socket_guard,
+)
 
 
 def _addrinfo(*addrs, family=socket.AF_INET):
@@ -97,6 +103,59 @@ class AddressResolutionTests(unittest.TestCase):
         # Fail closed: an unresolvable host cannot be verified as non-internal.
         with mock.patch("url_guard.socket.getaddrinfo", side_effect=socket.gaierror):
             self.assertIsNotNone(validate_url("http://does-not-resolve.example/x"))
+
+
+class ConnectAddressPolicyTests(unittest.TestCase):
+    """Connect-time policy: allow global + loopback, block everything else."""
+
+    def test_global_allowed(self):
+        self.assertTrue(_address_allowed_at_connect("142.250.1.1"))
+
+    def test_loopback_allowed(self):
+        # Loopback stays reachable so locally-configured proxies keep working.
+        self.assertTrue(_address_allowed_at_connect("127.0.0.1"))
+        self.assertTrue(_address_allowed_at_connect("::1"))
+
+    def test_link_local_metadata_blocked(self):
+        self.assertFalse(_address_allowed_at_connect("169.254.169.254"))
+
+    def test_private_blocked(self):
+        self.assertFalse(_address_allowed_at_connect("10.0.0.5"))
+        self.assertFalse(_address_allowed_at_connect("192.168.1.10"))
+
+    def test_ipv4_mapped_metadata_blocked(self):
+        self.assertFalse(_address_allowed_at_connect("::ffff:169.254.169.254"))
+
+
+class GuardedGetaddrinfoTests(unittest.TestCase):
+    def test_internal_only_raises(self):
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("169.254.169.254")):
+            with self.assertRaises(socket.gaierror):
+                _guarded_getaddrinfo("metadata", 80)
+
+    def test_filters_internal_keeps_global(self):
+        # Split-horizon rebinding: keep the public address, drop the internal one.
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("142.250.1.1", "10.0.0.1")):
+            results = _guarded_getaddrinfo("mixed", 80)
+        self.assertEqual([r[4][0] for r in results], ["142.250.1.1"])
+
+    def test_loopback_passes(self):
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("127.0.0.1")):
+            results = _guarded_getaddrinfo("localproxy", 9050)
+        self.assertEqual([r[4][0] for r in results], ["127.0.0.1"])
+
+
+class InstallSocketGuardTests(unittest.TestCase):
+    def test_install_replaces_and_is_idempotent(self):
+        original = socket.getaddrinfo
+        try:
+            install_socket_guard()
+            self.assertIs(socket.getaddrinfo, url_guard._guarded_getaddrinfo)
+            # Re-installing must not wrap the wrapper (real fn captured at import).
+            install_socket_guard()
+            self.assertIs(socket.getaddrinfo, url_guard._guarded_getaddrinfo)
+        finally:
+            socket.getaddrinfo = original
 
 
 if __name__ == "__main__":

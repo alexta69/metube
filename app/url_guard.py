@@ -5,10 +5,16 @@ any ``http(s)`` URL. Without a guard, an attacker can make the server fetch
 internal endpoints (cloud metadata services, loopback, RFC1918 hosts, etc.) and
 have the response saved to the download directory and served back.
 
-This module provides a single cheap validator applied at every URL ingress. It
-intentionally does NOT attempt DNS-rebinding pinning, redirect-chain
-re-validation, or validation of every media URL yt-dlp derives from remote
-metadata — network isolation (e.g. Docker) remains the backstop for those.
+This module provides two layers:
+
+* ``validate_url`` — a cheap validator applied at every URL ingress.
+* ``install_socket_guard`` — a connect-time ``getaddrinfo`` guard installed in
+  the download subprocess, which re-validates every resolved address and so
+  covers redirects, DNS rebinding, and media URLs yt-dlp derives from remote
+  metadata — for any backend that resolves through Python's socket module.
+
+Native resolvers (curl_cffi/libcurl via ``--impersonate``) bypass the socket
+guard; network isolation (e.g. Docker) remains the backstop for those.
 """
 
 import ipaddress
@@ -34,16 +40,60 @@ def _hostname_is_blocked(hostname: str) -> bool:
     return False
 
 
-def _address_is_global(addr: str) -> bool:
+def _normalise_ip(addr: str):
+    """Parse *addr*, unwrapping IPv4-mapped IPv6 (e.g. ``::ffff:169.254.169.254``)
+    so the embedded IPv4 address is judged on its own merits. Returns ``None``
+    when *addr* is not a valid IP literal."""
     try:
         ip = ipaddress.ip_address(addr)
     except ValueError:
-        return False
-    # Unwrap IPv4-mapped/compatible IPv6 (e.g. ::ffff:169.254.169.254) so the
-    # embedded IPv4 address is judged on its own merits.
+        return None
     if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped is not None:
         ip = ip.ipv4_mapped
-    return ip.is_global
+    return ip
+
+
+def _address_is_global(addr: str) -> bool:
+    ip = _normalise_ip(addr)
+    return ip is not None and ip.is_global
+
+
+def _address_allowed_at_connect(addr: str) -> bool:
+    """True if *addr* may be connected to at download time.
+
+    Permits global addresses and loopback — loopback so that locally-configured
+    proxies (e.g. ``proxy: http://127.0.0.1:9050``) keep working. Blocks the SSRF
+    targets that matter: link-local (cloud metadata at 169.254.169.254), private
+    (RFC1918), unique-local and every other non-global, non-loopback range.
+    """
+    ip = _normalise_ip(addr)
+    return ip is not None and (ip.is_global or ip.is_loopback)
+
+
+# Captured at import so re-installing the guard never wraps the wrapper.
+_real_getaddrinfo = socket.getaddrinfo
+
+
+def _guarded_getaddrinfo(host, *args, **kwargs):
+    results = _real_getaddrinfo(host, *args, **kwargs)
+    allowed = [r for r in results if _address_allowed_at_connect(r[4][0])]
+    if not allowed:
+        raise socket.gaierror(f'Refusing to connect to non-global address for host {host!r}')
+    return allowed
+
+
+def install_socket_guard() -> None:
+    """Enforce the no-internal-hosts policy at actual connection time.
+
+    ``validate_url`` only checks the *submitted* URL string; yt-dlp then follows
+    HTTP redirects and resolves media URLs from remote metadata without
+    re-validating them. Installing this in the download subprocess re-checks
+    every resolved address at connect time, covering redirects and DNS rebinding
+    for any networking backend that resolves through Python's socket module
+    (urllib, requests). Native resolvers — notably curl_cffi/libcurl used by
+    ``--impersonate`` — bypass this and rely on network isolation as the backstop.
+    """
+    socket.getaddrinfo = _guarded_getaddrinfo
 
 
 def validate_url(url: str) -> str | None:
