@@ -32,6 +32,8 @@ services:
       - /path/to/downloads:/downloads
 ```
 
+For a reusable Linux NAS profile with optional proxy routing, see [deploy/nas](deploy/nas/README.md).
+
 ## ⚙️ Configuration via environment variables
 
 Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in Docker Compose.
