@@ -73,6 +73,7 @@ import ytdl
 from ytdl import (
     Download,
     DownloadInfo,
+    MusicMetadataPreProcessor,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
     _AlbumArtistPostProcessor,
@@ -201,9 +202,15 @@ class AlbumArtistRegistrationTests(unittest.TestCase):
             result = download._make_youtube_dl({'quiet': True})
 
         self.assertIs(result, fake_ydl)
-        postprocessor, = fake_ydl.add_post_processor.call_args.args
+        album_artist_call = fake_ydl.add_post_processor.call_args_list[0]
+        postprocessor, = album_artist_call.args
         self.assertIsInstance(postprocessor, _AlbumArtistPostProcessor)
-        self.assertEqual(fake_ydl.add_post_processor.call_args.kwargs, {'when': 'pre_process'})
+        self.assertEqual(album_artist_call.kwargs, {'when': 'pre_process'})
+        metadata_pre_call = fake_ydl.add_post_processor.call_args_list[1]
+        metadata_preprocessor, = metadata_pre_call.args
+        self.assertIsInstance(metadata_preprocessor, MusicMetadataPreProcessor)
+        self.assertEqual(metadata_pre_call.kwargs, {'when': 'pre_process'})
+        self.assertEqual(fake_ydl.add_post_processor.call_count, 2)
 
     def test_video_download_does_not_register_postprocessor(self):
         download = _make_test_download()
