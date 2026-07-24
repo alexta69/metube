@@ -19,6 +19,7 @@ class DownloadsServiceStub {
   customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
+  retryCalls: string[] = [];
 
   getCookieStatus() {
     return of({ status: 'ok', has_cookies: false });
@@ -29,6 +30,11 @@ class DownloadsServiceStub {
   }
 
   add() {
+    return of({ status: 'ok' as const });
+  }
+
+  retry(id: string) {
+    this.retryCalls.push(id);
     return of({ status: 'ok' as const });
   }
 
@@ -267,6 +273,33 @@ describe('App', () => {
     const payload = app['buildAddPayload']();
     expect(payload.clipStart).toBe('0:10');
     expect(payload.clipEnd).toBe('1:20');
+  });
+
+  it('retries a failed download by its server-side queue id', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    const download = {
+      id: 'vid1',
+      title: 'Test Video',
+      url: 'https://example.com/v',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'error',
+      msg: 'temporary failure',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    };
+
+    app.retryDownload(download.url, download);
+
+    expect(downloads.retryCalls).toEqual([download.url]);
   });
 
   it('blocks subscribe with invalid title regex', () => {

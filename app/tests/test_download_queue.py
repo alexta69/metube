@@ -303,6 +303,55 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_retry_restores_playlist_output_context(dq_env):
+    notifier = AsyncMock()
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    failed_info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error="temporary failure",
+        entry={
+            "playlist_index": "01",
+            "playlist_title": "My Playlist",
+            "playlist_count": 10,
+        },
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    failed_info.status = "error"
+    dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
+
+    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert queued.output_template == "My Playlist/%(title)s.%(ext)s"
+    assert queued.info.entry["playlist_index"] == "01"
+    assert queued.info.entry["playlist_title"] == "My Playlist"
+
+
+@pytest.mark.asyncio
 async def test_add_entry_duplicate_while_pending_is_skipped_not_clobbered(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)

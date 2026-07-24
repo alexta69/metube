@@ -944,8 +944,12 @@ class PersistentQueue:
         ]
         return sorted(items, key=lambda item: item[1].timestamp)
 
-    def _should_persist_entry(self) -> bool:
-        return self.identifier != "completed"
+    def _should_persist_entry(self, info: DownloadInfo | dict[str, Any]) -> bool:
+        # Failed downloads need their compact playlist/channel context so a
+        # retry after a server restart still resolves the original outtmpl.
+        # Successful completed entries continue to omit extractor metadata.
+        status = info.get("status") if isinstance(info, dict) else info.status
+        return self.identifier != "completed" or status == "error"
 
     def _serialize_items(self):
         return [
@@ -953,7 +957,7 @@ class PersistentQueue:
                 "key": key,
                 "info": _download_info_to_record(
                     download.info,
-                    include_entry=self._should_persist_entry(),
+                    include_entry=self._should_persist_entry(download.info),
                 ),
             }
             for key, download in self.dict.items()
@@ -972,7 +976,7 @@ class PersistentQueue:
                         "key": item["key"],
                         "info": _download_info_to_record(
                             _download_info_from_record(item["info"]),
-                            include_entry=self._should_persist_entry(),
+                            include_entry=self._should_persist_entry(item["info"]),
                         ),
                     }
                     for item in items
@@ -993,7 +997,7 @@ class PersistentQueue:
                 "key": key,
                 "info": _download_info_to_record(
                     value,
-                    include_entry=self._should_persist_entry(),
+                    include_entry=self._should_persist_entry(value),
                 ),
             }
             for key, value in sorted(legacy_items, key=lambda item: item[1].timestamp)
@@ -1559,6 +1563,7 @@ class DownloadQueue:
         ytdl_options_overrides,
         clip_start,
         clip_end,
+        entry=None,
     ):
         """Surface a URL that failed before a DownloadInfo could be created (unsupported
         URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
@@ -1575,7 +1580,7 @@ class DownloadQueue:
             folder=folder,
             custom_name_prefix=custom_name_prefix,
             error=msg,
-            entry=None,
+            entry=entry,
             playlist_item_limit=playlist_item_limit,
             split_by_chapters=split_by_chapters,
             chapter_template=chapter_template,
@@ -1613,6 +1618,7 @@ class DownloadQueue:
         clip_end=None,
         already=None,
         _add_gen=None,
+        retry_entry=None,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -1641,7 +1647,7 @@ class DownloadQueue:
                 url, url_error, download_type, codec, format, quality, folder,
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end,
+                clip_start, clip_end, retry_entry,
             )
             return {'status': 'error', 'msg': url_error}
         try:
@@ -1655,9 +1661,12 @@ class DownloadQueue:
                 url, msg, download_type, codec, format, quality, folder,
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end,
+                clip_start, clip_end, retry_entry,
             )
             return {'status': 'error', 'msg': msg}
+        retry_context = _compact_persisted_entry(retry_entry)
+        if isinstance(entry, dict) and retry_context is not None:
+            entry = {**entry, **copy.deepcopy(retry_context)}
         return await self.__add_entry(
             entry,
             download_type,
@@ -1678,6 +1687,35 @@ class DownloadQueue:
             clip_end,
             already,
             _add_gen,
+        )
+
+    async def retry(self, id):
+        if not self.done.exists(id):
+            return {'status': 'error', 'msg': 'Failed download no longer exists.'}
+
+        info = self.done.get(id).info
+        if info.status != 'error':
+            return {'status': 'error', 'msg': 'Only failed downloads can be retried.'}
+
+        return await self.add(
+            info.url,
+            info.download_type,
+            info.codec,
+            info.format,
+            info.quality,
+            info.folder,
+            info.custom_name_prefix,
+            info.playlist_item_limit,
+            True,
+            info.split_by_chapters,
+            info.chapter_template,
+            info.subtitle_language,
+            info.subtitle_mode,
+            info.ytdl_options_presets,
+            info.ytdl_options_overrides,
+            info.clip_start,
+            info.clip_end,
+            retry_entry=info.entry,
         )
 
     async def add_entry(

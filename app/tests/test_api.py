@@ -20,6 +20,7 @@ def mock_dqueue(monkeypatch):
     d = MagicMock()
     d.initialize = AsyncMock(return_value=None)
     d.add = AsyncMock(return_value={"status": "ok"})
+    d.retry = AsyncMock(return_value={"status": "ok"})
     d.cancel = AsyncMock(return_value={"status": "ok"})
     d.clear = AsyncMock(return_value={"status": "ok"})
     d.start_pending = AsyncMock(return_value={"status": "ok"})
@@ -67,6 +68,14 @@ async def test_add_ok(mock_dqueue):
     data = json.loads(text)
     assert data["status"] == "ok"
     mock_dqueue.add.assert_awaited_once()
+
+
+@pytest.mark.asyncio
+async def test_retry_passes_failed_download_id(mock_dqueue):
+    req = _json_request({"ids": ["https://example.com/watch?v=1"]})
+    resp = await main.retry(req)
+    assert resp.status == 200
+    mock_dqueue.retry.assert_awaited_once_with("https://example.com/watch?v=1")
 
 
 @pytest.mark.asyncio
