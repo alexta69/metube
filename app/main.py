@@ -711,6 +711,7 @@ def parse_download_options(post: dict) -> dict:
     playlist_item_limit = post.get('playlist_item_limit')
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
+    sponsorblock = bool(post.get('sponsorblock'))
     chapter_template = post.get('chapter_template')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
@@ -831,6 +832,7 @@ def parse_download_options(post: dict) -> dict:
         'playlist_item_limit': playlist_item_limit,
         'auto_start': auto_start,
         'split_by_chapters': split_by_chapters,
+        'sponsorblock': sponsorblock,
         'chapter_template': chapter_template,
         'subtitle_language': subtitle_language,
         'subtitle_mode': subtitle_mode,
@@ -876,6 +878,7 @@ async def add(request):
         o['ytdl_options_overrides'],
         o['clip_start'],
         o['clip_end'],
+        sponsorblock=o['sponsorblock'],
     )
     return web.Response(text=serializer.encode(status))
 
