@@ -10,7 +10,7 @@ Key capabilities:
 * Download playlists and channels, with configurable output and download options.
 * [Subscribe](https://github.com/alexta69/metube/wiki/Subscriptions) to channels and playlists, periodically check for new items, and queue new uploads automatically.
 
-![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif)
+![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif?v=2)
 
 ## 🐳 Run using Docker
 
