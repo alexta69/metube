@@ -80,6 +80,7 @@ from ytdl import (
     _resolve_outtmpl_fields,
     _sanitize_entry_for_pickle,
     _sanitize_path_component,
+    _short_title_for_failed_url,
 )
 
 # Detect whether the real yt-dlp is loaded (as opposed to the minimal fake
@@ -806,6 +807,24 @@ class CompactPersistedEntryTests(unittest.TestCase):
 
     def test_returns_none_when_no_restart_relevant_keys_exist(self):
         self.assertIsNone(_compact_persisted_entry({"id": "x", "title": "y"}))
+
+
+class ShortTitleForFailedUrlTests(unittest.TestCase):
+    def test_uses_hostname_for_a_normal_url(self):
+        self.assertEqual(
+            _short_title_for_failed_url("https://example.com/watch?v=1"),
+            "example.com",
+        )
+
+    def test_falls_back_to_raw_value_when_there_is_no_hostname(self):
+        # file:// URIs and bare search terms/video IDs have no netloc to extract.
+        self.assertEqual(_short_title_for_failed_url("file:///etc/passwd"), "file:///etc/passwd")
+        self.assertEqual(_short_title_for_failed_url("ytsearch:some query"), "ytsearch:some query")
+
+    def test_falls_back_to_raw_value_on_unparseable_input(self):
+        # A malformed IPv6-looking host raises ValueError in urlsplit().hostname.
+        malformed = "https://[::1/watch"
+        self.assertEqual(_short_title_for_failed_url(malformed), malformed)
 
 
 if __name__ == "__main__":

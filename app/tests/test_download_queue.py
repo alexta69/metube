@@ -116,6 +116,54 @@ async def test_add_single_video_goes_to_pending_when_auto_start_false(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_add_unsupported_url_recorded_as_failed_entry(dq_env):
+    """An unsupported/unextractable URL must show up as a red-cross entry in the
+    done list, not just a transient toast and a server log line."""
+    import ytdl
+
+    notifier = AsyncMock()
+    url = "https://example.com/not-a-video"
+
+    def boom(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        raise ytdl.yt_dlp.utils.YoutubeDLError(f'Unsupported URL: {url}')
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        result = await dq.add(
+            url, "video", "auto", "any", "best", "", "", 0, auto_start=True,
+        )
+    assert result["status"] == "error"
+    assert dq.done.exists(url)
+    failed = dq.done.get(url)
+    assert failed.info.status == "error"
+    assert failed.info.error == result["msg"]
+    assert failed.info.url == url
+    # The full URL stays in .url/.error for the detail panel; the display
+    # title is shortened to the hostname so the Completed row stays readable.
+    assert failed.info.title == "example.com"
+    notifier.completed.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
+    """A URL rejected by the SSRF guard (before yt-dlp ever runs) must also
+    surface as a failed entry, not just an error status returned to the caller."""
+    notifier = AsyncMock()
+    url = "file:///etc/passwd"
+
+    dq = DownloadQueue(dq_env, notifier)
+    result = await dq.add(
+        url, "video", "auto", "any", "best", "", "", 0, auto_start=True,
+    )
+    assert result["status"] == "error"
+    assert dq.done.exists(url)
+    failed = dq.done.get(url)
+    assert failed.info.status == "error"
+    assert failed.info.error == result["msg"]
+    notifier.completed.assert_awaited()
+
+
+@pytest.mark.asyncio
 async def test_cancel_removes_from_pending(dq_env):
     notifier = AsyncMock()
 
