@@ -787,8 +787,11 @@ class Download:
 
     def close(self):
         log.info(f"Closing download process for: {self.info.title}")
-        if self.started():
-            self.proc.close()
+        try:
+            if self.started():
+                self.proc.close()
+        finally:
+            self.status_queue = None
 
     def running(self):
         try:
