@@ -510,7 +510,7 @@ def _short_title_for_failed_url(url: str) -> str:
     return hostname or url
 
 
-_COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index"))
+_COMPACT_ENTRY_EXTRA_KEYS = frozenset(("n_entries", "__last_playlist_index", "track_number"))
 
 
 def _compact_persisted_entry(entry: Any) -> Optional[dict[str, Any]]:
