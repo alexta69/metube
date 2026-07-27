@@ -895,11 +895,12 @@ async def cancel_add(request):
 
 @routes.post(config.URL_PREFIX + 'retry')
 async def retry(request):
+    # Singular by design, unlike the 'ids' batch endpoints: a retry re-extracts
+    # the URL, so it can fail per item, and the caller removes that item's done
+    # record only once it is confirmed re-queued. A batch form would have to
+    # report per-id results for the caller to know which ones to remove.
     post = await _read_json_request(request)
-    ids = _require_id_list(post)
-    if len(ids) != 1:
-        raise web.HTTPBadRequest(reason="'ids' must contain exactly one download id")
-    status = await dqueue.retry(ids[0])
+    status = await dqueue.retry(_require_id(post))
     return web.Response(text=serializer.encode(status), content_type='application/json')
 
 
@@ -994,6 +995,13 @@ async def subscriptions_check(request):
     log.info("Subscription check-now requested for ids=%s", ids if ids else "all-enabled")
     result = await submgr.check_now([str(i) for i in ids] if ids else None)
     return web.Response(text=serializer.encode(result))
+
+def _require_id(post: dict) -> str:
+    id = post.get('id')
+    if not isinstance(id, str) or not id:
+        raise web.HTTPBadRequest(reason="'id' must be a non-empty string")
+    return id
+
 
 def _require_id_list(post: dict) -> list:
     ids = post.get('ids')

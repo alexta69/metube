@@ -170,7 +170,7 @@ export class DownloadsService {
   }
 
   public retry(id: string) {
-    return this.http.post<Status>('retry', { ids: [id] }).pipe(
+    return this.http.post<Status>('retry', { id: id }).pipe(
       catchError(this.handleHTTPError)
     );
   }

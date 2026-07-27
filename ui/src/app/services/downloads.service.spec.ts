@@ -121,7 +121,7 @@ describe('DownloadsService', () => {
     service.retry('https://example.com/v').subscribe();
     const req = httpMock.expectOne('retry');
     expect(req.request.method).toBe('POST');
-    expect(req.request.body).toEqual({ ids: ['https://example.com/v'] });
+    expect(req.request.body).toEqual({ id: 'https://example.com/v' });
     req.flush({ status: 'ok' });
   });
 

@@ -72,10 +72,18 @@ async def test_add_ok(mock_dqueue):
 
 @pytest.mark.asyncio
 async def test_retry_passes_failed_download_id(mock_dqueue):
-    req = _json_request({"ids": ["https://example.com/watch?v=1"]})
+    req = _json_request({"id": "https://example.com/watch?v=1"})
     resp = await main.retry(req)
     assert resp.status == 200
     mock_dqueue.retry.assert_awaited_once_with("https://example.com/watch?v=1")
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{}, {"id": ""}, {"id": ["a"]}, {"ids": ["a"]}])
+async def test_retry_rejects_missing_or_non_string_id(mock_dqueue, body):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.retry(_json_request(body))
+    mock_dqueue.retry.assert_not_awaited()
 
 
 @pytest.mark.asyncio
