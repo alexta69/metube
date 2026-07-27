@@ -64,6 +64,12 @@ def _build_ydl_params(
         "paths": {"home": config.DOWNLOAD_DIR, "temp": config.TEMP_DIR},
         **config.YTDL_OPTIONS,
         **(extra_opts or {}),
+        # A scan is a poll, not an add: it runs on a timer and queues items
+        # through the download queue, which writes the feed metadata itself.
+        # yt-dlp emits the playlist-level infojson/description/thumbnail
+        # regardless of `download`, so without this a writeinfojson user would
+        # get those files rewritten on every check interval. See issue #1040.
+        "allow_playlist_files": False,
     }
     params = _impersonate_opt(params)
     if playlistend is not None and playlistend > 0:

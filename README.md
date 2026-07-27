@@ -83,6 +83,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __ALLOW_PRIVATE_ADDRESSES__: Whether to allow downloads from private, loopback, link-local and other non-global addresses. Defaults to `false`, which protects against SSRF by refusing URLs that resolve to internal hosts. Set to `true` only in trusted environments — for example when routing traffic through a proxy/VPN client in Fake-IP mode (sing-box, Clash, Mihomo), which resolves hosts to the `198.18.0.0/15` range. Enabling this disables the SSRF protection entirely, so only use it when you control the network.
 * __YTDL_NIGHTLY_UPDATE_TIME__: If set, will cause MeTube to use [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds) instead of the stable releases. Set to the time (`HH:MM`, 24-hour) when you want the daily upgrades and MeTube restart to happen. Defaults to empty (disabled).
 
+Enabling `writeinfojson` or `writethumbnail` in `YTDL_OPTIONS` also writes a feed-level `.info.json` and thumbnail when you add a playlist or channel. These reuse the template of the items they belong to — `OUTPUT_TEMPLATE_CHANNEL` or `OUTPUT_TEMPLATE_PLAYLIST` — evaluated against the feed itself, so with the defaults they land in the same folder as the videos, named after the feed. Set `allow_playlist_files` to `false` in `YTDL_OPTIONS` to skip them.
+
 ### 🌐 Web Server & URLs
 
 * __HOST__: The host address the web server will bind to. Defaults to `0.0.0.0` (all interfaces).

@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import copy
 import os
 import re
 import tempfile
@@ -89,7 +90,7 @@ def test_get_returns_tuple_of_lists(dq_env):
 async def test_add_single_video_goes_to_pending_when_auto_start_false(dq_env):
     notifier = AsyncMock()
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -124,7 +125,7 @@ async def test_add_unsupported_url_recorded_as_failed_entry(dq_env):
     notifier = AsyncMock()
     url = "https://example.com/not-a-video"
 
-    def boom(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def boom(self, url, *_args, **_kwargs):
         raise ytdl.yt_dlp.utils.YoutubeDLError(f'Unsupported URL: {url}')
 
     dq = DownloadQueue(dq_env, notifier)
@@ -167,7 +168,7 @@ async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
 async def test_cancel_removes_from_pending(dq_env):
     notifier = AsyncMock()
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -204,7 +205,7 @@ async def test_cancel_before_start_marks_download_canceled(dq_env):
     cancelling, because its ``download.canceled`` guard was never flipped."""
     notifier = AsyncMock()
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -242,7 +243,7 @@ async def test_cancel_before_start_marks_download_canceled(dq_env):
 async def test_start_pending_moves_to_queue(dq_env):
     notifier = AsyncMock()
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -331,7 +332,7 @@ async def test_retry_restores_playlist_output_context(dq_env):
     failed_info.status = "error"
     dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
 
-    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -390,7 +391,7 @@ async def test_retry_keeps_playlist_context_through_url_indirection(dq_env):
     resolved = "https://example.com/resolved?v=1"
     dq.done.put(Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url)))
 
-    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
         if extracted_url == url:
             return {"_type": "url", "url": resolved, "id": "vid1"}
         return {
@@ -428,7 +429,7 @@ async def test_retry_reapplies_current_options_gates(dq_env):
     )
     dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
 
-    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -458,7 +459,7 @@ async def test_retry_keeps_overrides_while_still_allowed(dq_env):
     info = _failed_playlist_item(url, ytdl_options_overrides={"writesubtitles": True})
     dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
 
-    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",
@@ -537,7 +538,7 @@ async def test_channel_download_uses_output_template_when_channel_template_empty
 
     channel_id = "UCabcd123"
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "playlist",
             "id": channel_id,
@@ -586,7 +587,7 @@ async def test_playlist_download_not_treated_as_channel(dq_env):
     dq_env.OUTPUT_TEMPLATE_CHANNEL = ""
     dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "playlist",
             "id": "PLxyz789",
@@ -633,7 +634,7 @@ async def test_add_merges_global_preset_and_override_options(dq_env):
         "Preset B": {"writesubtitles": False, "ratelimit": 1000},
     }
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid2",
@@ -756,11 +757,191 @@ async def test_extract_info_metube_extract_keys_win_over_preset(dq_env):
     assert captured_params[0]["noplaylist"] is True
 
 
+def _feed_extract(feed):
+    """Patch for __extract_info that returns a playlist/channel feed dict."""
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        return copy.deepcopy(feed)
+
+    return fake_extract
+
+
+_CHANNEL_FEED = {
+    "_type": "playlist",
+    "id": "UC123",
+    "title": "Vanessa - Videos",
+    "channel": "Vanessa",
+    "channel_id": "UC123",
+    "uploader": "Vanessa",
+    "extractor": "youtube:tab",
+    "extractor_key": "YoutubeTab",
+    "webpage_url": "https://example.com/@vanessa/videos",
+    "entries": [
+        {"id": "v1", "title": "One", "url": "https://example.com/v1",
+         "webpage_url": "https://example.com/v1", "_type": "url"},
+    ],
+}
+
+_PLAYLIST_FEED = {
+    "_type": "playlist",
+    "id": "PL123",
+    "title": "My Playlist",
+    "extractor": "generic",
+    "extractor_key": "Generic",
+    "webpage_url": "https://example.com/playlist?list=PL123",
+    "entries": [
+        {"id": "v1", "title": "One", "url": "https://example.com/v1",
+         "webpage_url": "https://example.com/v1", "_type": "url"},
+    ],
+}
+
+
+def _written_files(root):
+    found = []
+    for dirpath, _dirs, files in os.walk(root):
+        for f in files:
+            found.append(os.path.relpath(os.path.join(dirpath, f), root))
+    return sorted(found)
+
+
+@pytest.mark.asyncio
+async def test_channel_feed_metadata_lands_beside_its_items(dq_env):
+    """Issues #660/#1040: the feed-level .info.json follows the same template
+    the items use, so it sits in the channel's own folder rather than in
+    DOWNLOAD_DIR under yt-dlp's pl_* default name."""
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+    dq_env.OUTPUT_TEMPLATE_CHANNEL = "%(channel)s/%(title)s.%(ext)s"
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_CHANNEL_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add(
+            "https://example.com/@vanessa/videos", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    assert _written_files(dq_env.DOWNLOAD_DIR) == [
+        os.path.join("Vanessa", "Vanessa - Videos.info.json")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_playlist_feed_metadata_uses_the_playlist_template(dq_env):
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq.add(
+            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert _written_files(dq_env.DOWNLOAD_DIR) == [
+        os.path.join("My Playlist", "My Playlist.info.json")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_feed_metadata_honours_custom_folder(dq_env):
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq.add(
+            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
+            "Music", "", 0, auto_start=False,
+        )
+
+    assert _written_files(dq_env.DOWNLOAD_DIR) == [
+        os.path.join("Music", "My Playlist", "My Playlist.info.json")
+    ]
+
+
+@pytest.mark.asyncio
+async def test_no_feed_metadata_without_writeinfojson(dq_env):
+    """Nothing new appears for users who never asked for these files."""
+    dq_env.YTDL_OPTIONS = {}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq.add(
+            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert _written_files(dq_env.DOWNLOAD_DIR) == []
+
+
+@pytest.mark.asyncio
+async def test_feed_metadata_can_be_turned_off_by_the_user(dq_env):
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True, "allow_playlist_files": False}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq.add(
+            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert _written_files(dq_env.DOWNLOAD_DIR) == []
+
+
+@pytest.mark.asyncio
+async def test_feed_metadata_failure_does_not_fail_the_add(dq_env):
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()), \
+         patch.object(
+             DownloadQueue, "_DownloadQueue__write_feed_metadata_sync",
+             side_effect=OSError("read-only filesystem"),
+         ):
+        result = await dq.add(
+            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    assert dq.pending.exists("https://example.com/v1")
+
+
+@pytest.mark.asyncio
+async def test_extraction_pass_never_writes_feed_metadata(dq_env):
+    """The classification pass must not produce files: it runs before the add is
+    known to succeed, and yt-dlp writes playlist files regardless of `download`."""
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True, "allow_playlist_files": True}
+    captured: list = []
+
+    class FakeYoutubeDL:
+        def __init__(self, params=None):
+            captured.append(params)
+
+        def extract_info(self, url, download=False):
+            return {"_type": "video", "id": "v", "title": "V", "url": url, "webpage_url": url}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch("ytdl.yt_dlp.YoutubeDL", FakeYoutubeDL):
+        await dq.add(
+            "https://example.com/watch?v=1", "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert captured[0]["allow_playlist_files"] is False
+
+
 @pytest.mark.asyncio
 async def test_add_sets_clip_bounds_on_download_info(dq_env):
     notifier = AsyncMock()
 
-    def fake_extract(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_extract(self, url, *_args, **_kwargs):
         return {
             "_type": "video",
             "id": "vid1",

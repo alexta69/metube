@@ -1171,6 +1171,44 @@ class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(captured_params[0].get("cookiefile"), "preset.txt")
         self.assertEqual(captured_params[0].get("extra"), "override")
 
+    async def test_scan_never_writes_playlist_sidecar_files(self):
+        """A subscription scan is a metadata probe. yt-dlp writes the
+        playlist-level infojson/description/thumbnail regardless of ``download``,
+        so without this a writeinfojson/writethumbnail user would get stray files
+        in DOWNLOAD_DIR on every check interval. Issue #1040."""
+        captured_params: list = []
+        fake_ydl = _make_scan_capturing_fake_ydl(
+            captured_params,
+            [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            cfg.YTDL_OPTIONS = {"writeinfojson": True, "writethumbnail": True}
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+
+            with patch("subscriptions.yt_dlp.YoutubeDL", fake_ydl, create=True):
+                await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    ytdl_options_overrides={"allow_playlist_files": True},
+                )
+
+        self.assertTrue(captured_params)
+        self.assertIs(captured_params[0].get("allow_playlist_files"), False)
+
     async def test_check_now_scan_applies_stored_subscription_presets(self):
         entries = [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}]
 

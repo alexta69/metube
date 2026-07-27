@@ -1314,6 +1314,14 @@ class DownloadQueue:
             'ignore_no_formats_error': True,
             'noplaylist': True,
             'paths': {"home": self.config.DOWNLOAD_DIR, "temp": self.config.TEMP_DIR},
+            # This is a classification pass, not a download. yt-dlp emits the
+            # feed-level infojson/description/thumbnail from
+            # __process_playlist_result without consulting `download`, so
+            # without this a writeinfojson user gets stray files here — in
+            # DOWNLOAD_DIR, under yt-dlp's pl_* names, even for an add that goes
+            # on to fail. __write_feed_metadata writes them properly once the
+            # feed is accepted. See issues #1040 and #660.
+            'allow_playlist_files': False,
         }
         imp = user_opts.get('impersonate')
         if imp is not None:
@@ -1376,6 +1384,81 @@ class DownloadQueue:
         else:
             self.pending.put(download)
         await self.notifier.added(dl)
+
+    def __write_feed_metadata_sync(self, entry, etype, download_type, folder,
+                                   ytdl_options_presets, ytdl_options_overrides):
+        """Write the feed-level .info.json/description/thumbnail for a playlist
+        or channel add, using the same output template its items will use.
+
+        yt-dlp produces these from __process_playlist_result, which ignores
+        ``download`` — so they used to fall out of the classification pass with
+        yt-dlp's own pl_* names, in DOWNLOAD_DIR, ignoring the download's folder
+        (issue #1040) and with no way to steer them (issue #660). Doing it here
+        instead means the feed type is already known, so the file lands beside
+        the items rather than in a differently-named sibling directory.
+
+        Re-runs yt-dlp on a copy of the feed with no entries: that reaches the
+        playlist-file writing without re-extracting anything or touching
+        yt-dlp's private write helpers.
+        """
+        user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides)
+        wants = ('writeinfojson', 'writedescription', 'writethumbnail', 'write_all_thumbnails')
+        if not any(user_opts.get(key) for key in wants):
+            return
+        # An explicit allow_playlist_files=false is the user asking for exactly
+        # this to not happen.
+        if user_opts.get('allow_playlist_files') is False:
+            return
+
+        dldirectory, error_message = self.__calc_download_path(download_type, folder)
+        if error_message is not None:
+            return
+
+        template = (
+            self.config.OUTPUT_TEMPLATE_CHANNEL if etype == 'channel'
+            else self.config.OUTPUT_TEMPLATE_PLAYLIST
+        ) or self.config.OUTPUT_TEMPLATE
+
+        debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
+        params = {
+            **user_opts,
+            'quiet': not debug_logging,
+            'verbose': debug_logging,
+            'no_color': True,
+            'skip_download': True,
+            'extract_flat': True,
+            'allow_playlist_files': True,
+            'paths': {"home": dldirectory, "temp": self.config.TEMP_DIR},
+            # Feed-level keys only; per-item names are resolved by __add_download.
+            'outtmpl': {
+                'pl_infojson': template,
+                'pl_thumbnail': template,
+                'pl_description': template,
+            },
+        }
+        imp = user_opts.get('impersonate')
+        if imp is not None:
+            params['impersonate'] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(imp)
+
+        # A copy: process_ie_result mutates entries/requested_entries, and the
+        # caller still needs the real feed dict to queue the items.
+        feed = {k: v for k, v in entry.items() if k != 'entries'}
+        feed['entries'] = []
+        yt_dlp.YoutubeDL(params=params).process_ie_result(feed, download=False)
+
+    async def __write_feed_metadata(self, entry, etype, download_type, folder,
+                                    ytdl_options_presets, ytdl_options_overrides):
+        try:
+            await asyncio.get_running_loop().run_in_executor(
+                None,
+                partial(
+                    self.__write_feed_metadata_sync, entry, etype, download_type, folder,
+                    ytdl_options_presets, ytdl_options_overrides,
+                ),
+            )
+        except Exception as exc:
+            # Supplemental output must never fail the add.
+            log.warning(f'Could not write {etype} metadata files: {exc}')
 
     async def __add_entry(
         self,
@@ -1453,6 +1536,10 @@ class DownloadQueue:
                 entries = list(entries)
             total_entries = len(entries)
             log.info(f'{etype} detected with {total_entries} entries')
+            await self.__write_feed_metadata(
+                entry, etype, download_type, folder,
+                ytdl_options_presets, ytdl_options_overrides,
+            )
             index_digits = len(str(total_entries))
             results = []
             if playlist_item_limit > 0:
