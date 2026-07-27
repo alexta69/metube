@@ -98,11 +98,17 @@ fixes.
 
 ## Commit messages
 
-A commit that resolves an issue must close it, using GitHub's `Closes #N.` on its
-own line in the commit body. Because master is the default branch and is released
-on every push, the issue closes at the moment the fix ships, and the issue keeps a
-permanent link to the commit that fixed it. A bare `(#123)` in the subject only
-creates a reference — and reads as a pull-request number — so it does not count.
+A commit that resolves an issue must close it, with a GitHub closing keyword in
+parentheses at the end of the subject line:
+
+```
+fix: stop metadata probes from writing playlist sidecar files (closes #1040)
+```
+
+Because master is the default branch and is released on every push, the issue
+closes at the moment the fix ships, and keeps a permanent link to the commit that
+fixed it. A bare `(#1040)` is only a reference — and reads as a pull-request
+number — so it does not count; the keyword is what closes the issue.
 
 Auto-closing leaves only a commit stub on the issue, which is not an answer to
 whoever reported it. Post an explanatory comment as well: what the cause was, what
