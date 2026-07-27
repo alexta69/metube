@@ -1398,6 +1398,7 @@ class DownloadQueue:
         clip_end,
         already,
         _add_gen=None,
+        retry_entry=None,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1416,6 +1417,10 @@ class DownloadQueue:
 
         if etype.startswith('url'):
             log.debug('Processing as a url')
+            # retry_entry must ride along: extraction can hand back an
+            # unprocessed url/url_transparent result, and dropping the retry
+            # context here would send the retried item back to the root
+            # directory instead of its original playlist folder.
             return await self.add(
                 entry['url'],
                 download_type,
@@ -1436,6 +1441,7 @@ class DownloadQueue:
                 clip_end,
                 already,
                 _add_gen,
+                retry_entry,
             )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
@@ -1687,6 +1693,7 @@ class DownloadQueue:
             clip_end,
             already,
             _add_gen,
+            retry_entry,
         )
 
     async def retry(self, id):
@@ -1696,6 +1703,13 @@ class DownloadQueue:
         info = self.done.get(id).info
         if info.status != 'error':
             return {'status': 'error', 'msg': 'Only failed downloads can be retried.'}
+
+        # The stored options were validated by parse_download_options when the
+        # download was first submitted, but the configuration can have changed
+        # since. Re-apply the same gates here so a retry can't resurrect
+        # overrides or presets the current configuration no longer allows.
+        overrides = info.ytdl_options_overrides if self.config.ALLOW_YTDL_OPTIONS_OVERRIDES else {}
+        presets = [p for p in info.ytdl_options_presets if p in self.config.YTDL_OPTIONS_PRESETS]
 
         return await self.add(
             info.url,
@@ -1711,8 +1725,8 @@ class DownloadQueue:
             info.chapter_template,
             info.subtitle_language,
             info.subtitle_mode,
-            info.ytdl_options_presets,
-            info.ytdl_options_overrides,
+            presets,
+            overrides,
             info.clip_start,
             info.clip_end,
             retry_entry=info.entry,
