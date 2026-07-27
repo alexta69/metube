@@ -958,7 +958,33 @@
                 [disabled]="downloads.loading"
                 [attr.aria-label]="'Select subscription ' + entry[1].name" />
             </td>
-            <td>{{ entry[1].name }}</td>
+            <td>
+              @if (editingNameId === entry[0]) {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <input type="text"
+                    class="form-control form-control-sm flex-grow-1"
+                    [name]="'subName' + entry[0]"
+                    [(ngModel)]="nameEditDraft"
+                    [maxlength]="subscriptionNameMaxLength"
+                    [disabled]="downloads.loading"
+                    [attr.aria-label]="'Subscription name for ' + entry[1].name" />
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="saveName(entry[0])"
+                    [disabled]="downloads.loading">Save</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="cancelEditName()"
+                    [disabled]="downloads.loading">Cancel</button>
+                </div>
+              } @else {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <span class="text-break">{{ entry[1].name }}</span>
+                  <button type="button" class="btn btn-link btn-sm p-0"
+                    (click)="beginEditName(entry[0], entry[1].name)"
+                    [disabled]="downloads.loading"
+                    ngbTooltip="Rename this subscription (display name only; does not affect the download folder)">Edit</button>
+                </div>
+              }
+            </td>
             <td class="text-break"><a [href]="entry[1].url" target="_blank" rel="noopener">{{ entry[1].url }}</a></td>
             <td>
               @if (editingTitleRegexId === entry[0]) {

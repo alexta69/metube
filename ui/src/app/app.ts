@@ -102,6 +102,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   skipSubscriberOnly = false;
   editingTitleRegexId: string | null = null;
   titleRegexEditDraft = '';
+  editingNameId: string | null = null;
+  nameEditDraft = '';
+  readonly subscriptionNameMaxLength = 200;
   cachedSubs: [string, SubscriptionRow][] = [];
   selectedSubscriptionIds = new Set<string>();
   checkingSubscriptionIds = new Set<string>();
@@ -660,6 +663,34 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         return;
       }
       this.cancelEditTitleRegex();
+    });
+  }
+
+  beginEditName(id: string, current: string | undefined) {
+    this.editingNameId = id;
+    this.nameEditDraft = current ?? '';
+    this.cdr.markForCheck();
+  }
+
+  cancelEditName() {
+    this.editingNameId = null;
+    this.nameEditDraft = '';
+    this.cdr.markForCheck();
+  }
+
+  saveName(id: string) {
+    const name = (this.nameEditDraft || '').trim();
+    if (!name) {
+      this.toasts.error('Subscription name must not be empty');
+      return;
+    }
+    this.subscriptionsSvc.update(id, { name }).subscribe((res) => {
+      const error = this.getStatusError(res);
+      if (error) {
+        this.toasts.error(error || 'Update subscription failed');
+        return;
+      }
+      this.cancelEditName();
     });
   }
 

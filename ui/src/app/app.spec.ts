@@ -81,7 +81,10 @@ class SubscriptionsServiceStub {
     return of({});
   }
 
-  update() {
+  updateCalls: [string, unknown][] = [];
+
+  update(id: string, changes: unknown) {
+    this.updateCalls.push([id, changes]);
     return of({ status: 'ok' as const });
   }
 
@@ -313,6 +316,39 @@ describe('App', () => {
     app.addSubscription();
     expect(subs.subscribeCalls.length).toBe(0);
     expect(errorSpy).toHaveBeenCalledWith('Invalid subscription title filter (regex)');
+    errorSpy.mockRestore();
+  });
+
+  it('renames a subscription and closes the inline editor', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
+
+    app.beginEditName('sub1', 'Videos');
+    expect(app.editingNameId).toBe('sub1');
+    expect(app.nameEditDraft).toBe('Videos');
+
+    app.nameEditDraft = '  Jane uploads  ';
+    app.saveName('sub1');
+
+    expect(subs.updateCalls).toEqual([['sub1', { name: 'Jane uploads' }]]);
+    expect(app.editingNameId).toBeNull();
+  });
+
+  it('blocks renaming a subscription to an empty name', () => {
+    const toasts = TestBed.inject(ToastService);
+    const errorSpy = vi.spyOn(toasts, 'error').mockImplementation(() => undefined);
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
+
+    app.beginEditName('sub1', 'Videos');
+    app.nameEditDraft = '   ';
+    app.saveName('sub1');
+
+    expect(subs.updateCalls.length).toBe(0);
+    expect(app.editingNameId).toBe('sub1');
+    expect(errorSpy).toHaveBeenCalledWith('Subscription name must not be empty');
     errorSpy.mockRestore();
   });
 });

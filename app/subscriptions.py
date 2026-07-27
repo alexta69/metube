@@ -287,6 +287,24 @@ def validate_title_regex(value: Any) -> str:
     return s
 
 
+# The name is a display label the user picks; it is persisted and broadcast to
+# every connected client, so keep it a bounded single-line string.
+SUBSCRIPTION_NAME_MAX_LENGTH = 200
+
+
+def validate_subscription_name(value: Any) -> str:
+    """Return a stored subscription name, or raise ValueError if unusable."""
+    if not isinstance(value, str):
+        raise ValueError("name must be a string")
+    # Collapse newlines/tabs so a pasted title can't break the table layout.
+    name = " ".join(value.split())
+    if not name:
+        raise ValueError("name must not be empty")
+    if len(name) > SUBSCRIPTION_NAME_MAX_LENGTH:
+        raise ValueError(f"name must be at most {SUBSCRIPTION_NAME_MAX_LENGTH} characters")
+    return name
+
+
 def _coerce_bool(value: Any) -> bool:
     """Accept JSON booleans and common string forms used by API clients."""
     if isinstance(value, bool):
@@ -674,6 +692,13 @@ class SubscriptionManager:
         return {"status": "ok"}
 
     async def update_subscription(self, sub_id: str, changes: dict) -> dict:
+        validated_name: Optional[str] = None
+        if "name" in changes:
+            try:
+                validated_name = validate_subscription_name(changes["name"])
+            except ValueError as exc:
+                return {"status": "error", "msg": str(exc)}
+
         validated_tr: Optional[str] = None
         if "title_regex" in changes:
             try:
@@ -722,8 +747,8 @@ class SubscriptionManager:
                 sub.enabled = validated_enabled
             if interval_set:
                 sub.check_interval_minutes = validated_interval
-            if "name" in changes and changes["name"]:
-                sub.name = str(changes["name"])
+            if validated_name is not None:
+                sub.name = validated_name
             if validated_tr is not None:
                 sub.title_regex = validated_tr
             if skip_so_set:

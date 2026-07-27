@@ -821,6 +821,76 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(upd["subscription"]["title_regex"], "foo|bar")
             self.assertEqual(mgr.list_all()[0].title_regex, "foo|bar")
 
+    async def _add_one_subscription(self, mgr):
+        with patch(
+            "subscriptions.extract_flat_playlist",
+            return_value=(
+                {"_type": "channel", "title": "Videos"},
+                [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+            ),
+        ):
+            result = await mgr.add_subscription(
+                "https://example.com/playlist?list=UULFabc",
+                check_interval_minutes=60,
+                download_type="video",
+                codec="auto",
+                format="any",
+                quality="best",
+                folder="",
+                custom_name_prefix="",
+                auto_start=True,
+                playlist_item_limit=0,
+                split_by_chapters=False,
+                chapter_template="",
+                subtitle_language="en",
+                subtitle_mode="prefer_manual",
+            )
+        return result["subscription"]["id"]
+
+    async def test_update_subscription_renames(self):
+        """Issue #1044: UULF-style uploads playlists all come back named 'Videos',
+        so the user needs to be able to relabel them."""
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            self.assertEqual(mgr.list_all()[0].name, "Videos")
+
+            upd = await mgr.update_subscription(sub_id, {"name": "  Jane's   uploads \n"})
+            self.assertEqual(upd["status"], "ok")
+            # Surrounding and interior whitespace is collapsed to keep the name
+            # a single-line label.
+            self.assertEqual(upd["subscription"]["name"], "Jane's uploads")
+            self.assertEqual(mgr.list_all()[0].name, "Jane's uploads")
+
+    async def test_update_subscription_rename_survives_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            await mgr.update_subscription(sub_id, {"name": "Renamed"})
+
+            reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
+            self.assertEqual(reloaded.get(sub_id).name, "Renamed")
+
+    async def test_update_subscription_rejects_unusable_name(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+
+            for bad in ("", "   ", "\n\t", 42, None, ["a"], "x" * 201):
+                upd = await mgr.update_subscription(sub_id, {"name": bad})
+                self.assertEqual(upd["status"], "error", f"expected {bad!r} to be rejected")
+                self.assertEqual(mgr.list_all()[0].name, "Videos")
+
+    async def test_update_subscription_accepts_name_at_length_limit(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+
+            upd = await mgr.update_subscription(sub_id, {"name": "x" * 200})
+            self.assertEqual(upd["status"], "ok")
+            self.assertEqual(mgr.list_all()[0].name, "x" * 200)
+
     async def test_update_subscription_skip_subscriber_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()
