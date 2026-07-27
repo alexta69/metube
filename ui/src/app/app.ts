@@ -1146,30 +1146,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   retryDownload(key: string, download: Download) {
-    const payload = this.buildAddPayload({
-      url: download.url,
-      downloadType: download.download_type,
-      codec: download.codec,
-      quality: download.quality,
-      format: download.format,
-      folder: download.folder,
-      customNamePrefix: download.custom_name_prefix,
-      playlistItemLimit: download.playlist_item_limit,
-      autoStart: true,
-      splitByChapters: download.split_by_chapters,
-      chapterTemplate: download.chapter_template,
-      subtitleLanguage: download.subtitle_language,
-      subtitleMode: download.subtitle_mode,
-      ytdlOptionsPresets: download.ytdl_options_presets?.length
-        ? [...download.ytdl_options_presets]
-        : [],
-      ytdlOptionsOverrides: download.ytdl_options_overrides ? JSON.stringify(download.ytdl_options_overrides) : '',
-      clipStart: download.clip_start != null ? String(download.clip_start) : '',
-      clipEnd: download.clip_end != null ? String(download.clip_end) : '',
-    });
     // Only remove the done-list record once the retry is confirmed queued —
     // deleting it eagerly would silently lose history if the re-add fails.
-    this.downloads.add(payload)
+    this.downloads.retry(key)
       .pipe(takeUntilDestroyed(this.destroyRef))
       .subscribe((status: Status) => {
         if (status.status === 'error') {

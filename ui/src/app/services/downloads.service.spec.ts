@@ -117,6 +117,14 @@ describe('DownloadsService', () => {
     req.flush({ presets: ['Preset A'] });
   });
 
+  it('retry() posts the failed download id', () => {
+    service.retry('https://example.com/v').subscribe();
+    const req = httpMock.expectOne('retry');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({ ids: ['https://example.com/v'] });
+    req.flush({ status: 'ok' });
+  });
+
   it('cancelAdd posts to cancel-add', () => {
     service.cancelAdd().subscribe();
     const req = httpMock.expectOne('cancel-add');

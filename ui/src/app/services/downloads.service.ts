@@ -169,6 +169,12 @@ export class DownloadsService {
     );
   }
 
+  public retry(id: string) {
+    return this.http.post<Status>('retry', { ids: [id] }).pipe(
+      catchError(this.handleHTTPError)
+    );
+  }
+
   public startById(ids: string[]) {
     return this.http.post<Status>('start', {ids: ids}).pipe(
       catchError(this.handleHTTPError)

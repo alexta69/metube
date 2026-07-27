@@ -146,12 +146,12 @@ class PersistentQueueTests(unittest.TestCase):
             self.assertNotIn("formats", record["entry"])
             self.assertNotIn("description", record["entry"])
 
-    def test_completed_queue_does_not_persist_entry_or_transient_progress(self):
+    def test_completed_queue_persists_only_failed_retry_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "completed")
             pq = PersistentQueue("completed", path)
             info = _make_info("http://done.example")
-            info.status = "finished"
+            info.status = "error"
             info.percent = 88
             info.speed = 123
             info.eta = 9
@@ -167,11 +167,23 @@ class PersistentQueueTests(unittest.TestCase):
                 payload = json.load(f)
 
             record = payload["items"][0]["info"]
-            self.assertNotIn("entry", record)
+            self.assertEqual(
+                record["entry"],
+                {
+                    "playlist_index": "01",
+                    "playlist_title": "Playlist",
+                },
+            )
             self.assertNotIn("percent", record)
             self.assertNotIn("speed", record)
             self.assertNotIn("eta", record)
             self.assertEqual(record["filename"], "done.mp4")
+
+            info.status = "finished"
+            pq.put(_FakeDownload(info))
+            with open(path + ".json", encoding="utf-8") as f:
+                payload = json.load(f)
+            self.assertNotIn("entry", payload["items"][0]["info"])
 
     def test_invalid_json_is_quarantined_and_legacy_is_imported(self):
         with tempfile.TemporaryDirectory() as tmp:

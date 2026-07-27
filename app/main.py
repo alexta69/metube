@@ -893,6 +893,16 @@ async def cancel_add(request):
     return web.Response(text=serializer.encode({'status': 'ok'}), content_type='application/json')
 
 
+@routes.post(config.URL_PREFIX + 'retry')
+async def retry(request):
+    post = await _read_json_request(request)
+    ids = _require_id_list(post)
+    if len(ids) != 1:
+        raise web.HTTPBadRequest(reason="'ids' must contain exactly one download id")
+    status = await dqueue.retry(ids[0])
+    return web.Response(text=serializer.encode(status), content_type='application/json')
+
+
 @routes.post(config.URL_PREFIX + 'subscribe')
 async def subscribe(request):
     post = await _read_json_request(request)
@@ -1227,6 +1237,7 @@ async def add_cors(request):
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'retry', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscribe', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/update', add_cors)

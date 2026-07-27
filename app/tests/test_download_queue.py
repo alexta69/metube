@@ -303,6 +303,179 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_retry_restores_playlist_output_context(dq_env):
+    notifier = AsyncMock()
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    failed_info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error="temporary failure",
+        entry={
+            "playlist_index": "01",
+            "playlist_title": "My Playlist",
+            "playlist_count": 10,
+        },
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    failed_info.status = "error"
+    dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
+
+    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert queued.output_template == "My Playlist/%(title)s.%(ext)s"
+    assert queued.info.entry["playlist_index"] == "01"
+    assert queued.info.entry["playlist_title"] == "My Playlist"
+
+
+def _failed_playlist_item(url, **overrides):
+    """A done-list entry for a playlist item that failed mid-download."""
+    info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error="temporary failure",
+        entry={
+            "playlist_index": "01",
+            "playlist_title": "My Playlist",
+            "playlist_count": 10,
+        },
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        **overrides,
+    )
+    info.status = "error"
+    return info
+
+
+@pytest.mark.asyncio
+async def test_retry_keeps_playlist_context_through_url_indirection(dq_env):
+    # extract_flat=True makes yt-dlp hand back url/url_transparent results
+    # unprocessed, so __add_entry recurses into add() a second time. The retry
+    # context has to survive that hop or the item lands in the root directory.
+    notifier = AsyncMock()
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    resolved = "https://example.com/resolved?v=1"
+    dq.done.put(Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url)))
+
+    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        if extracted_url == url:
+            return {"_type": "url", "url": resolved, "id": "vid1"}
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(resolved)
+    assert queued.output_template == "My Playlist/%(title)s.%(ext)s"
+    assert queued.info.entry["playlist_title"] == "My Playlist"
+
+
+@pytest.mark.asyncio
+async def test_retry_reapplies_current_options_gates(dq_env):
+    # The stored options passed parse_download_options when first submitted, but
+    # the configuration can have changed since; retry must not resurrect
+    # overrides or presets the current configuration no longer allows.
+    notifier = AsyncMock()
+    dq_env.ALLOW_YTDL_OPTIONS_OVERRIDES = False
+    dq_env.YTDL_OPTIONS_PRESETS = {"Still There": {"writesubtitles": True}}
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    info = _failed_playlist_item(
+        url,
+        ytdl_options_presets=["Still There", "Removed Preset"],
+        ytdl_options_overrides={"paths": {"home": "/etc"}},
+    )
+    dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
+
+    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert queued.info.ytdl_options_overrides == {}
+    assert queued.info.ytdl_options_presets == ["Still There"]
+    assert queued.ytdl_opts.get("paths", {}).get("home") != "/etc"
+
+
+@pytest.mark.asyncio
+async def test_retry_keeps_overrides_while_still_allowed(dq_env):
+    notifier = AsyncMock()
+    dq_env.ALLOW_YTDL_OPTIONS_OVERRIDES = True
+    dq_env.YTDL_OPTIONS_PRESETS = {}
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    info = _failed_playlist_item(url, ytdl_options_overrides={"writesubtitles": True})
+    dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
+
+    def fake_extract(self, extracted_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    assert dq.queue.get(url).info.ytdl_options_overrides == {"writesubtitles": True}
+
+
+@pytest.mark.asyncio
 async def test_add_entry_duplicate_while_pending_is_skipped_not_clobbered(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)
