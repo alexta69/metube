@@ -96,7 +96,17 @@ release the same day. **Master is continuously released** — a PR must be
 release-ready exactly as merged; there is no stabilization window for follow-up
 fixes.
 
-## Code style
+## Commit messages
+
+A commit that resolves an issue must close it, using GitHub's `Closes #N.` on its
+own line in the commit body. Because master is the default branch and is released
+on every push, the issue closes at the moment the fix ships, and the issue keeps a
+permanent link to the commit that fixed it. A bare `(#123)` in the subject only
+creates a reference — and reads as a pull-request number — so it does not count.
+
+Auto-closing leaves only a commit stub on the issue, which is not an answer to
+whoever reported it. Post an explanatory comment as well: what the cause was, what
+changed, and anything the reporter needs to do differently.
 
 Follow `.editorconfig`:
 - Python: 4-space indent
