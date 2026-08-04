@@ -657,10 +657,12 @@ class Download:
             except OSError:
                 pass
         # Re-validate every outbound connection at fetch time. validate_url only
-        # saw the submitted URL string; this catches redirects and DNS rebinding
-        # to internal hosts (cloud metadata, RFC1918) that it cannot. Skipped when
-        # ALLOW_PRIVATE_ADDRESSES trusts the environment (e.g. Fake-IP proxies).
-        install_socket_guard(self.allow_private)
+        # saw the submitted URL string; this catches redirects, DNS rebinding and
+        # attacker-controlled media URLs pulled from a remote manifest, none of
+        # which it can see. The configured proxy is passed so that a proxy on
+        # loopback stays reachable at its own address without opening up the rest
+        # of loopback. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the environment.
+        install_socket_guard(self.allow_private, proxy_urls=(self.ytdl_opts.get('proxy'),))
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
