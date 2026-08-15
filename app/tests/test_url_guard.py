@@ -108,8 +108,8 @@ class AddressResolutionTests(unittest.TestCase):
 
 
 class ConnectAddressPolicyTests(unittest.TestCase):
-    """Connect-time policy: allow global, plus loopback only when the caller has
-    established that this destination is the operator's configured proxy."""
+    """Connect-time policy: allow global, plus anything at a destination the
+    caller has established is the operator's configured proxy."""
 
     def test_global_allowed(self):
         self.assertTrue(_address_allowed_at_connect("142.250.1.1"))
@@ -121,12 +121,19 @@ class ConnectAddressPolicyTests(unittest.TestCase):
         self.assertFalse(_address_allowed_at_connect("::1"))
 
     def test_loopback_allowed_only_when_opted_in(self):
-        self.assertTrue(_address_allowed_at_connect("127.0.0.1", allow_loopback=True))
-        self.assertTrue(_address_allowed_at_connect("::1", allow_loopback=True))
+        self.assertTrue(_address_allowed_at_connect("127.0.0.1", is_proxy_endpoint=True))
+        self.assertTrue(_address_allowed_at_connect("::1", is_proxy_endpoint=True))
 
-    def test_opt_in_does_not_widen_beyond_loopback(self):
-        self.assertFalse(_address_allowed_at_connect("169.254.169.254", allow_loopback=True))
-        self.assertFalse(_address_allowed_at_connect("10.0.0.5", allow_loopback=True))
+    def test_proxy_opt_in_covers_any_internal_range(self):
+        # A proxy is just as legitimately on the LAN or a VPN range as on
+        # loopback (#1055): the allowance follows the operator's configured
+        # endpoint, not a particular address family.
+        self.assertTrue(_address_allowed_at_connect("10.1.20.30", is_proxy_endpoint=True))
+        self.assertTrue(_address_allowed_at_connect("192.168.1.10", is_proxy_endpoint=True))
+        self.assertTrue(_address_allowed_at_connect("fd00::1", is_proxy_endpoint=True))
+
+    def test_opt_in_still_rejects_non_addresses(self):
+        self.assertFalse(_address_allowed_at_connect("not-an-ip", is_proxy_endpoint=True))
 
     def test_link_local_metadata_blocked(self):
         self.assertFalse(_address_allowed_at_connect("169.254.169.254"))
@@ -207,9 +214,9 @@ class ProxyEndpointParsingTests(unittest.TestCase):
 class GuardedGetaddrinfoTests(unittest.TestCase):
     def setUp(self):
         # Default state: no proxy configured, so no loopback destination allowed.
-        saved = set(url_guard._allowed_loopback_endpoints)
-        url_guard._allowed_loopback_endpoints = set()
-        self.addCleanup(lambda: setattr(url_guard, "_allowed_loopback_endpoints", saved))
+        saved = set(url_guard._allowed_proxy_endpoints)
+        url_guard._allowed_proxy_endpoints = set()
+        self.addCleanup(lambda: setattr(url_guard, "_allowed_proxy_endpoints", saved))
 
     def test_internal_only_raises(self):
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("169.254.169.254")):
@@ -229,29 +236,52 @@ class GuardedGetaddrinfoTests(unittest.TestCase):
                 _guarded_getaddrinfo("127.0.0.1", 9999)
 
     def test_loopback_allowed_at_configured_proxy_endpoint(self):
-        url_guard._allowed_loopback_endpoints = {("127.0.0.1", 9050)}
+        url_guard._allowed_proxy_endpoints = {("127.0.0.1", 9050)}
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             results = _guarded_getaddrinfo("127.0.0.1", 9050)
         self.assertEqual([r[4][0] for r in results], ["127.0.0.1"])
 
     def test_loopback_blocked_at_other_port_on_proxy_host(self):
         # Same host as the proxy, different port: still off limits.
-        url_guard._allowed_loopback_endpoints = {("127.0.0.1", 9050)}
+        url_guard._allowed_proxy_endpoints = {("127.0.0.1", 9050)}
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             with self.assertRaises(socket.gaierror):
                 _guarded_getaddrinfo("127.0.0.1", 9999)
 
     def test_proxy_reachable_by_hostname(self):
-        url_guard._allowed_loopback_endpoints = {("localhost", 9050)}
+        url_guard._allowed_proxy_endpoints = {("localhost", 9050)}
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             results = _guarded_getaddrinfo("localhost", 9050)
         self.assertEqual([r[4][0] for r in results], ["127.0.0.1"])
 
     def test_string_port_is_normalised(self):
-        url_guard._allowed_loopback_endpoints = {("127.0.0.1", 9050)}
+        url_guard._allowed_proxy_endpoints = {("127.0.0.1", 9050)}
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("127.0.0.1")):
             results = _guarded_getaddrinfo("127.0.0.1", "9050")
         self.assertEqual([r[4][0] for r in results], ["127.0.0.1"])
+
+    def test_lan_proxy_reachable(self):
+        # #1055: a socks5 proxy on the LAN, refused while the allowance was
+        # loopback-only, which pushed operators to ALLOW_PRIVATE_ADDRESSES.
+        url_guard._allowed_proxy_endpoints = {("10.1.20.30", 1080)}
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("10.1.20.30")):
+            results = _guarded_getaddrinfo("10.1.20.30", 1080)
+        self.assertEqual([r[4][0] for r in results], ["10.1.20.30"])
+
+    def test_other_lan_host_still_blocked(self):
+        # The allowance is the proxy's endpoint, not its subnet.
+        url_guard._allowed_proxy_endpoints = {("10.1.20.30", 1080)}
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("10.1.20.31")):
+            with self.assertRaises(socket.gaierror):
+                _guarded_getaddrinfo("10.1.20.31", 1080)
+
+    def test_proxy_address_not_borrowable_by_another_host(self):
+        # Matching is on the configured host string: a manifest URL that resolves
+        # to the proxy's address under its own name gets no allowance.
+        url_guard._allowed_proxy_endpoints = {("10.1.20.30", 1080)}
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("10.1.20.30")):
+            with self.assertRaises(socket.gaierror):
+                _guarded_getaddrinfo("evil.example", 1080)
 
 
 class AllowPrivateBypassTests(unittest.TestCase):
@@ -282,9 +312,9 @@ class AllowPrivateBypassTests(unittest.TestCase):
 
 class InstallSocketGuardTests(unittest.TestCase):
     def setUp(self):
-        original, saved = socket.getaddrinfo, set(url_guard._allowed_loopback_endpoints)
+        original, saved = socket.getaddrinfo, set(url_guard._allowed_proxy_endpoints)
         self.addCleanup(lambda: setattr(socket, "getaddrinfo", original))
-        self.addCleanup(lambda: setattr(url_guard, "_allowed_loopback_endpoints", saved))
+        self.addCleanup(lambda: setattr(url_guard, "_allowed_proxy_endpoints", saved))
         # Keep the host's own environment out of the assertions below.
         patcher = mock.patch("url_guard.urllib.request.getproxies", return_value={})
         self.getproxies = patcher.start()
@@ -299,26 +329,26 @@ class InstallSocketGuardTests(unittest.TestCase):
 
     def test_no_proxy_means_no_loopback_allowance(self):
         install_socket_guard()
-        self.assertEqual(url_guard._allowed_loopback_endpoints, set())
+        self.assertEqual(url_guard._allowed_proxy_endpoints, set())
 
     def test_explicit_proxy_is_registered(self):
         install_socket_guard(proxy_urls=("socks5://127.0.0.1:9050",))
-        self.assertEqual(url_guard._allowed_loopback_endpoints, {("127.0.0.1", 9050)})
+        self.assertEqual(url_guard._allowed_proxy_endpoints, {("127.0.0.1", 9050)})
 
     def test_unset_proxy_option_is_ignored(self):
         # ytdl_opts.get('proxy') is None when the operator configured no proxy.
         install_socket_guard(proxy_urls=(None,))
-        self.assertEqual(url_guard._allowed_loopback_endpoints, set())
+        self.assertEqual(url_guard._allowed_proxy_endpoints, set())
 
     def test_environment_proxies_are_registered(self):
         self.getproxies.return_value = {"http": "http://127.0.0.1:8080"}
         install_socket_guard()
-        self.assertEqual(url_guard._allowed_loopback_endpoints, {("127.0.0.1", 8080)})
+        self.assertEqual(url_guard._allowed_proxy_endpoints, {("127.0.0.1", 8080)})
 
     def test_endpoints_reset_between_installs(self):
         install_socket_guard(proxy_urls=("http://127.0.0.1:8080",))
         install_socket_guard(proxy_urls=(None,))
-        self.assertEqual(url_guard._allowed_loopback_endpoints, set())
+        self.assertEqual(url_guard._allowed_proxy_endpoints, set())
 
 
 if __name__ == "__main__":

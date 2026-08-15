@@ -659,9 +659,9 @@ class Download:
         # Re-validate every outbound connection at fetch time. validate_url only
         # saw the submitted URL string; this catches redirects, DNS rebinding and
         # attacker-controlled media URLs pulled from a remote manifest, none of
-        # which it can see. The configured proxy is passed so that a proxy on
-        # loopback stays reachable at its own address without opening up the rest
-        # of loopback. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the environment.
+        # which it can see. The configured proxy is passed so that a proxy on an
+        # internal address stays reachable at its own host:port without opening up
+        # anything else. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the environment.
         install_socket_guard(self.allow_private, proxy_urls=(self.ytdl_opts.get('proxy'),))
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         try:

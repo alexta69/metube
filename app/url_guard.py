@@ -129,29 +129,28 @@ def _address_is_global(addr: str) -> bool:
     return bool(ips) and all(ip.is_global for ip in ips)
 
 
-def _address_allowed_at_connect(addr: str, allow_loopback: bool = False) -> bool:
+def _address_allowed_at_connect(addr: str, is_proxy_endpoint: bool = False) -> bool:
     """True if *addr* may be connected to at download time.
 
-    Permits global addresses only. Loopback is permitted just for the specific
-    host:port of an operator-configured proxy (see ``_loopback_endpoint_allowed``),
-    never as a blanket rule: media URLs that yt-dlp derives from a remote manifest
-    are attacker-controlled and reach this policy without passing ``validate_url``,
-    so a general loopback allowance would let a hostile playlist read any service
-    on the server's loopback interface. Blocks link-local (cloud metadata at
-    169.254.169.254), private (RFC1918), unique-local and every other non-global
-    range.
+    Permits global addresses, and anything at all when the destination is an
+    operator-configured proxy (see ``_is_proxy_endpoint``). Internal addresses
+    are otherwise refused with no blanket exception: media URLs that yt-dlp
+    derives from a remote manifest are attacker-controlled and reach this policy
+    without passing ``validate_url``, so any range opened here is a range a
+    hostile playlist can read from the server's own network. Blocks link-local
+    (cloud metadata at 169.254.169.254), private (RFC1918), loopback,
+    unique-local and every other non-global range.
     """
     ips = _ips_to_judge(addr)
     if not ips:
         return False
-    if all(ip.is_global for ip in ips):
-        return True
-    return allow_loopback and all(ip.is_loopback for ip in ips)
+    return is_proxy_endpoint or all(ip.is_global for ip in ips)
 
 
 def _proxy_endpoint(proxy_url: str):
     """Parse a proxy URL into a ``(hostname, port)`` pair, or ``None`` if it has
-    no usable host. Used to scope the loopback allowance to that endpoint alone."""
+    no usable host. Used to scope the internal-address allowance to that endpoint
+    alone."""
     if not isinstance(proxy_url, str) or not proxy_url.strip():
         return None
     candidate = proxy_url.strip()
@@ -181,8 +180,8 @@ def _collect_proxy_endpoints(proxy_urls) -> set:
 # Captured at import so re-installing the guard never wraps the wrapper.
 _real_getaddrinfo = socket.getaddrinfo
 
-# Populated by install_socket_guard; empty means no loopback destination is allowed.
-_allowed_loopback_endpoints: set = set()
+# Populated by install_socket_guard; empty means no internal destination is allowed.
+_allowed_proxy_endpoints: set = set()
 
 
 def _normalise_port(port):
@@ -197,18 +196,22 @@ def _normalise_port(port):
     return port
 
 
-def _loopback_endpoint_allowed(host, port) -> bool:
-    if not _allowed_loopback_endpoints or host is None:
+def _is_proxy_endpoint(host, port) -> bool:
+    """True when host:port is exactly an endpoint the operator configured as a
+    proxy. Matching is on the configured host *string*, not on the resolved
+    address, so a hostile media URL cannot borrow the allowance by resolving to
+    the same address under a different name."""
+    if not _allowed_proxy_endpoints or host is None:
         return False
-    return (str(host).rstrip('.').lower(), _normalise_port(port)) in _allowed_loopback_endpoints
+    return (str(host).rstrip('.').lower(), _normalise_port(port)) in _allowed_proxy_endpoints
 
 
 def _guarded_getaddrinfo(host, *args, **kwargs):
     results = _real_getaddrinfo(host, *args, **kwargs)
     # Mirrors getaddrinfo(host, port, ...): port is the first optional argument.
     port = args[0] if args else kwargs.get('port')
-    allow_loopback = _loopback_endpoint_allowed(host, port)
-    allowed = [r for r in results if _address_allowed_at_connect(r[4][0], allow_loopback)]
+    is_proxy = _is_proxy_endpoint(host, port)
+    allowed = [r for r in results if _address_allowed_at_connect(r[4][0], is_proxy)]
     if not allowed:
         raise socket.gaierror(f'Refusing to connect to non-global address for host {host!r}')
     return allowed
@@ -227,9 +230,10 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=()) -> None:
     isolation as the backstop.
 
     *proxy_urls* are the operator's configured proxies (yt-dlp's ``proxy`` option;
-    the ``*_proxy`` environment variables are picked up automatically). A proxy on
-    loopback is reachable at its own host:port, and nothing else on loopback is.
-    That costs proxied setups nothing: yt-dlp resolves the proxy itself at exactly that host:port,
+    the ``*_proxy`` environment variables are picked up automatically). A proxy is
+    reachable at its own host:port wherever it lives — loopback, the LAN, a VPN
+    range — and nothing else internal is. That costs proxied setups nothing and
+    gives away nothing: yt-dlp resolves the proxy itself at exactly that host:port,
     and a media URL is either handed to the proxy unresolved or resolved on its own
     merits — never inheriting the proxy's allowance.
 
@@ -239,12 +243,10 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=()) -> None:
     """
     if allow_private:
         return
-    _allowed_loopback_endpoints.clear()
-    _allowed_loopback_endpoints.update(_collect_proxy_endpoints(proxy_urls))
-    for host, port in sorted(_allowed_loopback_endpoints, key=lambda ep: (ep[0], ep[1] or 0)):
-        ip = _normalise_ip(host)
-        if ip is not None and ip.is_loopback:
-            log.info(f'Allowing connections to configured loopback proxy {host}:{port}')
+    _allowed_proxy_endpoints.clear()
+    _allowed_proxy_endpoints.update(_collect_proxy_endpoints(proxy_urls))
+    for host, port in sorted(_allowed_proxy_endpoints, key=lambda ep: (ep[0], ep[1] or 0)):
+        log.info(f'Allowing connections to configured proxy {host}:{port}')
     socket.getaddrinfo = _guarded_getaddrinfo
 
 
