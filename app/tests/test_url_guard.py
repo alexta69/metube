@@ -10,6 +10,7 @@ import url_guard
 from url_guard import (
     validate_url,
     _address_allowed_at_connect,
+    _address_is_global,
     _guarded_getaddrinfo,
     _proxy_endpoint,
     install_socket_guard,
@@ -136,6 +137,47 @@ class ConnectAddressPolicyTests(unittest.TestCase):
 
     def test_ipv4_mapped_metadata_blocked(self):
         self.assertFalse(_address_allowed_at_connect("::ffff:169.254.169.254"))
+
+
+class TunnelledIPv4Tests(unittest.TestCase):
+    """IPv6 transition forms that carry an IPv4 address the outer address hides.
+
+    ``is_global`` looks only at the outer address, so a form that tunnels an
+    internal IPv4 has to be unwrapped before it is judged (GHSA-5mq5-qr7m-f4wx).
+    """
+
+    def test_nat64_well_known_prefix_blocked(self):
+        # 2000::/3 global unicast on its face; carries the metadata address.
+        self.assertFalse(_address_is_global("64:ff9b::a9fe:a9fe"))
+        self.assertFalse(_address_is_global("64:ff9b::7f00:1"))
+        self.assertFalse(_address_allowed_at_connect("64:ff9b::a9fe:a9fe"))
+
+    def test_nat64_carrying_a_public_address_allowed(self):
+        self.assertTrue(_address_is_global("64:ff9b::8.8.8.8"))
+
+    def test_ipv4_compatible_form_blocked(self):
+        # The deprecated ::/96 form, likewise global-looking to is_global.
+        self.assertFalse(_address_is_global("::a9fe:a9fe"))
+        self.assertFalse(_address_allowed_at_connect("::a9fe:a9fe"))
+
+    def test_sixtofour_and_teredo_stay_blocked(self):
+        # Python rejects these ranges wholesale. Unwrapping must not promote a
+        # blocked address to an allowed one just because the payload is global.
+        self.assertFalse(_address_is_global("2002:a9fe:a9fe::"))
+        self.assertFalse(_address_is_global("2002:0808:0808::"))
+        self.assertFalse(_address_is_global("2001:0:4136:e378:8000:63bf:3fff:fdd2"))
+
+    def test_plain_addresses_unaffected(self):
+        self.assertTrue(_address_is_global("142.250.1.1"))
+        self.assertTrue(_address_is_global("2607:f8b0:4004:c07::64"))
+        self.assertFalse(_address_is_global("not-an-ip"))
+
+    def test_tunnelled_form_blocked_at_ingress(self):
+        with mock.patch(
+            "url_guard.socket.getaddrinfo",
+            return_value=_addrinfo("64:ff9b::a9fe:a9fe", family=socket.AF_INET6),
+        ):
+            self.assertIsNotNone(validate_url("http://nat64.example/x"))
 
 
 class ProxyEndpointParsingTests(unittest.TestCase):
