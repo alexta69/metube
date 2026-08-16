@@ -115,6 +115,28 @@ class ConfigTests(unittest.TestCase):
         self.assertNotIn("HOST", safe)
         self.assertEqual(safe["ALLOW_YTDL_OPTIONS_OVERRIDES"], False)
 
+    def test_default_folder_empty_by_default(self):
+        with patch.dict(os.environ, _base_env(), clear=False):
+            c = Config()
+        self.assertEqual(c.DEFAULT_FOLDER, "")
+
+    def test_default_folder_is_trimmed_and_reaches_the_frontend(self):
+        with patch.dict(os.environ, _base_env(DEFAULT_FOLDER=" /youtube/ "), clear=False):
+            c = Config()
+        self.assertEqual(c.DEFAULT_FOLDER, "youtube")
+        self.assertEqual(c.frontend_safe()["DEFAULT_FOLDER"], "youtube")
+
+    def test_default_folder_ignored_without_custom_dirs(self):
+        # The folder field is not shown at all without CUSTOM_DIRS, and sending
+        # a folder anyway is rejected by the download path check.
+        with patch.dict(
+            os.environ,
+            _base_env(DEFAULT_FOLDER="youtube", CUSTOM_DIRS="false"),
+            clear=False,
+        ):
+            c = Config()
+        self.assertEqual(c.DEFAULT_FOLDER, "")
+
     def test_allow_ytdl_options_overrides_boolean_loaded(self):
         with patch.dict(os.environ, _base_env(ALLOW_YTDL_OPTIONS_OVERRIDES="true"), clear=False):
             c = Config()

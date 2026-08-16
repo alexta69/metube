@@ -62,6 +62,7 @@ class Config:
         'CUSTOM_DIRS': 'true',
         'CREATE_CUSTOM_DIRS': 'true',
         'CUSTOM_DIRS_EXCLUDE_REGEX': r'(^|/)[.@].*$',
+        'DEFAULT_FOLDER': '',
         'DELETE_FILE_ON_TRASHCAN': 'false',
         'STATE_DIR': '.',
         'URL_PREFIX': '',
@@ -127,6 +128,18 @@ class Config:
             if val and not val.endswith('/'):
                 setattr(self, attr, val + '/')
 
+        # DEFAULT_FOLDER only pre-fills the form's folder field, which the UI
+        # does not even show without CUSTOM_DIRS. Sending one anyway would fail
+        # every download on the server's own folder check, so drop it and say so
+        # rather than leaving the user with a form that cannot submit.
+        self.DEFAULT_FOLDER = self.DEFAULT_FOLDER.strip().strip('/')
+        if self.DEFAULT_FOLDER and not self.CUSTOM_DIRS:
+            log.warning(
+                'Ignoring DEFAULT_FOLDER "%s" because CUSTOM_DIRS is not enabled',
+                self.DEFAULT_FOLDER,
+            )
+            self.DEFAULT_FOLDER = ''
+
         # Convert relative addresses to absolute addresses to prevent the failure of file address comparison
         if self.YTDL_OPTIONS_FILE and self.YTDL_OPTIONS_FILE.startswith('.'):
             self.YTDL_OPTIONS_FILE = str(Path(self.YTDL_OPTIONS_FILE).resolve())
@@ -187,6 +200,7 @@ class Config:
     _FRONTEND_KEYS = (
         'CUSTOM_DIRS',
         'CREATE_CUSTOM_DIRS',
+        'DEFAULT_FOLDER',
         'OUTPUT_TEMPLATE_CHAPTER',
         'PUBLIC_HOST_URL',
         'PUBLIC_HOST_AUDIO_URL',

@@ -434,6 +434,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         if (!Number.isNaN(playlistItemLimit) && playlistItemLimit > 0) {
           this.playlistItemLimit = playlistItemLimit;
         }
+        // Pre-fill the download folder, unless the user has already typed one
+        // this session. The server drops DEFAULT_FOLDER when CUSTOM_DIRS is
+        // off, so there is nothing to guard against here.
+        if (!this.folder) {
+          this.folder = String(config['DEFAULT_FOLDER'] ?? '');
+        }
         // Set chapter template from backend config if not already set by cookie
         if (!this.chapterTemplate) {
           this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];

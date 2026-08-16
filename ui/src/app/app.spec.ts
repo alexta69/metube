@@ -148,6 +148,25 @@ describe('App', () => {
     expect(app).toBeTruthy();
   });
 
+  it('pre-fills the download folder from DEFAULT_FOLDER', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    downloads.configurationChanged.next({ DEFAULT_FOLDER: 'youtube' });
+
+    expect(fixture.componentInstance.folder).toBe('youtube');
+  });
+
+  it('does not overwrite a folder the user already typed', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    fixture.componentInstance.folder = 'music';
+
+    downloads.configurationChanged.next({ DEFAULT_FOLDER: 'youtube' });
+
+    expect(fixture.componentInstance.folder).toBe('music');
+  });
+
   it('asIsOrder returns a stable comparator value (insertion order preserved)', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
