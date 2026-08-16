@@ -50,6 +50,7 @@ class _YoutubeDL:
 
 
 fake_utils.DownloadError = type("DownloadError", (Exception,), {})
+fake_utils.YoutubeDLError = fake_utils.DownloadError
 fake_yt_dlp.YoutubeDL = _YoutubeDL
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
@@ -432,6 +433,88 @@ def _make_test_download() -> Download:
         chapter_template="",
     )
     return Download("/tmp", "/tmp", "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", "any", {}, info)
+
+
+class DownloadLoggerTests(unittest.TestCase):
+    def test_routes_messages_and_retains_only_non_empty_warnings(self):
+        logger = ytdl._DownloadYtdlLogger()
+
+        with self.assertLogs('ytdl', level='DEBUG') as logs:
+            logger.debug('debug detail')
+            logger.warning(' useful warning ')
+            logger.warning('   ')
+            logger.error('error detail')
+
+        self.assertEqual(logger.warnings, ['useful warning'])
+        self.assertIn('DEBUG:ytdl:debug detail', logs.output)
+        self.assertIn('WARNING:ytdl: useful warning ', logs.output)
+        self.assertIn('ERROR:ytdl:error detail', logs.output)
+
+
+class DownloadResultTests(unittest.TestCase):
+    def _run_download(self, result=0, warnings=(), error=None):
+        download = _make_test_download()
+        statuses = []
+        download.status_queue = types.SimpleNamespace(put=statuses.append)
+        captured_params = {}
+
+        class FakeYoutubeDL:
+            def download(self, urls):
+                self.urls = urls
+                for warning in warnings:
+                    captured_params['logger'].warning(warning)
+                if error is not None:
+                    raise error
+                return result
+
+        def make_youtube_dl(params):
+            captured_params.update(params)
+            return FakeYoutubeDL()
+
+        with patch.object(download, '_make_youtube_dl', side_effect=make_youtube_dl), \
+             patch('ytdl.install_socket_guard'), \
+             patch('ytdl.os.setpgrp'):
+            download._download()
+
+        return statuses, captured_params
+
+    def test_nonzero_result_includes_warning_context_and_forwards_logs(self):
+        warnings = [
+            'The uploader has blocked this video in your country',
+            'No video formats found',
+        ]
+
+        with self.assertLogs('ytdl', level='WARNING') as logs:
+            statuses, params = self._run_download(result=1, warnings=warnings)
+
+        self.assertEqual(
+            statuses[-1],
+            {'status': 'error', 'msg': '\n'.join(warnings)},
+        )
+        self.assertIs(params['logger'].__class__, ytdl._DownloadYtdlLogger)
+        for warning in warnings:
+            self.assertTrue(any(warning in entry for entry in logs.output))
+
+    def test_nonzero_result_without_warning_uses_fallback_message(self):
+        statuses, _ = self._run_download(result=2)
+
+        self.assertEqual(
+            statuses[-1],
+            {'status': 'error', 'msg': 'yt-dlp failed with exit code 2'},
+        )
+
+    def test_warning_does_not_change_success_status(self):
+        statuses, _ = self._run_download(result=0, warnings=['A recoverable warning'])
+
+        self.assertEqual(statuses[-1], {'status': 'finished'})
+
+    def test_youtube_dl_error_message_takes_precedence_over_warnings(self):
+        statuses, _ = self._run_download(
+            warnings=['Earlier warning'],
+            error=ytdl.yt_dlp.utils.YoutubeDLError('extractor failed'),
+        )
+
+        self.assertEqual(statuses[-1], {'status': 'error', 'msg': 'extractor failed'})
 
 
 class ProgressThrottleTests(unittest.TestCase):

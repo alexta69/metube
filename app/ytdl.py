@@ -32,6 +32,25 @@ from urllib.parse import urlsplit
 
 log = logging.getLogger('ytdl')
 
+
+class _DownloadYtdlLogger:
+    """Forward yt-dlp output while retaining warnings for failed downloads."""
+
+    def __init__(self):
+        self.warnings = []
+
+    def debug(self, msg):
+        log.debug('%s', msg)
+
+    def warning(self, msg):
+        log.warning('%s', msg)
+        if msg is not None and (warning := str(msg).strip()):
+            self.warnings.append(warning)
+
+    def error(self, msg):
+        log.error('%s', msg)
+
+
 # Python 3.14 switches the default multiprocessing start method on Linux
 # (this app's only supported deployment target, per the Dockerfile) from fork
 # to forkserver. Download._download relies on inheriting process state the
@@ -667,6 +686,7 @@ class Download:
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
             put_status = self._make_progress_hook()
+            ytdl_logger = _DownloadYtdlLogger()
 
             def put_status_postprocessor(d):
                 if d['postprocessor'] == 'MoveFiles' and d['status'] == 'finished':
@@ -710,6 +730,7 @@ class Download:
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }
+            ytdl_params['logger'] = ytdl_logger
 
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
@@ -732,7 +753,11 @@ class Download:
                 )
 
             ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
-            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+            if ret == 0:
+                self.status_queue.put({'status': 'finished'})
+            else:
+                msg = '\n'.join(ytdl_logger.warnings) or f'yt-dlp failed with exit code {ret}'
+                self.status_queue.put({'status': 'error', 'msg': msg})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
