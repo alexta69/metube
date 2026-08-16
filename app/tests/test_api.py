@@ -380,6 +380,33 @@ async def test_subscriptions_update_invalid_interval_returns_error_not_500(mock_
     assert body["status"] == "error"
 
 
+@pytest.mark.asyncio
+async def test_subscriptions_update_accepts_folder(monkeypatch, mock_dqueue):
+    """Issue #1052: folder was absent from the route's accepted fields, so a
+    folder-only update was rejected outright as having nothing to update."""
+    submgr = MagicMock()
+    submgr.update_subscription = AsyncMock(return_value={"status": "ok"})
+    monkeypatch.setattr(main, "submgr", submgr)
+
+    req = _json_request({"id": "abc", "folder": "channels/jane"})
+    resp = await main.subscriptions_update(req)
+
+    assert resp.status == 200
+    submgr.update_subscription.assert_awaited_once_with("abc", {"folder": "channels/jane"})
+
+
+@pytest.mark.asyncio
+async def test_subscriptions_update_still_drops_unknown_fields(monkeypatch, mock_dqueue):
+    submgr = MagicMock()
+    submgr.update_subscription = AsyncMock(return_value={"status": "ok"})
+    monkeypatch.setattr(main, "submgr", submgr)
+
+    req = _json_request({"id": "abc", "seen_ids": ["x"], "url": "https://evil.example"})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.subscriptions_update(req)
+    submgr.update_subscription.assert_not_awaited()
+
+
 def test_is_within_state_dir_blocks_state_subtree():
     state_dir = main._STATE_DIR_REAL
     assert main._is_within_state_dir(state_dir)

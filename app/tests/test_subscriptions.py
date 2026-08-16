@@ -891,6 +891,75 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(upd["status"], "ok")
             self.assertEqual(mgr.list_all()[0].name, "x" * 200)
 
+    async def test_update_subscription_changes_folder(self):
+        """Issue #1052: the folder was settable at creation and then frozen,
+        because it was never added to the fields the update route accepts."""
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            self.assertEqual(mgr.list_all()[0].folder, "")
+
+            upd = await mgr.update_subscription(sub_id, {"folder": "  channels/jane  "})
+            self.assertEqual(upd["status"], "ok")
+            self.assertEqual(upd["subscription"]["folder"], "channels/jane")
+            self.assertEqual(mgr.list_all()[0].folder, "channels/jane")
+
+    async def test_update_subscription_folder_survives_reload(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            await mgr.update_subscription(sub_id, {"folder": "archive"})
+
+            reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
+            self.assertEqual(reloaded.get(sub_id).folder, "archive")
+
+    async def test_update_subscription_clears_folder(self):
+        # An empty folder is valid and means the base download directory.
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            await mgr.update_subscription(sub_id, {"folder": "archive"})
+
+            upd = await mgr.update_subscription(sub_id, {"folder": "   "})
+            self.assertEqual(upd["status"], "ok")
+            self.assertEqual(mgr.list_all()[0].folder, "")
+
+    async def test_update_subscription_rejects_unusable_folder(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            await mgr.update_subscription(sub_id, {"folder": "keep"})
+
+            bad_values = (
+                "/etc",
+                "/absolute/path",
+                "../escape",
+                "nested/../../escape",
+                "windows\\..\\escape",
+                42,
+                ["a"],
+            )
+            for bad in bad_values:
+                upd = await mgr.update_subscription(sub_id, {"folder": bad})
+                self.assertEqual(upd["status"], "error", f"expected {bad!r} to be rejected")
+                self.assertEqual(mgr.list_all()[0].folder, "keep")
+
+    async def test_update_subscription_folder_leaves_other_fields_alone(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            before = mgr.get(sub_id)
+            name, interval, enabled = before.name, before.check_interval_minutes, before.enabled
+
+            await mgr.update_subscription(sub_id, {"folder": "only/this"})
+
+            after = mgr.get(sub_id)
+            self.assertEqual(after.folder, "only/this")
+            self.assertEqual(after.name, name)
+            self.assertEqual(after.check_interval_minutes, interval)
+            self.assertEqual(after.enabled, enabled)
+
     async def test_update_subscription_skip_subscriber_only(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()

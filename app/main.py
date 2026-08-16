@@ -967,7 +967,7 @@ async def subscriptions_update(request):
         k: v
         for k, v in post.items()
         if k != 'id'
-        and k in ('enabled', 'check_interval_minutes', 'name', 'title_regex', 'skip_subscriber_only')
+        and k in ('enabled', 'check_interval_minutes', 'name', 'folder', 'title_regex', 'skip_subscriber_only')
     }
     if not changes:
         raise web.HTTPBadRequest(reason='no valid fields to update')

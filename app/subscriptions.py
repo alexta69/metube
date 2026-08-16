@@ -311,6 +311,33 @@ def validate_subscription_name(value: Any) -> str:
     return name
 
 
+def validate_subscription_folder(value: Any) -> str:
+    """Return a stored subscription folder, or raise ValueError if unusable.
+
+    The folder is relative to the configured download directory, and the
+    authoritative check still happens at download time in ``DownloadQueue`` —
+    that is where ``CUSTOM_DIRS``, ``CREATE_CUSTOM_DIRS`` and the
+    resolves-inside-the-base-directory rule live, and where the directory is
+    created. This rejects only values that could never be valid, so an edit is
+    refused while the user is looking at it rather than silently failing every
+    check from then on. An empty folder is valid and means the base directory.
+    """
+    if value is None:
+        return ""
+    if not isinstance(value, str):
+        raise ValueError("folder must be a string")
+    folder = value.strip()
+    if not folder:
+        return ""
+    if os.path.isabs(folder):
+        raise ValueError("folder must be relative to the download directory")
+    # Check both separators: the value is stored as typed, and a Windows-style
+    # path would otherwise carry an unexamined '..' past this point.
+    if any(part == ".." for part in folder.replace("\\", "/").split("/")):
+        raise ValueError('folder must not contain ".."')
+    return folder
+
+
 def _coerce_bool(value: Any) -> bool:
     """Accept JSON booleans and common string forms used by API clients."""
     if isinstance(value, bool):
@@ -705,6 +732,13 @@ class SubscriptionManager:
             except ValueError as exc:
                 return {"status": "error", "msg": str(exc)}
 
+        validated_folder: Optional[str] = None
+        if "folder" in changes:
+            try:
+                validated_folder = validate_subscription_folder(changes["folder"])
+            except ValueError as exc:
+                return {"status": "error", "msg": str(exc)}
+
         validated_tr: Optional[str] = None
         if "title_regex" in changes:
             try:
@@ -755,6 +789,10 @@ class SubscriptionManager:
                 sub.check_interval_minutes = validated_interval
             if validated_name is not None:
                 sub.name = validated_name
+            if validated_folder is not None:
+                # Applies to future downloads only; files already downloaded
+                # stay where they are.
+                sub.folder = validated_folder
             if validated_tr is not None:
                 sub.title_regex = validated_tr
             if skip_so_set:
