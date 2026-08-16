@@ -81,28 +81,34 @@ export class SubscriptionsService {
   }
 
   subscribe(payload: SubscribePayload) {
-    return this.http
-      .post<Status>('subscribe', {
-        url: payload.url,
-        download_type: payload.downloadType,
-        codec: payload.codec,
-        quality: payload.quality,
-        format: payload.format,
-        folder: payload.folder,
-        custom_name_prefix: payload.customNamePrefix,
-        playlist_item_limit: payload.playlistItemLimit,
-        auto_start: payload.autoStart,
-        split_by_chapters: payload.splitByChapters,
-        chapter_template: payload.chapterTemplate,
-        subtitle_language: payload.subtitleLanguage,
-        subtitle_mode: payload.subtitleMode,
-        ytdl_options_presets: payload.ytdlOptionsPresets,
-        ytdl_options_overrides: payload.ytdlOptionsOverrides,
-        check_interval_minutes: payload.checkIntervalMinutes,
-        title_regex: payload.titleRegex,
-        skip_subscriber_only: payload.skipSubscriberOnly,
-      })
-      .pipe(catchError((err) => this.handleHTTPError(err)));
+    const body: Record<string, unknown> = {
+      url: payload.url,
+      download_type: payload.downloadType,
+      codec: payload.codec,
+      quality: payload.quality,
+      format: payload.format,
+      folder: payload.folder,
+      custom_name_prefix: payload.customNamePrefix,
+      playlist_item_limit: payload.playlistItemLimit,
+      auto_start: payload.autoStart,
+      split_by_chapters: payload.splitByChapters,
+      chapter_template: payload.chapterTemplate,
+      subtitle_language: payload.subtitleLanguage,
+      subtitle_mode: payload.subtitleMode,
+      ytdl_options_presets: payload.ytdlOptionsPresets,
+      ytdl_options_overrides: payload.ytdlOptionsOverrides,
+      check_interval_minutes: payload.checkIntervalMinutes,
+      title_regex: payload.titleRegex,
+      skip_subscriber_only: payload.skipSubscriberOnly,
+    };
+    // Send the clip fields only when actually filled in. The backend treats an
+    // absent field as "not requested", which is what stops a t= timestamp on the
+    // subscribed URL from clipping every future download.
+    const cs = payload.clipStart?.trim();
+    const ce = payload.clipEnd?.trim();
+    if (cs) body['clip_start'] = cs;
+    if (ce) body['clip_end'] = ce;
+    return this.http.post<Status>('subscribe', body).pipe(catchError((err) => this.handleHTTPError(err)));
   }
 
   delete(ids: string[]) {

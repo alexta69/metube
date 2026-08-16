@@ -409,6 +409,76 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sub.seen_ids[:2], ["v2", "v1"])
             self.assertEqual([entry["webpage_url"] for entry, _, _ in queue.entries], ["https://example.com/v2"])
 
+    async def test_check_now_applies_subscription_clip_bounds(self):
+        """Issue #1049: clip bounds were the one download option a subscription
+        could not carry, so they must reach every entry it queues."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                    ),
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [
+                            {"id": "v2", "title": "Two", "webpage_url": "https://example.com/v2"},
+                            {"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"},
+                        ],
+                    ),
+                ],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    clip_start=30.0,
+                    clip_end=90.0,
+                )
+                sub_id = result["subscription"]["id"]
+                self.assertEqual(mgr.get(sub_id).clip_start, 30.0)
+                self.assertEqual(mgr.get(sub_id).clip_end, 90.0)
+                await mgr.check_now([sub_id])
+
+            self.assertEqual(len(queue.entries), 1)
+            _entry, args, _kwargs = queue.entries[0]
+            # add_entry(entry, download_type, ..., ytdl_options_overrides, clip_start, clip_end)
+            self.assertEqual(args[-2], 30.0)
+            self.assertEqual(args[-1], 90.0)
+
+    async def test_clip_bounds_survive_reload_and_default_to_none(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            queue = _Queue()
+            mgr = SubscriptionManager(cfg, queue, _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            # Records written before these fields existed simply take the defaults.
+            self.assertIsNone(mgr.get(sub_id).clip_start)
+            self.assertIsNone(mgr.get(sub_id).clip_end)
+
+            mgr.get(sub_id).clip_start = 12.5
+            async with mgr._lock:
+                mgr._save_locked()
+
+            reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
+            self.assertEqual(reloaded.get(sub_id).clip_start, 12.5)
+            self.assertIsNone(reloaded.get(sub_id).clip_end)
+
     async def test_check_now_queues_subscriber_only_when_skip_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()

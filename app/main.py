@@ -917,9 +917,6 @@ async def subscribe(request):
         raise web.HTTPBadRequest(reason='check_interval_minutes must be an integer') from exc
     if cic < 1:
         raise web.HTTPBadRequest(reason='check_interval_minutes must be at least 1')
-    if o.get('clip_start') is not None or o.get('clip_end') is not None:
-        raise web.HTTPBadRequest(reason='clip options are not supported for subscriptions')
-
     try:
         skip_subscriber_only = coerce_optional_bool(
             post.get('skip_subscriber_only'),
@@ -928,6 +925,19 @@ async def subscribe(request):
         )
     except ValueError as exc:
         raise web.HTTPBadRequest(reason=str(exc)) from exc
+
+    # A t= timestamp in the URL means "start playing here" and parse_download_options
+    # turns it into a clip start, which is right for a one-off download of that video.
+    # A subscription URL is a channel or playlist, so a timestamp left on it says
+    # nothing about the videos it will yield — honour clip fields only when the
+    # caller supplied them explicitly, rather than silently clipping every future
+    # download. The t= param is still stripped from the stored URL.
+    clip_given = (
+        _clip_field_provided_in_post(post.get('clip_start'))
+        or _clip_field_provided_in_post(post.get('clip_end'))
+    )
+    sub_clip_start = o['clip_start'] if clip_given else None
+    sub_clip_end = o['clip_end'] if clip_given else None
 
     result = await submgr.add_subscription(
         o['url'],
@@ -948,6 +958,8 @@ async def subscribe(request):
         ytdl_options_overrides=o['ytdl_options_overrides'],
         title_regex=post.get('title_regex'),
         skip_subscriber_only=skip_subscriber_only,
+        clip_start=sub_clip_start,
+        clip_end=sub_clip_end,
     )
     return web.Response(text=serializer.encode(result))
 

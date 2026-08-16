@@ -601,14 +601,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     if (!this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides)) {
       return;
     }
-    // Subscriptions do not support clip ranges (backend rejects clip fields).
-    const { clipStart: _clipStart, clipEnd: _clipEnd, ...subscribeBase } = payload;
-    void _clipStart;
-    void _clipEnd;
     this.subscribeInProgress = true;
     this.subscriptionsSvc
       .subscribe({
-        ...subscribeBase,
+        ...payload,
         checkIntervalMinutes: this.checkIntervalMinutes,
         titleRegex: tr,
         skipSubscriberOnly: this.skipSubscriberOnly,

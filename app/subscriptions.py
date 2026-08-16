@@ -189,6 +189,13 @@ class SubscriptionInfo:
     ytdl_options_overrides: dict[str, Any] = field(default_factory=dict)
     title_regex: str = ""
     skip_subscriber_only: bool = False
+    # A fixed range applied to every video the subscription downloads. Only
+    # sensible for channels with a consistent format (a standing intro, a fixed
+    # sponsor read); left unset, videos download whole. Old stored records
+    # predate these fields and take the defaults — _from_stored filters by
+    # field name, so nothing needs migrating.
+    clip_start: Optional[float] = None
+    clip_end: Optional[float] = None
     last_checked: Optional[float] = None
     seen_ids: list[str] = field(default_factory=list)
     error: Optional[str] = None
@@ -211,6 +218,8 @@ class SubscriptionInfo:
             "folder": self.folder,
             "title_regex": self.title_regex,
             "skip_subscriber_only": self.skip_subscriber_only,
+            "clip_start": self.clip_start,
+            "clip_end": self.clip_end,
             "last_checked": self.last_checked,
             "seen_count": len(self.seen_ids),
             "error": self.error,
@@ -240,6 +249,8 @@ def _subscription_to_record(sub: SubscriptionInfo) -> dict[str, Any]:
         "ytdl_options_overrides": sub.ytdl_options_overrides,
         "title_regex": sub.title_regex,
         "skip_subscriber_only": sub.skip_subscriber_only,
+        "clip_start": sub.clip_start,
+        "clip_end": sub.clip_end,
         "last_checked": sub.last_checked,
         "seen_ids": list(sub.seen_ids),
         "error": sub.error,
@@ -474,6 +485,8 @@ class SubscriptionManager:
         subtitle_mode: str,
         ytdl_options_presets: Optional[list[str]] = None,
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
+        clip_start: Optional[float] = None,
+        clip_end: Optional[float] = None,
     ) -> tuple[list[str], list[str]]:
         queued_ids: list[str] = []
         queue_errors: list[str] = []
@@ -504,6 +517,8 @@ class SubscriptionManager:
                 subtitle_mode,
                 presets,
                 ytdl_options_overrides,
+                clip_start,
+                clip_end,
             )
             if isinstance(result, dict) and result.get("status") == "error":
                 msg = str(result.get("msg") or f"Queueing failed for {vurl}")
@@ -593,6 +608,8 @@ class SubscriptionManager:
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
         title_regex: Any = None,
         skip_subscriber_only: Any = None,
+        clip_start: Optional[float] = None,
+        clip_end: Optional[float] = None,
     ) -> dict:
         url = self._normalize_url(url)
         if not url:
@@ -679,6 +696,8 @@ class SubscriptionManager:
                 ytdl_options_overrides=dict(ytdl_options_overrides or {}),
                 title_regex=title_regex_stored,
                 skip_subscriber_only=skip_so,
+                clip_start=clip_start,
+                clip_end=clip_end,
                 last_checked=time.time(),
                 seen_ids=list(dict.fromkeys(all_ids)),
                 error=None,
@@ -930,6 +949,8 @@ class SubscriptionManager:
             dl_ytdl_overrides = dict(cur.ytdl_options_overrides)
             dl_title_regex = cur.title_regex or ""
             dl_skip_subscriber_only = bool(cur.skip_subscriber_only)
+            dl_clip_start = cur.clip_start
+            dl_clip_end = cur.clip_end
 
         new_entries: list[dict] = []
         for ent in entries:
@@ -994,6 +1015,8 @@ class SubscriptionManager:
             subtitle_mode=dl_submode,
             ytdl_options_presets=dl_ytdl_presets,
             ytdl_options_overrides=dl_ytdl_overrides,
+            clip_start=dl_clip_start,
+            clip_end=dl_clip_end,
         )
         log.info(
             "Subscription check finished for %s: %d new, %d filtered, %d subscriber_skipped, %d queued, %d failed",

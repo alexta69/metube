@@ -254,7 +254,9 @@ describe('App', () => {
     expect(payload.skipSubscriberOnly).toBe(true);
   });
 
-  it('omits clip fields from subscribe payload', () => {
+  it('passes clip fields through to the subscribe payload', () => {
+    // #1049: a subscription's options apply to all its future downloads, and
+    // clip bounds used to be stripped out on the way.
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
@@ -264,8 +266,8 @@ describe('App', () => {
     app.addSubscription();
     expect(subs.subscribeCalls.length).toBe(1);
     const payload = subs.subscribeCalls[0] as Record<string, unknown>;
-    expect('clipStart' in payload).toBe(false);
-    expect('clipEnd' in payload).toBe(false);
+    expect(payload['clipStart']).toBe('1:00');
+    expect(payload['clipEnd']).toBe('2:00');
   });
 
   it('buildAddPayload includes clip times', () => {

@@ -349,17 +349,70 @@ async def test_add_passes_clip_bounds_to_queue(mock_dqueue):
 
 
 @pytest.mark.asyncio
-async def test_subscribe_rejects_clip_options(mock_dqueue, monkeypatch):
-    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock())
+async def test_subscribe_passes_clip_bounds(mock_dqueue, monkeypatch):
+    """Issue #1049: a subscription's options apply to every future download, and
+    clip bounds were the one option carved out of that."""
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
     req = _json_request(
         {
-            **_valid_video_add_body(clip_start="10"),
+            **_valid_video_add_body(clip_start="2:26", clip_end="3:24"),
             "check_interval_minutes": 60,
         }
     )
+    resp = await main.subscribe(req)
+    assert resp.status == 200
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["clip_start"] == pytest.approx(146.0)
+    assert kwargs["clip_end"] == pytest.approx(204.0)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_without_clip_fields_stores_none(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request({**_valid_video_add_body(), "check_interval_minutes": 60})
+    await main.subscribe(req)
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["clip_start"] is None
+    assert kwargs["clip_end"] is None
+
+
+@pytest.mark.asyncio
+async def test_subscribe_ignores_t_param_in_url(mock_dqueue, monkeypatch):
+    """A t= timestamp means "start here" for a one-off download of that video.
+    On a channel or playlist URL it says nothing about the videos it yields, so
+    it must not silently clip every future download."""
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    body = _valid_video_add_body()
+    # t= is only honoured on YouTube hosts, so this must be one to exercise it.
+    body["url"] = "https://www.youtube.com/@somechannel?t=90"
+    req = _json_request({**body, "check_interval_minutes": 60})
+    await main.subscribe(req)
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["clip_start"] is None
+    assert kwargs["clip_end"] is None
+    # The timestamp is still stripped from the URL that gets stored.
+    assert "t=90" not in main.submgr.add_subscription.await_args.args[0]
+
+
+@pytest.mark.asyncio
+async def test_subscribe_explicit_clip_wins_over_t_param(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    body = _valid_video_add_body(clip_start="30")
+    body["url"] = "https://www.youtube.com/@somechannel?t=90"
+    req = _json_request({**body, "check_interval_minutes": 60})
+    await main.subscribe(req)
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["clip_start"] == pytest.approx(30.0)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_still_rejects_clips_for_non_media(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    body = _valid_video_add_body(clip_start="10")
+    body["download_type"] = "thumbnail"
+    req = _json_request({**body, "check_interval_minutes": 60})
     with pytest.raises(web.HTTPBadRequest):
         await main.subscribe(req)
-    main.submgr.add_subscription.assert_not_awaited()
 
 
 @pytest.mark.asyncio
