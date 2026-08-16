@@ -450,6 +450,65 @@ class DownloadLoggerTests(unittest.TestCase):
         self.assertIn('WARNING:ytdl: useful warning ', logs.output)
         self.assertIn('ERROR:ytdl:error detail', logs.output)
 
+    def test_retains_only_the_last_distinct_warnings(self):
+        logger = ytdl._DownloadYtdlLogger()
+        cap = ytdl._MAX_RETAINED_WARNINGS
+
+        with self.assertLogs('ytdl', level='WARNING') as logs:
+            for index in range(cap + 3):
+                logger.warning(f'fragment {index} not found')
+
+        self.assertEqual(
+            logger.warnings,
+            [f'fragment {index} not found' for index in range(3, cap + 3)],
+        )
+        # Every warning still reaches the log; only the retained list is bounded.
+        self.assertEqual(len(logs.output), cap + 3)
+
+    def test_repeated_warning_is_retained_once(self):
+        logger = ytdl._DownloadYtdlLogger()
+
+        with self.assertLogs('ytdl', level='WARNING'):
+            logger.warning('Requested format is not available')
+            logger.warning('Only images are available for download')
+            logger.warning('Requested format is not available')
+
+        self.assertEqual(
+            logger.warnings,
+            ['Requested format is not available', 'Only images are available for download'],
+        )
+
+    def test_failure_message_puts_the_error_last(self):
+        logger = ytdl._DownloadYtdlLogger()
+
+        with self.assertLogs('ytdl', level='WARNING'):
+            logger.warning('Only images are available for download')
+
+        self.assertEqual(
+            logger.failure_message('ERROR: [youtube] u2HSc2Ym1Vk: No video formats found!'),
+            'Only images are available for download\n'
+            'ERROR: [youtube] u2HSc2Ym1Vk: No video formats found!',
+        )
+
+    def test_failure_message_skips_a_last_warning_that_repeats_the_error(self):
+        logger = ytdl._DownloadYtdlLogger()
+
+        with self.assertLogs('ytdl', level='WARNING'):
+            logger.warning('Video unavailable')
+            # yt-dlp labels errors but hands warnings to the logger unlabelled,
+            # so the same text can arrive through both routes.
+            logger.warning('Requested format is not available')
+
+        self.assertEqual(
+            logger.failure_message('ERROR: Requested format is not available'),
+            'Video unavailable\nERROR: Requested format is not available',
+        )
+
+    def test_failure_message_without_warnings_is_the_error_alone(self):
+        logger = ytdl._DownloadYtdlLogger()
+
+        self.assertEqual(logger.failure_message('ERROR: boom'), 'ERROR: boom')
+
 
 class DownloadResultTests(unittest.TestCase):
     def _run_download(self, result=0, warnings=(), error=None):
@@ -508,13 +567,72 @@ class DownloadResultTests(unittest.TestCase):
 
         self.assertEqual(statuses[-1], {'status': 'finished'})
 
-    def test_youtube_dl_error_message_takes_precedence_over_warnings(self):
+    def test_youtube_dl_error_carries_the_warnings_that_explain_it(self):
+        # The sequence from issue #1047: yt-dlp raises DownloadError, so the
+        # warnings naming the real cause only reach the user if the exception
+        # branch carries them too.
         statuses, _ = self._run_download(
-            warnings=['Earlier warning'],
-            error=ytdl.yt_dlp.utils.YoutubeDLError('extractor failed'),
+            warnings=[
+                '[youtube] Video unavailable. This video contains content from bryhuangpub,'
+                ' who has blocked it from display on this website or application',
+                'Only images are available for download. use --list-formats to see them',
+                'Requested format is not available',
+            ],
+            error=ytdl.yt_dlp.utils.YoutubeDLError(
+                'ERROR: [youtube] u2HSc2Ym1Vk: No video formats found!'
+            ),
         )
 
-        self.assertEqual(statuses[-1], {'status': 'error', 'msg': 'extractor failed'})
+        self.assertEqual(
+            statuses[-1],
+            {
+                'status': 'error',
+                'msg': '[youtube] Video unavailable. This video contains content from bryhuangpub,'
+                ' who has blocked it from display on this website or application\n'
+                'Only images are available for download. use --list-formats to see them\n'
+                'Requested format is not available\n'
+                'ERROR: [youtube] u2HSc2Ym1Vk: No video formats found!',
+            },
+        )
+
+    def test_youtube_dl_error_drops_a_last_warning_that_repeats_it(self):
+        statuses, _ = self._run_download(
+            warnings=['Earlier warning', 'Requested format is not available'],
+            error=ytdl.yt_dlp.utils.YoutubeDLError('ERROR: Requested format is not available'),
+        )
+
+        self.assertEqual(
+            statuses[-1],
+            {
+                'status': 'error',
+                'msg': 'Earlier warning\nERROR: Requested format is not available',
+            },
+        )
+
+    def test_youtube_dl_error_message_is_bounded(self):
+        cap = ytdl._MAX_RETAINED_WARNINGS
+        statuses, _ = self._run_download(
+            warnings=[f'fragment {index} not found' for index in range(cap + 4)],
+            error=ytdl.yt_dlp.utils.YoutubeDLError('ERROR: giving up'),
+        )
+
+        msg = statuses[-1]['msg']
+        self.assertEqual(
+            msg.split('\n'),
+            [f'fragment {index} not found' for index in range(4, cap + 4)] + ['ERROR: giving up'],
+        )
+
+    def test_nonzero_result_message_is_bounded(self):
+        cap = ytdl._MAX_RETAINED_WARNINGS
+        statuses, _ = self._run_download(
+            result=1,
+            warnings=[f'fragment {index} not found' for index in range(cap + 4)],
+        )
+
+        self.assertEqual(
+            statuses[-1]['msg'].split('\n'),
+            [f'fragment {index} not found' for index in range(4, cap + 4)],
+        )
 
 
 class ProgressThrottleTests(unittest.TestCase):
