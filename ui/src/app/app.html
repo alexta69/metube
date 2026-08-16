@@ -757,7 +757,7 @@
       <thead>
         <tr>
           <th scope="col" style="width: 1rem;">
-            <app-select-all-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" (changed)="doneSelectionChanged($event)" />
+            <app-select-all-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" [orderedIds]="cachedSortedDoneIds" (changed)="doneSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
           <th scope="col">Type</th>

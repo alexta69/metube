@@ -137,6 +137,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   sortAscending = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
+  // The done ids in rendered order, so a shift-click range follows the sort
+  // the user is looking at rather than the map's insertion order.
+  cachedSortedDoneIds: string[] = [];
   lastCopiedErrorId: string | null = null;
   private previousDownloadType = 'video';
   private addRequestSub?: Subscription;
@@ -1532,6 +1535,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       result.reverse();
     }
     this.cachedSortedDone = result;
+    this.cachedSortedDoneIds = result.map(([key]) => key);
   }
 
   toggleErrorDetail(id: string) {
