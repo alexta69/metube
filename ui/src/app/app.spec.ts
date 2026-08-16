@@ -6,6 +6,7 @@ import { DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { CookieService } from 'ngx-cookie-service';
+import { Download } from './interfaces';
 
 class DownloadsServiceStub {
   loading = false;
@@ -227,6 +228,46 @@ describe('App', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.textContent).toContain('Waiting for stream');
     expect(root.textContent).toContain('starts in');
+  });
+
+  it('shows the queued format in the Downloading table', () => {
+    downloads.queue.set('https://example.com/v', {
+      id: 'v1',
+      title: 'Some Video',
+      url: 'https://example.com/v',
+      download_type: 'audio',
+      quality: 'best',
+      format: 'flac',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'downloading',
+      msg: '',
+      percent: 10,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    });
+    downloads.queueChanged.next();
+
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    const row = (fixture.nativeElement as HTMLElement).querySelector('tbody tr');
+    expect(row?.textContent).toContain('FLAC');
+  });
+
+  it('labels formats the way the form does, and copes with an unknown one', () => {
+    const app = TestBed.createComponent(App).componentInstance;
+    const base = { format: '' } as Download;
+
+    expect(app.formatLabel({ ...base, format: 'any' })).toBe('Auto');
+    expect(app.formatLabel({ ...base, format: 'mp4' })).toBe('MP4');
+    expect(app.formatLabel({ ...base, format: 'srt' })).toBe('SRT');
+    // A format from a record older than the option list still reads sensibly.
+    expect(app.formatLabel({ ...base, format: 'mkv' })).toBe('MKV');
+    expect(app.formatLabel(base)).toBe('-');
   });
 
   it('includes titleRegex in subscribe payload', () => {

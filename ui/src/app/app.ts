@@ -909,6 +909,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return type.charAt(0).toUpperCase() + type.slice(1);
   }
 
+  // The format the download was queued with, labelled the way the form labels
+  // it, so a queued item can be told apart while it is still downloading.
+  formatLabel(download: Download): string {
+    const format = (download.format || '').trim();
+    if (!format) {
+      return '-';
+    }
+    const options: Option[] = [
+      ...this.videoFormats,
+      ...this.audioFormats,
+      ...this.captionFormats,
+      ...this.thumbnailFormats,
+    ];
+    return options.find(o => o.id === format)?.text ?? format.toUpperCase();
+  }
+
   formatCodecLabel(download: Download): string {
     if (download.download_type !== 'video') {
       const format = (download.format || '').toUpperCase();
