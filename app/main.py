@@ -973,6 +973,7 @@ async def subscribe(request):
         subtitle_mode=o['subtitle_mode'],
         ytdl_options_presets=o['ytdl_options_presets'],
         ytdl_options_overrides=o['ytdl_options_overrides'],
+        sponsorblock=o['sponsorblock'],
         title_regex=post.get('title_regex'),
         skip_subscriber_only=skip_subscriber_only,
         clip_start=sub_clip_start,

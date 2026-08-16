@@ -2008,6 +2008,7 @@ class DownloadQueue:
         ytdl_options_overrides=None,
         clip_start=None,
         clip_end=None,
+        sponsorblock=False,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -2033,6 +2034,7 @@ class DownloadQueue:
             clip_end,
             already,
             None,
+            sponsorblock=sponsorblock,
         )
 
     async def start_pending(self, ids):

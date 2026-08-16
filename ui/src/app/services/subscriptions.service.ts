@@ -92,6 +92,7 @@ export class SubscriptionsService {
       playlist_item_limit: payload.playlistItemLimit,
       auto_start: payload.autoStart,
       split_by_chapters: payload.splitByChapters,
+      sponsorblock: payload.sponsorblock,
       chapter_template: payload.chapterTemplate,
       subtitle_language: payload.subtitleLanguage,
       subtitle_mode: payload.subtitleMode,
