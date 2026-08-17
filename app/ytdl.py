@@ -196,6 +196,56 @@ def _sanitize_path_component(value: Any) -> Any:
     return value.lstrip('.').strip() or '_'
 
 
+# Room left for the suffixes yt-dlp appends after prepare_filename has run:
+# '.part' and '.ytdl' while the download is in flight, '.f<format_id>' for a
+# stream fetched on its own before merging, '-Frag<n>' for fragmented
+# downloads. A name trimmed to exactly the limit would still fail the moment
+# one of those is added, which is what the '.part' in the reported errors is.
+_NAME_SUFFIX_RESERVE_BYTES = 32
+# POSIX guarantees at least this much, and it is what ext4/xfs/btrfs allow.
+_FALLBACK_NAME_MAX_BYTES = 255
+# Keep a recognisable stem even on a filesystem with a very short limit.
+_MIN_STEM_BYTES = 16
+# Longer than this is not really an extension (a title ending in '.something'),
+# so the whole name is treated as the stem rather than preserving it.
+_MAX_EXT_BYTES = 16
+
+
+def _name_max_bytes(directory: str) -> int:
+    """The filesystem's filename limit, in bytes, for *directory*."""
+    try:
+        return int(os.pathconf(directory or '.', 'PC_NAME_MAX'))
+    except (OSError, ValueError, AttributeError):
+        # The directory may not exist yet (CREATE_CUSTOM_DIRS makes it during
+        # the download), and pathconf is not available on every platform.
+        return _FALLBACK_NAME_MAX_BYTES
+
+
+def _trim_to_name_max(path: str) -> str:
+    """Shorten the final component of *path* to what the filesystem accepts.
+
+    The limit is a byte count, not a character count: a title of accented or
+    CJK characters hits it in half as many characters, or fewer. The extension
+    is preserved, since it is what decides how the file is handled afterwards.
+    """
+    directory, name = os.path.split(path)
+    if not name:
+        return path
+    encoded = name.encode('utf-8', 'surrogatepass')
+    limit = _name_max_bytes(directory) - _NAME_SUFFIX_RESERVE_BYTES
+    if len(encoded) <= limit:
+        return path
+
+    stem, ext = os.path.splitext(name)
+    ext_bytes = ext.encode('utf-8', 'surrogatepass')
+    if len(ext_bytes) > _MAX_EXT_BYTES:
+        stem, ext, ext_bytes = name, '', b''
+    stem_limit = max(limit - len(ext_bytes), _MIN_STEM_BYTES)
+    # 'ignore' drops a multi-byte character the cut landed inside of.
+    trimmed = stem.encode('utf-8', 'surrogatepass')[:stem_limit].decode('utf-8', 'ignore').rstrip()
+    return os.path.join(directory, (trimmed or '_') + ext)
+
+
 class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
     """A ``YoutubeDL`` that refuses to emit any output path outside the allowed roots.
 
@@ -219,6 +269,12 @@ class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
 
     def prepare_filename(self, *args, **kwargs):
         filename = super().prepare_filename(*args, **kwargs)
+        # Titles long enough to exceed the filesystem's filename limit are
+        # common on some sites, and the download fails outright when they do.
+        # Every output path comes through here, so trimming once keeps the
+        # main file, its chapter files, thumbnails and subtitles consistent.
+        if filename and filename != '-':
+            filename = _trim_to_name_max(filename)
         if filename and filename != '-' and self._allowed_roots:
             resolved = os.path.realpath(filename)
             if not any(_is_within_directory(root, resolved) for root in self._allowed_roots):

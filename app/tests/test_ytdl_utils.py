@@ -377,6 +377,49 @@ class ConfinedYoutubeDLTests(unittest.TestCase):
         self.assertEqual(self._prepared_path(""), "")
         self.assertEqual(self._prepared_path("-"), "-")
 
+    def test_overlong_name_is_trimmed_to_fit_the_filesystem(self):
+        # A title long enough to blow the filename limit is what made these
+        # downloads fail outright with [Errno 36] File name too long.
+        long_path = os.path.join(self.base, "a" * 400 + ".mp4")
+
+        result = self._prepared_path(long_path)
+
+        name = os.path.basename(result)
+        self.assertTrue(name.endswith(".mp4"))
+        self.assertLessEqual(len(name.encode("utf-8")), 255 - 32)
+        self.assertEqual(os.path.dirname(result), self.base)
+        # The file must still be writable once yt-dlp adds its own suffixes.
+        self.assertLessEqual(len(f"{name}.f1229065279304024v.part".encode("utf-8")), 255)
+
+    def test_name_within_the_limit_is_left_alone(self):
+        ok = os.path.join(self.base, "Ordinary Title.mp4")
+        self.assertEqual(self._prepared_path(ok), ok)
+
+    def test_limit_counts_bytes_not_characters(self):
+        # 200 CJK characters are 600 bytes: a character count would pass this.
+        long_path = os.path.join(self.base, "音" * 200 + ".mp4")
+
+        name = os.path.basename(self._prepared_path(long_path))
+
+        self.assertLessEqual(len(name.encode("utf-8")), 255 - 32)
+        # A trim landing mid-character must not leave a broken byte sequence.
+        self.assertEqual(name, name.encode("utf-8").decode("utf-8"))
+        self.assertTrue(name.endswith(".mp4"))
+
+    def test_a_long_tail_is_not_mistaken_for_an_extension(self):
+        # os.path.splitext on a title containing a dot late in the string would
+        # otherwise "preserve" a 100-character extension and trim nothing.
+        long_path = os.path.join(self.base, "b" * 300 + "." + "c" * 100)
+
+        name = os.path.basename(self._prepared_path(long_path))
+
+        self.assertLessEqual(len(name.encode("utf-8")), 255 - 32)
+
+    def test_trimming_still_cannot_escape_the_download_directory(self):
+        escaping = os.path.join(self.base, "..", "..", "d" * 400 + ".mp4")
+        with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+            self._prepared_path(escaping)
+
 
 class SanitizeEntryForPickleTests(unittest.TestCase):
     def test_nested(self):
