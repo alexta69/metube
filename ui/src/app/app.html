@@ -693,6 +693,7 @@
             <app-select-all-checkbox #queueMasterCheckboxRef [id]="'queue'" [list]="downloads.queue" (changed)="queueSelectionChanged($event)" />
           </th>
           <th scope="col">Video</th>
+          <th scope="col" style="width: 7rem;">Format</th>
           <th scope="col" style="width: 8rem;">Speed</th>
           <th scope="col" style="width: 7rem;">ETA</th>
           <th scope="col" style="width: 6rem;"></th>
@@ -726,6 +727,7 @@
                 }
               </div>
             </td>
+            <td class="text-nowrap">{{ formatLabel(download.value) }}</td>
             <td>{{ download.value.speed | speed }}</td>
             <td>{{ download.value.eta | eta }}</td>
             <td>
