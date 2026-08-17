@@ -1063,13 +1063,33 @@ class DownloadQueue:
 
     @staticmethod
     def __is_channel_extraction(entry):
-        """Return True when yt-dlp reported a channel tab as a playlist.
+        """Return True when yt-dlp reported a channel as a playlist.
 
-        YouTube channel tabs are extracted with ``_type: 'playlist'`` but set
-        ``id`` equal to ``channel_id``; real playlists keep a distinct id.
+        A channel *tab* -- ``/channel/UC...``, ``/@handle/videos``, and the
+        streams, shorts and playlists tabs -- is extracted with ``id`` equal to
+        ``channel_id``. A channel addressed without a tab keeps the form it was
+        asked for instead: ``@handle`` for a handle URL and the vanity name for
+        a legacy ``/c/`` URL. Both of those match ``uploader_id``, which is the
+        handle either way, so compare against it as well.
+
+        A real playlist has an id of its own and matches neither, even though
+        it also carries its owner's ``channel_id``.
         """
         channel_id = entry.get('channel_id')
-        return bool(channel_id) and entry.get('id') == channel_id
+        entry_id = entry.get('id')
+        if not channel_id or not entry_id:
+            return False
+        if entry_id == channel_id:
+            return True
+        uploader_id = entry.get('uploader_id')
+        if not uploader_id:
+            return False
+        # Compared without case because a legacy vanity name and the handle it
+        # became need not agree on it. No playlist id can collide here: those
+        # are 'PL...', 'OLAK...' and the like, never a handle.
+        handle = uploader_id.casefold()
+        entry_id = entry_id.casefold()
+        return handle in (entry_id, f'@{entry_id}')
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():

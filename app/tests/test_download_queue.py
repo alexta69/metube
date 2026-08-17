@@ -625,6 +625,82 @@ async def test_playlist_download_not_treated_as_channel(dq_env):
     assert download.output_template.startswith("My Playlist/")
 
 
+def _channel_extraction(entry_id, **extra):
+    """A channel yt-dlp reported as a playlist, addressed by *entry_id*."""
+    return {
+        "_type": "playlist",
+        "id": entry_id,
+        "channel_id": "UCabcd123",
+        "channel": "Odin",
+        "title": "Odin",
+        **extra,
+        "entries": [
+            {
+                "id": "vid1",
+                "title": "Salvia Plath - Pondering",
+                "url": "https://example.com/watch?v=1",
+                "webpage_url": "https://example.com/watch?v=1",
+                "channel": "Odin",
+                "upload_date": "20130804",
+            },
+        ],
+    }
+
+
+async def _add_and_get_template(dq_env, extraction, url):
+    dq_env.OUTPUT_TEMPLATE = "%(channel)s [YT]/%(title)s.%(ext)s"
+    dq_env.OUTPUT_TEMPLATE_CHANNEL = ""
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+
+    def fake_extract(self, _url, *_args, **_kwargs):
+        return extraction
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+    assert result["status"] == "ok"
+    return dq.pending.get("https://example.com/watch?v=1").output_template
+
+
+@pytest.mark.asyncio
+async def test_bare_handle_channel_url_is_treated_as_a_channel(dq_env):
+    """A channel addressed as /@handle reports its id as the handle, not the
+    channel id, and was falling through to OUTPUT_TEMPLATE_PLAYLIST."""
+    template = await _add_and_get_template(
+        dq_env,
+        _channel_extraction("@odin", uploader_id="@odin"),
+        "https://www.youtube.com/@odin",
+    )
+
+    assert template.startswith("Odin [YT]/")
+
+
+@pytest.mark.asyncio
+async def test_legacy_vanity_channel_url_is_treated_as_a_channel(dq_env):
+    """A legacy /c/Name URL reports the vanity name as its id, while
+    uploader_id is still the handle."""
+    template = await _add_and_get_template(
+        dq_env,
+        _channel_extraction("Odin", uploader_id="@odin"),
+        "https://www.youtube.com/c/Odin",
+    )
+
+    assert template.startswith("Odin [YT]/")
+
+
+@pytest.mark.asyncio
+async def test_playlist_with_owner_uploader_id_is_still_a_playlist(dq_env):
+    """A real playlist carries its owner's channel_id and uploader_id, but its
+    own id matches neither, so it must keep the playlist template."""
+    template = await _add_and_get_template(
+        dq_env,
+        _channel_extraction("PLxyz789", uploader_id="@odin", title="My Playlist"),
+        "https://www.youtube.com/playlist?list=PLxyz789",
+    )
+
+    assert template.startswith("My Playlist/")
+
+
 @pytest.mark.asyncio
 async def test_add_merges_global_preset_and_override_options(dq_env):
     notifier = AsyncMock()
