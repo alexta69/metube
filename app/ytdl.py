@@ -32,6 +32,55 @@ from urllib.parse import urlsplit
 
 log = logging.getLogger('ytdl')
 
+
+# Fragmented and live downloads can emit a warning per fragment, and the joined
+# text is persisted with the completed queue and broadcast to every client, so
+# only the last few distinct warnings are kept.
+_MAX_RETAINED_WARNINGS = 5
+
+_REPORT_LABEL_RE = re.compile(r'^(?:ERROR|WARNING):\s*')
+
+
+def _report_body(message):
+    """yt-dlp labels errors with an ``ERROR:`` prefix but hands warnings to the
+    logger unlabelled, so compare the two with any such label removed."""
+    return _REPORT_LABEL_RE.sub('', message).strip()
+
+
+class _DownloadYtdlLogger:
+    """Forward yt-dlp output while retaining warnings for failed downloads."""
+
+    def __init__(self):
+        self._warnings = collections.deque(maxlen=_MAX_RETAINED_WARNINGS)
+
+    @property
+    def warnings(self):
+        return list(self._warnings)
+
+    def debug(self, msg):
+        log.debug('%s', msg)
+
+    def warning(self, msg):
+        log.warning('%s', msg)
+        if msg is not None and (warning := str(msg).strip()) and warning not in self._warnings:
+            self._warnings.append(warning)
+
+    def error(self, msg):
+        log.error('%s', msg)
+
+    def failure_message(self, error_text):
+        """Retained warnings followed by *error_text*, kept last so the actual
+        error stays prominent under the context that explains it."""
+        lines = self.warnings
+        error_text = (error_text or '').strip()
+        if not error_text:
+            return '\n'.join(lines)
+        if lines and _report_body(lines[-1]) == _report_body(error_text):
+            lines.pop()
+        lines.append(error_text)
+        return '\n'.join(lines)
+
+
 # Python 3.14 switches the default multiprocessing start method on Linux
 # (this app's only supported deployment target, per the Dockerfile) from fork
 # to forkserver. Download._download relies on inheriting process state the
@@ -664,6 +713,9 @@ class Download:
         # anything else. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the environment.
         install_socket_guard(self.allow_private, proxy_urls=(self.ytdl_opts.get('proxy'),))
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
+        # Bound outside the try so the except branch can read what was captured
+        # before the error was raised.
+        ytdl_logger = _DownloadYtdlLogger()
         try:
             debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
             put_status = self._make_progress_hook()
@@ -710,6 +762,9 @@ class Download:
                 'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
             }
+            # Set after the ytdl_opts merge: the failure messages below depend on
+            # this logger, so a user-supplied one must not replace it.
+            ytdl_params['logger'] = ytdl_logger
 
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
@@ -732,11 +787,15 @@ class Download:
                 )
 
             ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
-            self.status_queue.put({'status': 'finished' if ret == 0 else 'error'})
+            if ret == 0:
+                self.status_queue.put({'status': 'finished'})
+            else:
+                msg = '\n'.join(ytdl_logger.warnings) or f'yt-dlp failed with exit code {ret}'
+                self.status_queue.put({'status': 'error', 'msg': msg})
             log.info(f"Finished download for: {self.info.title}")
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
-            self.status_queue.put({'status': 'error', 'msg': str(exc)})
+            self.status_queue.put({'status': 'error', 'msg': ytdl_logger.failure_message(str(exc))})
 
     async def start(self, notifier, executor=None):
         log.info(f"Preparing download for: {self.info.title}")
