@@ -92,6 +92,36 @@ class _DownloadYtdlLogger:
 # vanish in the child can deadlock it silently before it does any work. This
 # app creates background threads (executors, notifier callbacks) well before
 # any download starts, so forcing fork there reproduces exactly that hazard.
+# The image ships yt-dlp's bgutil PO token provider and starts it on loopback
+# (docker-entrypoint.sh); the plugin dials this URL unless pointed elsewhere.
+# Without a token YouTube serves 403s, so the connect-time guard has to let the
+# download subprocess reach it.
+_POT_PROVIDER_DEFAULT_URL = 'http://127.0.0.1:4416'
+
+# extractor-arg keys the bgutil HTTP provider reads its base URL from: the
+# current one first, then the deprecated form it still honours.
+_POT_PROVIDER_BASE_URL_ARGS = (
+    ('youtubepot-bgutilhttp', 'base_url'),
+    ('youtube', 'getpot_bgutil_baseurl'),
+)
+
+
+def _pot_provider_urls(ytdl_opts: dict) -> tuple:
+    """Every PO token provider endpoint this download may dial: the bundled one,
+    plus any the operator pointed yt-dlp at through ``extractor_args``. The
+    bundled server runs either way, so it stays allowed even when a base URL is
+    configured."""
+    urls = [_POT_PROVIDER_DEFAULT_URL]
+    extractor_args = ytdl_opts.get('extractor_args')
+    if isinstance(extractor_args, dict):
+        for ie_key, arg in _POT_PROVIDER_BASE_URL_ARGS:
+            section = extractor_args.get(ie_key)
+            values = section.get(arg) if isinstance(section, dict) else None
+            if values:
+                urls.append(values[0])
+    return tuple(urls)
+
+
 _MP_CTX = (
     multiprocessing.get_context("fork")
     if sys.platform.startswith("linux") and "fork" in multiprocessing.get_all_start_methods()
@@ -764,10 +794,15 @@ class Download:
         # Re-validate every outbound connection at fetch time. validate_url only
         # saw the submitted URL string; this catches redirects, DNS rebinding and
         # attacker-controlled media URLs pulled from a remote manifest, none of
-        # which it can see. The configured proxy is passed so that a proxy on an
-        # internal address stays reachable at its own host:port without opening up
-        # anything else. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the environment.
-        install_socket_guard(self.allow_private, proxy_urls=(self.ytdl_opts.get('proxy'),))
+        # which it can see. The configured proxy and the PO token provider are
+        # passed so that each stays reachable at its own host:port without opening
+        # up anything else. Skipped when ALLOW_PRIVATE_ADDRESSES trusts the
+        # environment.
+        install_socket_guard(
+            self.allow_private,
+            proxy_urls=(self.ytdl_opts.get('proxy'),),
+            service_urls=_pot_provider_urls(self.ytdl_opts),
+        )
         log.info(f"Starting download for: {self.info.title} ({self.info.url})")
         # Bound outside the try so the except branch can read what was captured
         # before the error was raised.

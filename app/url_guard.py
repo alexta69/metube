@@ -37,8 +37,8 @@ log = logging.getLogger('url_guard')
 
 _ALLOWED_SCHEMES = ('http', 'https')
 
-# Ports to assume when a configured proxy URL omits one, per proxy scheme.
-_PROXY_DEFAULT_PORTS = {
+# Ports to assume when a configured endpoint URL omits one, per scheme.
+_SCHEME_DEFAULT_PORTS = {
     'http': 80,
     'https': 443,
     'socks4': 1080,
@@ -129,31 +129,32 @@ def _address_is_global(addr: str) -> bool:
     return bool(ips) and all(ip.is_global for ip in ips)
 
 
-def _address_allowed_at_connect(addr: str, is_proxy_endpoint: bool = False) -> bool:
+def _address_allowed_at_connect(addr: str, is_allowed_endpoint: bool = False) -> bool:
     """True if *addr* may be connected to at download time.
 
     Permits global addresses, and anything at all when the destination is an
-    operator-configured proxy (see ``_is_proxy_endpoint``). Internal addresses
-    are otherwise refused with no blanket exception: media URLs that yt-dlp
-    derives from a remote manifest are attacker-controlled and reach this policy
-    without passing ``validate_url``, so any range opened here is a range a
-    hostile playlist can read from the server's own network. Blocks link-local
+    endpoint the operator or the image configured — a proxy, or the PO token
+    provider (see ``_is_allowed_endpoint``). Internal addresses are otherwise
+    refused with no blanket exception: media URLs that yt-dlp derives from a
+    remote manifest are attacker-controlled and reach this policy without passing
+    ``validate_url``, so any range opened here is a range a hostile playlist can
+    read from the server's own network. Blocks link-local
     (cloud metadata at 169.254.169.254), private (RFC1918), loopback,
     unique-local and every other non-global range.
     """
     ips = _ips_to_judge(addr)
     if not ips:
         return False
-    return is_proxy_endpoint or all(ip.is_global for ip in ips)
+    return is_allowed_endpoint or all(ip.is_global for ip in ips)
 
 
-def _proxy_endpoint(proxy_url: str):
-    """Parse a proxy URL into a ``(hostname, port)`` pair, or ``None`` if it has
-    no usable host. Used to scope the internal-address allowance to that endpoint
-    alone."""
-    if not isinstance(proxy_url, str) or not proxy_url.strip():
+def _url_endpoint(url: str):
+    """Parse a configured URL into a ``(hostname, port)`` pair, or ``None`` if it
+    has no usable host. Used to scope the internal-address allowance to that
+    endpoint alone."""
+    if not isinstance(url, str) or not url.strip():
         return None
-    candidate = proxy_url.strip()
+    candidate = url.strip()
     if '://' not in candidate:
         # Bare host:port, as accepted by the *_proxy environment variables.
         candidate = '//' + candidate
@@ -165,8 +166,13 @@ def _proxy_endpoint(proxy_url: str):
     if not hostname:
         return None
     if port is None:
-        port = _PROXY_DEFAULT_PORTS.get(parts.scheme.lower())
+        port = _SCHEME_DEFAULT_PORTS.get(parts.scheme.lower())
     return (hostname.rstrip('.').lower(), port)
+
+
+def _endpoints(urls) -> set:
+    """The parseable endpoints among *urls*, dropping any that name no host."""
+    return {ep for ep in map(_url_endpoint, urls) if ep is not None}
 
 
 def _collect_proxy_endpoints(proxy_urls) -> set:
@@ -174,14 +180,14 @@ def _collect_proxy_endpoints(proxy_urls) -> set:
     yt-dlp ``proxy`` option plus the ``*_proxy`` environment variables yt-dlp falls
     back to. All are operator-configured, unlike the URLs inside fetched media."""
     candidates = list(proxy_urls) + list(urllib.request.getproxies().values())
-    return {ep for ep in map(_proxy_endpoint, candidates) if ep is not None}
+    return _endpoints(candidates)
 
 
 # Captured at import so re-installing the guard never wraps the wrapper.
 _real_getaddrinfo = socket.getaddrinfo
 
 # Populated by install_socket_guard; empty means no internal destination is allowed.
-_allowed_proxy_endpoints: set = set()
+_allowed_endpoints: set = set()
 
 
 def _normalise_port(port):
@@ -196,28 +202,29 @@ def _normalise_port(port):
     return port
 
 
-def _is_proxy_endpoint(host, port) -> bool:
-    """True when host:port is exactly an endpoint the operator configured as a
-    proxy. Matching is on the configured host *string*, not on the resolved
-    address, so a hostile media URL cannot borrow the allowance by resolving to
-    the same address under a different name."""
-    if not _allowed_proxy_endpoints or host is None:
+def _is_allowed_endpoint(host, port) -> bool:
+    """True when host:port is exactly one of the endpoints this download is
+    configured to dial — a proxy or the PO token provider. Matching is on the
+    configured host *string*, not on the resolved address, so a hostile media URL
+    cannot borrow the allowance by resolving to the same address under a
+    different name."""
+    if not _allowed_endpoints or host is None:
         return False
-    return (str(host).rstrip('.').lower(), _normalise_port(port)) in _allowed_proxy_endpoints
+    return (str(host).rstrip('.').lower(), _normalise_port(port)) in _allowed_endpoints
 
 
 def _guarded_getaddrinfo(host, *args, **kwargs):
     results = _real_getaddrinfo(host, *args, **kwargs)
     # Mirrors getaddrinfo(host, port, ...): port is the first optional argument.
     port = args[0] if args else kwargs.get('port')
-    is_proxy = _is_proxy_endpoint(host, port)
-    allowed = [r for r in results if _address_allowed_at_connect(r[4][0], is_proxy)]
+    is_configured = _is_allowed_endpoint(host, port)
+    allowed = [r for r in results if _address_allowed_at_connect(r[4][0], is_configured)]
     if not allowed:
         raise socket.gaierror(f'Refusing to connect to non-global address for host {host!r}')
     return allowed
 
 
-def install_socket_guard(allow_private: bool = False, proxy_urls=()) -> None:
+def install_socket_guard(allow_private: bool = False, proxy_urls=(), service_urls=()) -> None:
     """Enforce the no-internal-hosts policy at actual connection time.
 
     ``validate_url`` only checks the *submitted* URL string; yt-dlp then follows
@@ -230,12 +237,16 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=()) -> None:
     isolation as the backstop.
 
     *proxy_urls* are the operator's configured proxies (yt-dlp's ``proxy`` option;
-    the ``*_proxy`` environment variables are picked up automatically). A proxy is
-    reachable at its own host:port wherever it lives — loopback, the LAN, a VPN
-    range — and nothing else internal is. That costs proxied setups nothing and
-    gives away nothing: yt-dlp resolves the proxy itself at exactly that host:port,
-    and a media URL is either handed to the proxy unresolved or resolved on its own
-    merits — never inheriting the proxy's allowance.
+    the ``*_proxy`` environment variables are picked up automatically), and
+    *service_urls* the helper services the download itself has to reach — the PO
+    token provider this image ships and starts on loopback. Each is reachable at
+    its own host:port wherever it lives — loopback, the LAN, a VPN range — and
+    nothing else internal is. That costs those setups nothing and gives away
+    little: yt-dlp dials each at exactly that host:port, and a media URL is either
+    handed to the proxy unresolved or resolved on its own merits — never
+    inheriting the allowance. A hostile media URL naming an allowed endpoint
+    reaches only what is listening there: a proxy that would have fetched it
+    anyway, or a token server with two endpoints and nothing to read.
 
     When *allow_private* is set (``ALLOW_PRIVATE_ADDRESSES``), the guard is not
     installed at all, so proxy/VPN setups that route through private or Fake-IP
@@ -243,10 +254,13 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=()) -> None:
     """
     if allow_private:
         return
-    _allowed_proxy_endpoints.clear()
-    _allowed_proxy_endpoints.update(_collect_proxy_endpoints(proxy_urls))
-    for host, port in sorted(_allowed_proxy_endpoints, key=lambda ep: (ep[0], ep[1] or 0)):
-        log.info(f'Allowing connections to configured proxy {host}:{port}')
+    proxy_endpoints = _collect_proxy_endpoints(proxy_urls)
+    service_endpoints = _endpoints(service_urls) - proxy_endpoints
+    _allowed_endpoints.clear()
+    _allowed_endpoints.update(proxy_endpoints | service_endpoints)
+    for label, endpoints in (('proxy', proxy_endpoints), ('service', service_endpoints)):
+        for host, port in sorted(endpoints, key=lambda ep: (ep[0], ep[1] or 0)):
+            log.info(f'Allowing connections to configured {label} {host}:{port}')
     socket.getaddrinfo = _guarded_getaddrinfo
 
 

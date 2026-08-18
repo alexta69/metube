@@ -77,6 +77,7 @@ from ytdl import (
     MusicMetadataPreProcessor,
     _compact_persisted_entry,
     _convert_srt_to_txt_file,
+    _pot_provider_urls,
     _AlbumArtistPostProcessor,
     _resolve_outtmpl_fields,
     _sanitize_entry_for_pickle,
@@ -1071,5 +1072,44 @@ class ShortTitleForFailedUrlTests(unittest.TestCase):
         self.assertEqual(_short_title_for_failed_url(malformed), malformed)
 
 
+class PotProviderUrlsTests(unittest.TestCase):
+    """#1064: the connect-time guard must let the download reach the PO token
+    provider, so it has to know every endpoint yt-dlp might dial for one."""
+
+    def test_bundled_provider_by_default(self):
+        self.assertEqual(_pot_provider_urls({}), ("http://127.0.0.1:4416",))
+
+    def test_configured_base_url_is_added(self):
+        urls = _pot_provider_urls({
+            "extractor_args": {"youtubepot-bgutilhttp": {"base_url": ["http://pot:4416"]}},
+        })
+        # The bundled server runs regardless, so both stay reachable.
+        self.assertEqual(urls, ("http://127.0.0.1:4416", "http://pot:4416"))
+
+    def test_deprecated_base_url_arg_is_honoured(self):
+        urls = _pot_provider_urls({
+            "extractor_args": {"youtube": {"getpot_bgutil_baseurl": ["http://pot:4416"]}},
+        })
+        self.assertEqual(urls, ("http://127.0.0.1:4416", "http://pot:4416"))
+
+    def test_unrelated_extractor_args_are_ignored(self):
+        urls = _pot_provider_urls({
+            "extractor_args": {"youtube": {"player_client": ["web"]}},
+        })
+        self.assertEqual(urls, ("http://127.0.0.1:4416",))
+
+    def test_malformed_extractor_args_do_not_raise(self):
+        # YTDL_OPTIONS is operator-supplied JSON and reaches here unvalidated.
+        for opts in (
+            {"extractor_args": None},
+            {"extractor_args": "youtube:player_client=web"},
+            {"extractor_args": {"youtubepot-bgutilhttp": "http://pot:4416"}},
+            {"extractor_args": {"youtubepot-bgutilhttp": {"base_url": []}}},
+        ):
+            with self.subTest(opts=opts):
+                self.assertEqual(_pot_provider_urls(opts), ("http://127.0.0.1:4416",))
+
+
 if __name__ == "__main__":
+
     unittest.main()
