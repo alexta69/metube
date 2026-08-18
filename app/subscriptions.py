@@ -182,6 +182,7 @@ class SubscriptionInfo:
     auto_start: bool = True
     playlist_item_limit: int = 0
     split_by_chapters: bool = False
+    sponsorblock: bool = False
     chapter_template: str = ""
     subtitle_language: str = "en"
     subtitle_mode: str = "prefer_manual"
@@ -242,6 +243,7 @@ def _subscription_to_record(sub: SubscriptionInfo) -> dict[str, Any]:
         "auto_start": sub.auto_start,
         "playlist_item_limit": sub.playlist_item_limit,
         "split_by_chapters": sub.split_by_chapters,
+        "sponsorblock": sub.sponsorblock,
         "chapter_template": sub.chapter_template,
         "subtitle_language": sub.subtitle_language,
         "subtitle_mode": sub.subtitle_mode,
@@ -487,6 +489,7 @@ class SubscriptionManager:
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
         clip_start: Optional[float] = None,
         clip_end: Optional[float] = None,
+        sponsorblock: bool = False,
     ) -> tuple[list[str], list[str]]:
         queued_ids: list[str] = []
         queue_errors: list[str] = []
@@ -519,6 +522,7 @@ class SubscriptionManager:
                 ytdl_options_overrides,
                 clip_start,
                 clip_end,
+                sponsorblock=sponsorblock,
             )
             if isinstance(result, dict) and result.get("status") == "error":
                 msg = str(result.get("msg") or f"Queueing failed for {vurl}")
@@ -606,6 +610,7 @@ class SubscriptionManager:
         subtitle_mode: str,
         ytdl_options_presets: Optional[list[str]] = None,
         ytdl_options_overrides: Optional[dict[str, Any]] = None,
+        sponsorblock: bool = False,
         title_regex: Any = None,
         skip_subscriber_only: Any = None,
         clip_start: Optional[float] = None,
@@ -689,6 +694,7 @@ class SubscriptionManager:
                 auto_start=bool(auto_start),
                 playlist_item_limit=int(playlist_item_limit),
                 split_by_chapters=bool(split_by_chapters),
+                sponsorblock=bool(sponsorblock),
                 chapter_template=chapter_template or "",
                 subtitle_language=subtitle_language,
                 subtitle_mode=subtitle_mode,
@@ -942,6 +948,7 @@ class SubscriptionManager:
             dl_plimit = cur.playlist_item_limit
             dl_autostart = cur.auto_start
             dl_split = cur.split_by_chapters
+            dl_sponsorblock = cur.sponsorblock
             dl_chapter = cur.chapter_template
             dl_sublang = cur.subtitle_language
             dl_submode = cur.subtitle_mode
@@ -1010,6 +1017,7 @@ class SubscriptionManager:
             playlist_item_limit=dl_plimit,
             auto_start=dl_autostart,
             split_by_chapters=dl_split,
+            sponsorblock=dl_sponsorblock,
             chapter_template=dl_chapter or "",
             subtitle_language=dl_sublang,
             subtitle_mode=dl_submode,

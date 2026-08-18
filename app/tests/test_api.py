@@ -367,6 +367,25 @@ async def test_subscribe_passes_clip_bounds(mock_dqueue, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_subscribe_passes_sponsorblock(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request(
+        {**_valid_video_add_body(), "check_interval_minutes": 60, "sponsorblock": True}
+    )
+    resp = await main.subscribe(req)
+    assert resp.status == 200
+    assert main.submgr.add_subscription.await_args.kwargs["sponsorblock"] is True
+
+
+@pytest.mark.asyncio
+async def test_subscribe_defaults_sponsorblock_off(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request({**_valid_video_add_body(), "check_interval_minutes": 60})
+    await main.subscribe(req)
+    assert main.submgr.add_subscription.await_args.kwargs["sponsorblock"] is False
+
+
+@pytest.mark.asyncio
 async def test_subscribe_without_clip_fields_stores_none(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
     req = _json_request({**_valid_video_add_body(), "check_interval_minutes": 60})

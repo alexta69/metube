@@ -479,6 +479,69 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(reloaded.get(sub_id).clip_start, 12.5)
             self.assertIsNone(reloaded.get(sub_id).clip_end)
 
+    async def test_check_now_applies_subscription_sponsorblock(self):
+        """Subscriptions download unattended, so the sponsor-segment removal has
+        to reach every entry the subscription queues, not just manual adds."""
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                    ),
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [
+                            {"id": "v2", "title": "Two", "webpage_url": "https://example.com/v2"},
+                            {"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"},
+                        ],
+                    ),
+                ],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    sponsorblock=True,
+                )
+                sub_id = result["subscription"]["id"]
+                self.assertTrue(mgr.get(sub_id).sponsorblock)
+                await mgr.check_now([sub_id])
+
+            self.assertEqual(len(queue.entries), 1)
+            _entry, _args, kwargs = queue.entries[0]
+            self.assertIs(kwargs["sponsorblock"], True)
+
+    async def test_sponsorblock_survives_reload_and_defaults_to_false(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            # Records written before the field existed simply take the default.
+            self.assertFalse(mgr.get(sub_id).sponsorblock)
+
+            mgr.get(sub_id).sponsorblock = True
+            async with mgr._lock:
+                mgr._save_locked()
+
+            reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
+            self.assertTrue(reloaded.get(sub_id).sponsorblock)
+
     async def test_check_now_queues_subscriber_only_when_skip_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()

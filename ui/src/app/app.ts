@@ -86,6 +86,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   autoStart: boolean;
   playlistItemLimit!: number;
   splitByChapters: boolean;
+  sponsorblock: boolean;
   chapterTemplate: string;
   clipStart = '';
   clipEnd = '';
@@ -259,6 +260,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.quality = this.cookieService.get('metube_quality') || 'best';
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
+    this.sponsorblock = this.cookieService.get('metube_sponsorblock') === 'true';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.clipStart = this.cookieService.get('metube_clip_start') || '';
@@ -855,6 +857,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
 
+  sponsorblockChanged() {
+    this.cookieService.set('metube_sponsorblock', this.sponsorblock ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+  }
+
   splitByChaptersChanged() {
     this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
@@ -1111,6 +1117,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       playlistItemLimit: overrides.playlistItemLimit ?? this.playlistItemLimit,
       autoStart: overrides.autoStart ?? this.autoStart,
       splitByChapters: overrides.splitByChapters ?? this.splitByChapters,
+      sponsorblock: overrides.sponsorblock ?? this.sponsorblock,
       chapterTemplate: overrides.chapterTemplate ?? this.chapterTemplate,
       subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
       subtitleMode: overrides.subtitleMode ?? this.subtitleMode,

@@ -483,6 +483,7 @@ class DownloadInfo:
         clip_end=None,
         live_status=None,
         live_release_timestamp=None,
+        sponsorblock=False,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -502,6 +503,7 @@ class DownloadInfo:
         self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
+        self.sponsorblock = sponsorblock
         self.chapter_template = chapter_template
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
@@ -571,6 +573,8 @@ class DownloadInfo:
             self.playlist_item_limit = 0
         if not hasattr(self, "split_by_chapters"):
             self.split_by_chapters = False
+        if not hasattr(self, "sponsorblock"):
+            self.sponsorblock = False
         if not hasattr(self, "chapter_template"):
             self.chapter_template = ""
         if not hasattr(self, "subtitle_language"):
@@ -615,6 +619,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "custom_name_prefix",
     "playlist_item_limit",
     "split_by_chapters",
+    "sponsorblock",
     "chapter_template",
     "subtitle_language",
     "subtitle_mode",
@@ -856,6 +861,27 @@ class Download:
             # Set after the ytdl_opts merge: the failure messages below depend on
             # this logger, so a user-supplied one must not replace it.
             ytdl_params['logger'] = ytdl_logger
+
+            # SponsorBlock: mark sponsor segments and cut them out, the same
+            # postprocessor pair the CLI's --sponsorblock-remove sponsor builds.
+            # This has to stay above the chapter-splitting block: yt-dlp runs
+            # same-stage postprocessors in list order, and ModifyChapters must
+            # rewrite the chapter list before FFmpegSplitChapters cuts the file
+            # up, or the chapter files keep the sponsor segments and the
+            # removal desyncs the remaining chapter timings.
+            if getattr(self.info, 'sponsorblock', False):
+                if 'postprocessors' not in ytdl_params:
+                    ytdl_params['postprocessors'] = []
+                ytdl_params['postprocessors'].append({
+                    'key': 'SponsorBlock',
+                    'categories': ['sponsor'],
+                    'when': 'after_filter',
+                })
+                ytdl_params['postprocessors'].append({
+                    'key': 'ModifyChapters',
+                    'remove_sponsor_segments': ['sponsor'],
+                    'force_keyframes': False,
+                })
 
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
@@ -1654,6 +1680,7 @@ class DownloadQueue:
         already,
         _add_gen=None,
         retry_entry=None,
+        sponsorblock=False,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1697,6 +1724,7 @@ class DownloadQueue:
                 already,
                 _add_gen,
                 retry_entry,
+                sponsorblock=sponsorblock,
             )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
@@ -1764,6 +1792,7 @@ class DownloadQueue:
                         clip_end,
                         already,
                         _add_gen,
+                        sponsorblock=sponsorblock,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -1804,6 +1833,7 @@ class DownloadQueue:
                 clip_end=clip_end,
                 live_status=entry.get('live_status'),
                 live_release_timestamp=entry.get('release_timestamp'),
+                sponsorblock=sponsorblock,
             )
             await self.__add_download(dl, auto_start)
             return {'status': 'ok'}
@@ -1884,13 +1914,14 @@ class DownloadQueue:
         already=None,
         _add_gen=None,
         retry_entry=None,
+        sponsorblock=False,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
         log.info(
             f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=}'
+            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=} {sponsorblock=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -1953,6 +1984,7 @@ class DownloadQueue:
             already,
             _add_gen,
             retry_entry,
+            sponsorblock=sponsorblock,
         )
 
     async def retry(self, id):
@@ -1989,6 +2021,7 @@ class DownloadQueue:
             info.clip_start,
             info.clip_end,
             retry_entry=info.entry,
+            sponsorblock=info.sponsorblock,
         )
 
     async def add_entry(
@@ -2010,6 +2043,7 @@ class DownloadQueue:
         ytdl_options_overrides=None,
         clip_start=None,
         clip_end=None,
+        sponsorblock=False,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -2035,6 +2069,7 @@ class DownloadQueue:
             clip_end,
             already,
             None,
+            sponsorblock=sponsorblock,
         )
 
     async def start_pending(self, ids):
