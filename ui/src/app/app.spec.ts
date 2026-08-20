@@ -413,4 +413,64 @@ describe('App', () => {
     expect(errorSpy).toHaveBeenCalledWith('Subscription name must not be empty');
     errorSpy.mockRestore();
   });
+  // Issue #533: the server picks AUDIO_DOWNLOAD_DIR on download_type alone
+  // (ytdl.py), so the UI's choice of URL base has to use the same rule. It used
+  // to also treat any .mp3 as audio, which pointed the link at audio_download/
+  // for files the server had written to DOWNLOAD_DIR.
+  describe('download links follow the server directory rule (#533)', () => {
+    const makeDownload = (over: Partial<Download>): Download => ({
+      id: 'vid1',
+      title: 'Test',
+      url: 'https://example.com/v',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 100,
+      speed: 0,
+      eta: 0,
+      filename: 'song.mp4',
+      checked: false,
+      ...over,
+    } as Download);
+
+    const appWithDirs = () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const downloads = TestBed.inject(DownloadsService) as unknown as DownloadsServiceStub;
+      downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
+      downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = 'audio_download/';
+      return app;
+    };
+
+    it('uses the audio base for an audio download', () => {
+      const app = appWithDirs();
+      const link = app.buildDownloadLink(makeDownload({ download_type: 'audio', filename: 'song.mp3' }));
+      expect(link).toBe('audio_download/song.mp3');
+    });
+
+    it('uses the video base for an mp3 produced by a video download', () => {
+      const app = appWithDirs();
+      const link = app.buildDownloadLink(makeDownload({ download_type: 'video', filename: 'song.mp3' }));
+      expect(link).toBe('download/song.mp3');
+    });
+
+    it('uses the video base for a video download', () => {
+      const app = appWithDirs();
+      const link = app.buildDownloadLink(makeDownload({ filename: 'clip.mp4' }));
+      expect(link).toBe('download/clip.mp4');
+    });
+
+    it('applies the same rule to chapter links', () => {
+      const app = appWithDirs();
+      const dl = makeDownload({ download_type: 'video' });
+      expect(app.buildChapterDownloadLink(dl, 'ch1.mp3')).toBe('download/ch1.mp3');
+      const audio = makeDownload({ download_type: 'audio' });
+      expect(app.buildChapterDownloadLink(audio, 'ch1.mp3')).toBe('audio_download/ch1.mp3');
+    });
+  });
 });

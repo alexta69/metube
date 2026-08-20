@@ -1284,7 +1284,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   buildDownloadLink(download: Download) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    if (download.download_type === 'audio' || download.filename.endsWith('.mp3')) {
+    // Must match the server's directory rule exactly: ytdl.py writes to
+    // AUDIO_DOWNLOAD_DIR on download_type alone. Treating any .mp3 as audio
+    // sent the link to audio_download/ for mp3s produced under a video-type
+    // download (a postprocessor, a preset, or a legacy record), which the
+    // server had written to DOWNLOAD_DIR -- a 404 whenever the two differ.
+    if (download.download_type === 'audio') {
       baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
     }
 
@@ -1382,7 +1387,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   buildChapterDownloadLink(download: Download, chapterFilename: string) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    if (download.download_type === 'audio' || chapterFilename.endsWith('.mp3')) {
+    // Same server-side rule as buildDownloadLink above.
+    if (download.download_type === 'audio') {
       baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
     }
 
