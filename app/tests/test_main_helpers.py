@@ -313,3 +313,40 @@ class GetCustomDirsTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class WarnIfCookiefileShadowedTests(unittest.TestCase):
+    """Issue #881: an uploaded cookies file wins over an operator-configured
+    cookiefile, and used to do so with no way for anyone to notice."""
+
+    def setUp(self):
+        self._saved = main.config.YTDL_OPTIONS
+        main.config.YTDL_OPTIONS = dict(self._saved)
+
+    def tearDown(self):
+        main.config.YTDL_OPTIONS = self._saved
+
+    def test_warns_when_a_different_cookiefile_is_configured(self):
+        main.config.YTDL_OPTIONS["cookiefile"] = "/cookies/cookies.txt"
+        with self.assertLogs("main", level="WARNING") as cm:
+            main.warn_if_cookiefile_shadowed()
+        joined = "\n".join(cm.output)
+        self.assertIn("/cookies/cookies.txt", joined)
+        self.assertIn(main.COOKIES_PATH, joined)
+
+    def test_silent_when_no_cookiefile_configured(self):
+        main.config.YTDL_OPTIONS.pop("cookiefile", None)
+        with self.assertNoLogs("main", level="WARNING"):
+            main.warn_if_cookiefile_shadowed()
+
+    def test_silent_when_configured_file_is_the_uploaded_one(self):
+        # The steady state after an upload: re-running must not nag.
+        main.config.YTDL_OPTIONS["cookiefile"] = main.COOKIES_PATH
+        with self.assertNoLogs("main", level="WARNING"):
+            main.warn_if_cookiefile_shadowed()
+
+    def test_silent_on_non_string_or_empty_values(self):
+        for value in (None, "", 0, [], {}):
+            main.config.YTDL_OPTIONS["cookiefile"] = value
+            with self.assertNoLogs("main", level="WARNING"):
+                main.warn_if_cookiefile_shadowed()

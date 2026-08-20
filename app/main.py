@@ -1069,6 +1069,30 @@ async def start(request):
 
 COOKIES_PATH = os.path.join(config.STATE_DIR, 'cookies.txt')
 
+
+def warn_if_cookiefile_shadowed():
+    """Warn before an uploaded cookies file displaces an operator-configured one.
+
+    Uploaded cookies deliberately win: the upload exists so cookies can be
+    refreshed without restarting the container, and letting YTDL_OPTIONS win
+    would leave a visible UI button doing nothing. But set_runtime_override
+    writes straight into YTDL_OPTIONS, so the configured path is gone from the
+    live config the moment an uploaded file is applied — after that, nothing
+    downstream can report the conflict (delete_cookies' has_manual_cookiefile
+    check cannot fire once the value has been replaced). This is the only point
+    where both are still visible, so it is the only place the warning can be
+    issued. Must be called before set_runtime_override. See issue #881, where
+    the silence cost the reporter days of debugging.
+    """
+    configured = config.YTDL_OPTIONS.get('cookiefile')
+    if isinstance(configured, str) and configured and configured != COOKIES_PATH:
+        log.warning(
+            'Uploaded cookies at %s take precedence over the cookiefile configured in '
+            'YTDL_OPTIONS (%s), which will not be used. Delete the uploaded cookies from '
+            'the UI to go back to the configured file.',
+            COOKIES_PATH, configured)
+
+
 @routes.post(config.URL_PREFIX + 'upload-cookies')
 async def upload_cookies(request):
     reader = await request.multipart()
@@ -1098,6 +1122,7 @@ async def upload_cookies(request):
     except OSError as exc:
         log.warning(f'Could not restrict permissions on cookies file: {exc}')
     os.replace(tmp_cookie_path, COOKIES_PATH)
+    warn_if_cookiefile_shadowed()
     config.set_runtime_override('cookiefile', COOKIES_PATH)
     log.info(f'Cookies file uploaded ({size} bytes)')
     return web.Response(text=serializer.encode({'status': 'ok', 'msg': f'Cookies uploaded ({size} bytes)'}))
@@ -1355,6 +1380,7 @@ if __name__ == '__main__':
 
     # Auto-detect cookie file on startup
     if os.path.exists(COOKIES_PATH):
+        warn_if_cookiefile_shadowed()
         config.set_runtime_override('cookiefile', COOKIES_PATH)
         log.info(f'Cookie file detected at {COOKIES_PATH}')
 
