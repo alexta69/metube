@@ -77,6 +77,34 @@ class ConfigTests(unittest.TestCase):
         self.assertEqual(c.PUBLIC_HOST_URL, "https://ytdl.example.com/")
         self.assertEqual(c.PUBLIC_HOST_AUDIO_URL, "https://audio.example.com/")
 
+    def test_download_dirs_lose_trailing_slash(self):
+        # get_custom_dirs strips the base path as a prefix from each subdirectory,
+        # and the base directory's own path has no trailing slash -- so a trailing
+        # slash here leaked the absolute path into the folder dropdown.
+        with patch.dict(os.environ, _base_env(
+            DOWNLOAD_DIR="/downloads/",
+            AUDIO_DOWNLOAD_DIR="/audio/",
+            TEMP_DIR="/tmp/",
+            STATE_DIR="/state/",
+        ), clear=False):
+            c = Config()
+        self.assertEqual(c.DOWNLOAD_DIR, "/downloads")
+        self.assertEqual(c.AUDIO_DOWNLOAD_DIR, "/audio")
+        self.assertEqual(c.TEMP_DIR, "/tmp")
+        self.assertEqual(c.STATE_DIR, "/state")
+
+    def test_root_download_dir_survives_normalisation(self):
+        with patch.dict(os.environ, _base_env(DOWNLOAD_DIR="/", AUDIO_DOWNLOAD_DIR="///"), clear=False):
+            c = Config()
+        self.assertEqual(c.DOWNLOAD_DIR, "/")
+        self.assertEqual(c.AUDIO_DOWNLOAD_DIR, "/")
+
+    def test_download_dirs_without_trailing_slash_unchanged(self):
+        with patch.dict(os.environ, _base_env(DOWNLOAD_DIR="/downloads", AUDIO_DOWNLOAD_DIR="."), clear=False):
+            c = Config()
+        self.assertEqual(c.DOWNLOAD_DIR, "/downloads")
+        self.assertEqual(c.AUDIO_DOWNLOAD_DIR, ".")
+
     def test_ytdl_options_json_loaded(self):
         opts = {"quiet": True, "no_warnings": True}
         with patch.dict(

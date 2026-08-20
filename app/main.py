@@ -116,6 +116,17 @@ class Config:
         if not self.URL_PREFIX.endswith('/'):
             self.URL_PREFIX += '/'
 
+        # Strip trailing slashes from the download directories. get_custom_dirs()
+        # builds the folder dropdown by removing the base path as a prefix from
+        # each subdirectory, and the base directory's own path does not carry the
+        # trailing slash — so 'DOWNLOAD_DIR=/downloads/' failed to match itself
+        # and leaked 'downloads' into the dropdown as a bogus folder option.
+        # Runs after the '%%' indirection above so AUDIO_DOWNLOAD_DIR is resolved.
+        for attr in ('DOWNLOAD_DIR', 'AUDIO_DOWNLOAD_DIR', 'TEMP_DIR', 'STATE_DIR'):
+            val = getattr(self, attr)
+            if isinstance(val, str) and len(val) > 1 and val.endswith('/'):
+                setattr(self, attr, val.rstrip('/') or '/')
+
         # A blank PUBLIC_HOST_AUDIO_URL (e.g. set empty in a compose file) bypasses the
         # default via os.environ.get, which would leave audio links root-relative and 404.
         # Fall back to the 'audio_download/' route that serves AUDIO_DOWNLOAD_DIR. When
