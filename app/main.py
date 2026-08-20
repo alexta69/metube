@@ -448,6 +448,31 @@ def _clip_field_provided_in_post(raw) -> bool:
     return True
 
 
+# A URL copied out of a share blurb is ASCII; stopping at the first byte outside
+# printable ASCII ends the match at the surrounding prose without naming any
+# particular script or platform.
+_SHARE_TEXT_URL_RE = re.compile(r'https?://[\x21-\x7e]+')
+_URL_TRAILING_PUNCTUATION = '.,;:!?\'")]}>'
+
+
+def _extract_url_from_share_text(value: str) -> str:
+    """Return the URL embedded in a share blurb pasted in place of a bare URL.
+
+    Mobile apps hand out a sentence rather than a link -- Douyin's share text
+    wraps ``https://v.douyin.com/...`` in a share code, a caption and hashtags --
+    and pasting the whole string fails with an empty URL scheme, which reads as a
+    MeTube bug rather than a malformed paste. A value that already starts with a
+    scheme is returned untouched, and text with no URL in it is left alone for the
+    existing validation to reject.
+    """
+    if value.lower().startswith(('http://', 'https://')):
+        return value
+    match = _SHARE_TEXT_URL_RE.search(value)
+    if not match:
+        return value
+    return match.group(0).rstrip(_URL_TRAILING_PUNCTUATION)
+
+
 def _extract_t_query_from_url(url: str) -> tuple[str, float | None]:
     """If ``t=`` is present and parseable, return URL without ``t`` and start seconds.
 
@@ -719,7 +744,7 @@ def parse_download_options(post: dict) -> dict:
     quality = post.get('quality')
     if not url or not quality or not download_type:
         raise web.HTTPBadRequest(reason="missing 'url', 'download_type', or 'quality'")
-    url = str(url).strip()
+    url = _extract_url_from_share_text(str(url).strip())
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
     playlist_item_limit = post.get('playlist_item_limit')

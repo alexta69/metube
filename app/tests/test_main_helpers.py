@@ -299,6 +299,56 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
 
 
+class ExtractUrlFromShareTextTests(unittest.TestCase):
+    # A real Douyin share blurb: share code, caption, hashtags, then the link,
+    # then a trailing instruction sentence.
+    SHARE_TEXT = (
+        "2.82 V@l.Cu 09/15 uFu:/ :0pm \u7b49\u4e8640\u5e74 # \u6297\u764c "
+        "https://v.douyin.com/J0v9moTyERw/ \u590d\u5236\u6b64\u94fe\u63a5\uff0c"
+        "\u6253\u5f00Dou\u97f3\u641c\u7d22\uff0c\u76f4\u63a5\u89c2\u770b\u89c6\u9891\uff01"
+    )
+
+    def test_pulls_url_out_of_share_text(self):
+        self.assertEqual(
+            main._extract_url_from_share_text(self.SHARE_TEXT),
+            "https://v.douyin.com/J0v9moTyERw/",
+        )
+
+    def test_plain_url_is_untouched(self):
+        url = "https://www.youtube.com/watch?v=1&t=855s"
+        self.assertEqual(main._extract_url_from_share_text(url), url)
+
+    def test_text_without_url_is_left_for_validation(self):
+        text = "no link here at all"
+        self.assertEqual(main._extract_url_from_share_text(text), text)
+
+    def test_stops_before_adjacent_non_ascii_punctuation(self):
+        # The URL is followed immediately by a full-width comma, which must not
+        # become part of the URL.
+        text = "\u770b\u770b\u8fd9\u4e2a https://v.douyin.com/abc123/\uff0c\u5f88\u597d\u7b11"
+        self.assertEqual(
+            main._extract_url_from_share_text(text),
+            "https://v.douyin.com/abc123/",
+        )
+
+    def test_strips_trailing_sentence_punctuation(self):
+        text = "see https://example.com/watch?v=1."
+        self.assertEqual(
+            main._extract_url_from_share_text(text),
+            "https://example.com/watch?v=1",
+        )
+
+    def test_parse_download_options_accepts_share_text(self):
+        parsed = main.parse_download_options({
+            "url": self.SHARE_TEXT,
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+        })
+        self.assertEqual(parsed["url"], "https://v.douyin.com/J0v9moTyERw/")
+
+
 class GetCustomDirsTests(unittest.TestCase):
     def test_works_without_a_running_event_loop(self):
         # get_custom_dirs() used to time its cache via
