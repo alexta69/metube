@@ -98,7 +98,7 @@ Enabling `writeinfojson` or `writethumbnail` in `YTDL_OPTIONS` also writes a fee
 * __HTTPS__: Use `https` instead of `http` (__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
 * __CERTFILE__: HTTPS certificate file path.
 * __KEYFILE__: HTTPS key file path.
-* __CORS_ALLOWED_ORIGINS__: Comma-separated list of origins permitted to make cross-origin requests to the MeTube API; `*` allows all. When unset or empty, all cross-origin requests are denied. Required for browser extensions and bookmarklets — see [Sending links to MeTube](#-sending-links-to-metube).
+* __CORS_ALLOWED_ORIGINS__: Comma-separated list of origins permitted to make cross-origin requests to the MeTube API; `*` allows all. When unset or empty, all cross-origin requests are denied. Required for browser extensions and bookmarklets — see [Sending links to MeTube](#-sending-links-to-metube). Naming origins explicitly also lets them send credentials (a login cookie, or the `Authorization` header a reverse proxy checks), which `*` deliberately does not: it would let any site you visit drive your instance with your own session.
 * __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container.
 
 ## 🎛️ Configuring yt-dlp options
@@ -243,7 +243,7 @@ __Browser extensions__ allow right-clicking videos and sending them directly to 
 * __Chrome:__ contributed by [Rpsl](https://github.com/rpsl) — install from the [Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or [from sources](https://github.com/Rpsl/metube-browser-extension).
 * __Firefox:__ contributed by [nanocortex](https://github.com/nanocortex) — install from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources [here](https://github.com/nanocortex/metube-firefox-addon).
 
-__Bookmarklets__ send the currently open page to MeTube with one click. Add the origins of the sites where you use them to `CORS_ALLOWED_ORIGINS`, e.g. `https://www.youtube.com,https://www.vimeo.com`. The code (Chrome and Firefox variants, contributed by [kushfest](https://github.com/kushfest) and [shoonya75](https://github.com/shoonya75)) is in the [Bookmarklets wiki page](https://github.com/alexta69/metube/wiki/Bookmarklets).
+__Bookmarklets__ send the currently open page to MeTube with one click. Add the origins of the sites where you use them to `CORS_ALLOWED_ORIGINS`, e.g. `https://www.youtube.com,https://www.vimeo.com`. If your instance sits behind authentication, list the origins individually rather than using `*` — only named origins are allowed to send credentials. The code (Chrome and Firefox variants, contributed by [kushfest](https://github.com/kushfest) and [shoonya75](https://github.com/shoonya75)) is in the [Bookmarklets wiki page](https://github.com/alexta69/metube/wiki/Bookmarklets).
 
 __iOS Shortcut:__ [rithask](https://github.com/rithask) created an [iOS shortcut](https://www.icloud.com/shortcuts/66627a9f334c467baabdb2769763a1a6) for sending URLs to MeTube from Safari's share menu; it prompts for your instance address on first use.
 

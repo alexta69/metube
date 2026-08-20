@@ -335,6 +335,12 @@ async def state_dir_guard(request, handler):
 
 app = web.Application(middlewares=[state_dir_guard])
 _cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
+if '*' in _cors_origins and len(_cors_origins) > 1:
+    log.warning(
+        "CORS_ALLOWED_ORIGINS mixes '*' with named origins %s. '*' wins, and credentialed "
+        "cross-origin requests stay disabled for every origin in the list. Remove '*' if you "
+        "need a bookmarklet to reach an authenticated instance.",
+        [o for o in _cors_origins if o != '*'])
 sio = socketio.AsyncServer(cors_allowed_origins=_cors_origins if _cors_origins else [])
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
@@ -1286,9 +1292,44 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
 
 async def on_prepare(request, response):
     origin = request.headers.get('Origin')
-    if origin and _cors_origins and ('*' in _cors_origins or origin in _cors_origins):
-        response.headers['Access-Control-Allow-Origin'] = origin
-        response.headers['Access-Control-Allow-Headers'] = 'Content-Type'
+    if not origin or not _cors_origins:
+        return
+
+    # Naming an origin in CORS_ALLOWED_ORIGINS is a deliberate trust grant, so
+    # such an origin may send credentials: the cookie or Authorization header
+    # that a reverse proxy in front of MeTube checks. Without this a bookmarklet
+    # cannot reach an authenticated instance at all (issue #155).
+    #
+    # The '*' wildcard is emphatically not such a grant — it matches origins the
+    # operator never enumerated, including every site the user happens to visit.
+    # Echoing the origin back (which we must do, since '*' is illegal alongside
+    # credentials) and allowing credentials would let any page drive the user's
+    # instance with the user's own session. So the wildcard keeps exactly the
+    # uncredentialed behaviour it has always had, and a wildcard anywhere in the
+    # list disables credentials for every origin in it.
+    #
+    # Derived here rather than held in a second module global so the wildcard
+    # test and the membership test can never disagree about the same list.
+    wildcard = '*' in _cors_origins
+    trusted = not wildcard and origin in _cors_origins
+    if not (wildcard or trusted):
+        return
+
+    response.headers['Access-Control-Allow-Origin'] = origin
+    # Authorization rides on the same grant: allowing it under the wildcard
+    # would let an arbitrary page attempt credentials against an instance it
+    # can already reach, from inside the victim's network.
+    response.headers['Access-Control-Allow-Headers'] = 'Content-Type, Authorization' if trusted else 'Content-Type'
+    if trusted:
+        response.headers['Access-Control-Allow-Credentials'] = 'true'
+
+    # The response now differs per Origin, so a shared cache must not hand one
+    # origin's Allow-Origin to another.
+    vary = response.headers.get('Vary')
+    if not vary:
+        response.headers['Vary'] = 'Origin'
+    elif 'origin' not in (v.strip().lower() for v in vary.split(',')):
+        response.headers['Vary'] = f'{vary}, Origin'
 
 app.on_response_prepare.append(on_prepare)
 

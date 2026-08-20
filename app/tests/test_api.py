@@ -525,3 +525,130 @@ async def test_download_blocks_state_dir_files(monkeypatch):
         (download_dir / "video.mp4").unlink(missing_ok=True)
         (download_dir / percent_filename).unlink(missing_ok=True)
         state_dir.rmdir()
+
+# --- CORS (issue #155) -------------------------------------------------------
+#
+# The security property under test: credentials are granted only to an origin
+# the operator named explicitly, and never under the '*' wildcard. Each test
+# builds a fresh Application because main.app binds to the first event loop
+# that runs it; the logic under test lives entirely in main.on_prepare, and the
+# real main.add_cors preflight handler is mounted so the preflight path is the
+# production one.
+
+async def _cors_version(request):
+    return web.Response(text="v")
+
+
+def _cors_app():
+    app = web.Application()
+    app.router.add_route("OPTIONS", "/add", main.add_cors)
+    app.router.add_get("/version", _cors_version)
+    app.on_response_prepare.append(main.on_prepare)
+    return app
+
+
+async def _cors_headers(monkeypatch, origins, origin, path="/add", method="OPTIONS"):
+    monkeypatch.setattr(main, "_cors_origins", origins)
+    async with TestClient(TestServer(_cors_app())) as client:
+        resp = await client.request(
+            method, path,
+            headers={
+                "Origin": origin,
+                "Access-Control-Request-Method": "POST",
+                "Access-Control-Request-Headers": "content-type,authorization",
+            },
+        )
+        return resp.headers
+
+
+@pytest.mark.asyncio
+async def test_cors_listed_origin_gets_credentials(monkeypatch):
+    h = await _cors_headers(monkeypatch, ["https://www.youtube.com"], "https://www.youtube.com")
+    assert h["Access-Control-Allow-Origin"] == "https://www.youtube.com"
+    assert h["Access-Control-Allow-Credentials"] == "true"
+    assert "Authorization" in h["Access-Control-Allow-Headers"]
+    assert "Origin" in h["Vary"]
+
+
+@pytest.mark.asyncio
+async def test_cors_wildcard_never_grants_credentials(monkeypatch):
+    h = await _cors_headers(monkeypatch, ["*"], "https://evil.example")
+    # The wildcard still reflects the origin, exactly as before...
+    assert h["Access-Control-Allow-Origin"] == "https://evil.example"
+    # ...but must not hand out the user's session, nor let a page attempt
+    # credentials of its own.
+    assert "Access-Control-Allow-Credentials" not in h
+    assert h["Access-Control-Allow-Headers"] == "Content-Type"
+
+
+@pytest.mark.asyncio
+async def test_cors_wildcard_mixed_with_named_origin_still_denies_credentials(monkeypatch):
+    # '*' anywhere in the list disables credentials for everyone in it, so a
+    # stray wildcard cannot silently widen a named grant.
+    h = await _cors_headers(monkeypatch, ["*", "https://www.youtube.com"], "https://www.youtube.com")
+    assert h["Access-Control-Allow-Origin"] == "https://www.youtube.com"
+    assert "Access-Control-Allow-Credentials" not in h
+    assert h["Access-Control-Allow-Headers"] == "Content-Type"
+
+
+@pytest.mark.asyncio
+async def test_cors_unlisted_origin_gets_nothing(monkeypatch):
+    h = await _cors_headers(monkeypatch, ["https://www.youtube.com"], "https://evil.example")
+    assert "Access-Control-Allow-Origin" not in h
+    assert "Access-Control-Allow-Credentials" not in h
+
+
+@pytest.mark.asyncio
+async def test_cors_disabled_by_default(monkeypatch):
+    h = await _cors_headers(monkeypatch, [], "https://www.youtube.com")
+    assert "Access-Control-Allow-Origin" not in h
+    assert "Access-Control-Allow-Credentials" not in h
+
+
+@pytest.mark.asyncio
+async def test_cors_credentials_apply_to_actual_response_not_just_preflight(monkeypatch):
+    # The browser checks Allow-Credentials on the real response too, so a
+    # preflight-only grant would still fail.
+    h = await _cors_headers(
+        monkeypatch, ["https://www.youtube.com"], "https://www.youtube.com",
+        path="/version", method="GET")
+    assert h["Access-Control-Allow-Credentials"] == "true"
+
+
+@pytest.mark.asyncio
+async def test_cors_origin_match_is_exact(monkeypatch):
+    # Substring or suffix matching here would be a bypass.
+    for impostor in (
+        "https://www.youtube.com.evil.example",
+        "https://evilwww.youtube.com",
+        "http://www.youtube.com",
+        "https://www.youtube.com:8443",
+    ):
+        h = await _cors_headers(monkeypatch, ["https://www.youtube.com"], impostor)
+        assert "Access-Control-Allow-Origin" not in h, impostor
+        assert "Access-Control-Allow-Credentials" not in h, impostor
+
+
+@pytest.mark.asyncio
+async def test_cors_null_origin_is_not_trusted(monkeypatch):
+    # Sandboxed iframes and some file:// contexts send Origin: null.
+    h = await _cors_headers(monkeypatch, ["https://www.youtube.com"], "null")
+    assert "Access-Control-Allow-Origin" not in h
+    assert "Access-Control-Allow-Credentials" not in h
+
+
+@pytest.mark.asyncio
+async def test_cors_vary_appends_to_existing_value(monkeypatch):
+    # Static responses can already carry a Vary; clobbering it would break
+    # content negotiation.
+    monkeypatch.setattr(main, "_cors_origins", ["https://www.youtube.com"])
+
+    async def handler(request):
+        return web.Response(text="x", headers={"Vary": "Accept-Encoding"})
+
+    app = web.Application()
+    app.router.add_get("/v", handler)
+    app.on_response_prepare.append(main.on_prepare)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get("/v", headers={"Origin": "https://www.youtube.com"})
+        assert resp.headers["Vary"] == "Accept-Encoding, Origin"
