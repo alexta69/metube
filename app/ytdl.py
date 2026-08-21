@@ -1027,7 +1027,17 @@ class Download:
                     if not rel_name.lower().endswith(allowed_caption_exts):
                         continue
                 self.info.filename = rel_name
-                self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
+                # Stat only on a terminal status. yt-dlp documents 'filename' as
+                # always present in a progress hook, but until the download
+                # finishes the bytes are in tmpfilename and 'filename' is a
+                # destination that does not exist yet -- so this was two
+                # blocking syscalls on the event loop, twice a second per
+                # active download, to arrive at None. A stat that takes seconds
+                # on a contended filesystem stalls every other request the
+                # server is serving. Nothing displays the size before
+                # completion: the Downloading table has no size column.
+                if status.get('status') == 'finished':
+                    self.info.size = os.path.getsize(fileName) if os.path.exists(fileName) else None
                 if getattr(self.info, 'download_type', '') == 'thumbnail':
                     # The thumbnail convertor always emits a .jpg, but yt-dlp may
                     # report the pre-conversion media/thumbnail extension

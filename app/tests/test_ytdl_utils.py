@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import os
 import pickle
 import signal
@@ -11,7 +12,8 @@ import threading
 import types
 import unittest
 from pathlib import Path
-from unittest.mock import MagicMock, patch
+from concurrent.futures import ThreadPoolExecutor
+from unittest.mock import AsyncMock, MagicMock, patch
 
 fake_yt_dlp = types.ModuleType("yt_dlp")
 fake_networking = types.ModuleType("yt_dlp.networking")
@@ -1176,3 +1178,62 @@ class PotProviderUrlsTests(unittest.TestCase):
 if __name__ == "__main__":
 
     unittest.main()
+
+
+class UpdateStatusFileStatTests(unittest.IsolatedAsyncioTestCase):
+    """The progress path must not touch the filesystem on the event loop.
+
+    yt-dlp reports 'filename' on every progress tick, but until the download
+    finishes that path does not exist yet -- the bytes are in 'tmpfilename'.
+    Stating it per tick meant blocking syscalls on the event loop twice a
+    second per download, always answering None. See issue #980.
+    """
+
+    async def _run_update_status(self, statuses):
+        import queue as _queue
+
+        download = _make_test_download()
+        download.download_dir = "/tmp"
+        source = _queue.Queue()
+        for status in statuses:
+            source.put(status)
+        source.put(None)
+        download.status_queue = source
+        download.loop = asyncio.get_running_loop()
+        download._executor = ThreadPoolExecutor(max_workers=1)
+        notifier = MagicMock()
+        notifier.updated = AsyncMock()
+        download.notifier = notifier
+
+        stat_calls = []
+
+        def record_exists(path):
+            stat_calls.append(path)
+            return False
+
+        try:
+            with patch("ytdl.os.path.exists", side_effect=record_exists):
+                await download.update_status()
+        finally:
+            download._executor.shutdown(wait=True)
+        return download, stat_calls
+
+    async def test_downloading_ticks_do_not_stat_the_output_file(self):
+        ticks = [
+            {"status": "downloading", "filename": "/tmp/v.mp4",
+             "tmpfilename": "/tmp/v.mp4.part", "downloaded_bytes": i}
+            for i in range(1, 6)
+        ]
+        download, stat_calls = await self._run_update_status(ticks)
+
+        self.assertEqual(stat_calls, [])
+        self.assertEqual(download.info.filename, "v.mp4")
+
+    async def test_finished_status_still_stats_the_output_file(self):
+        download, stat_calls = await self._run_update_status([
+            {"status": "downloading", "filename": "/tmp/v.mp4", "downloaded_bytes": 1},
+            {"status": "finished", "filename": "/tmp/v.mp4"},
+        ])
+
+        self.assertEqual(stat_calls, ["/tmp/v.mp4"])
+        self.assertIsNone(download.info.size)
