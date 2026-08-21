@@ -2,8 +2,11 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import os
+import threading
+import time
 import shelve
 import sys
 import tempfile
@@ -69,22 +72,22 @@ def _create_legacy_shelf(path: str, *infos: DownloadInfo) -> None:
             shelf[info.url] = info
 
 
-class PersistentQueueTests(unittest.TestCase):
-    def test_put_get_delete_roundtrip(self):
+class PersistentQueueTests(unittest.IsolatedAsyncioTestCase):
+    async def test_put_get_delete_roundtrip(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq = PersistentQueue("queue", path)
             dl = _FakeDownload(_make_info("http://a.example"))
-            pq.put(dl)
+            await pq.put(dl)
             self.assertTrue(os.path.exists(path + ".json"))
             self.assertTrue(pq.exists("http://a.example"))
             self.assertFalse(pq.empty())
             got = pq.get("http://a.example")
             self.assertEqual(got.info.url, "http://a.example")
-            pq.delete("http://a.example")
+            await pq.delete("http://a.example")
             self.assertFalse(pq.exists("http://a.example"))
 
-    def test_saved_items_sorted_by_timestamp(self):
+    async def test_saved_items_sorted_by_timestamp(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq = PersistentQueue("queue", path)
@@ -92,16 +95,16 @@ class PersistentQueueTests(unittest.TestCase):
             b = _FakeDownload(_make_info("http://second.example"))
             a.info.timestamp = 100
             b.info.timestamp = 200
-            pq.put(a)
-            pq.put(b)
+            await pq.put(a)
+            await pq.put(b)
             keys = [k for k, _ in pq.saved_items()]
             self.assertEqual(keys, ["http://first.example", "http://second.example"])
 
-    def test_load_restores_from_json(self):
+    async def test_load_restores_from_json(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq1 = PersistentQueue("queue", path)
-            pq1.put(_FakeDownload(_make_info("http://load.example")))
+            await pq1.put(_FakeDownload(_make_info("http://load.example")))
             pq2 = PersistentQueue("queue", path)
             pq2.load()
             self.assertTrue(pq2.exists("http://load.example"))
@@ -115,7 +118,7 @@ class PersistentQueueTests(unittest.TestCase):
             self.assertTrue(pq.exists("http://legacy.example"))
             self.assertTrue(os.path.exists(path + ".json"))
 
-    def test_queue_persists_only_compact_entry_subset(self):
+    async def test_queue_persists_only_compact_entry_subset(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq = PersistentQueue("queue", path)
@@ -128,7 +131,7 @@ class PersistentQueueTests(unittest.TestCase):
                 "formats": [{"id": "huge"}],
                 "description": "very large payload",
             }
-            pq.put(_FakeDownload(info))
+            await pq.put(_FakeDownload(info))
 
             with open(path + ".json", encoding="utf-8") as f:
                 payload = json.load(f)
@@ -146,7 +149,7 @@ class PersistentQueueTests(unittest.TestCase):
             self.assertNotIn("formats", record["entry"])
             self.assertNotIn("description", record["entry"])
 
-    def test_completed_queue_persists_only_failed_retry_context(self):
+    async def test_completed_queue_persists_only_failed_retry_context(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "completed")
             pq = PersistentQueue("completed", path)
@@ -161,7 +164,7 @@ class PersistentQueueTests(unittest.TestCase):
                 "formats": [{"id": "huge"}],
             }
             info.filename = "done.mp4"
-            pq.put(_FakeDownload(info))
+            await pq.put(_FakeDownload(info))
 
             with open(path + ".json", encoding="utf-8") as f:
                 payload = json.load(f)
@@ -180,7 +183,7 @@ class PersistentQueueTests(unittest.TestCase):
             self.assertEqual(record["filename"], "done.mp4")
 
             info.status = "finished"
-            pq.put(_FakeDownload(info))
+            await pq.put(_FakeDownload(info))
             with open(path + ".json", encoding="utf-8") as f:
                 payload = json.load(f)
             self.assertNotIn("entry", payload["items"][0]["info"])
@@ -256,7 +259,7 @@ class PersistentQueueTests(unittest.TestCase):
             self.assertNotIn("speed", record)
             self.assertNotIn("eta", record)
 
-    def test_put_rollbacks_in_memory_queue_when_state_write_fails(self):
+    async def test_put_rollbacks_in_memory_queue_when_state_write_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq = PersistentQueue("queue", path)
@@ -272,18 +275,18 @@ class PersistentQueueTests(unittest.TestCase):
 
             with patch("ytdl.AtomicJsonStore.save", bad_save):
                 with self.assertRaises(OSError):
-                    pq.put(dl)
+                    await pq.put(dl)
 
             self.assertFalse(pq.exists("http://rollback.example"))
 
-    def test_put_rollbacks_to_previous_download_when_replace_fails(self):
+    async def test_put_rollbacks_to_previous_download_when_replace_fails(self):
         with tempfile.TemporaryDirectory() as tmp:
             path = os.path.join(tmp, "queue")
             pq = PersistentQueue("queue", path)
             first = _FakeDownload(_make_info("http://same.example"))
             second = _FakeDownload(_make_info("http://same.example"))
             second.info.title = "Replaced title"
-            pq.put(first)
+            await pq.put(first)
 
             orig_save = __import__("state_store").AtomicJsonStore.save
 
@@ -294,9 +297,67 @@ class PersistentQueueTests(unittest.TestCase):
 
             with patch("ytdl.AtomicJsonStore.save", bad_save):
                 with self.assertRaises(OSError):
-                    pq.put(second)
+                    await pq.put(second)
 
             self.assertEqual(pq.get("http://same.example").info.title, "Title")
+
+
+class StateWriteOffEventLoopTests(unittest.IsolatedAsyncioTestCase):
+    """State writes fsync twice; on a slow disk that must not stall the loop.
+
+    Before this, put()/delete() wrote inline, so a queue mutation blocked every
+    other request the server was serving for as long as the filesystem took.
+    See issue #980.
+    """
+
+    async def test_save_runs_off_the_event_loop_thread(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pq = PersistentQueue("queue", os.path.join(tmp, "queue"))
+            self.addCleanup(pq.close)
+            loop_thread = threading.get_ident()
+            save_threads = []
+
+            orig_save = __import__("state_store").AtomicJsonStore.save
+
+            def recording_save(store, data):
+                save_threads.append(threading.get_ident())
+                return orig_save(store, data)
+
+            with patch("ytdl.AtomicJsonStore.save", recording_save):
+                await pq.put(_FakeDownload(_make_info("http://a.example")))
+
+            self.assertEqual(len(save_threads), 1)
+            self.assertNotEqual(save_threads[0], loop_thread)
+
+    async def test_a_slow_write_does_not_stall_other_coroutines(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            pq = PersistentQueue("queue", os.path.join(tmp, "queue"))
+            self.addCleanup(pq.close)
+            orig_save = __import__("state_store").AtomicJsonStore.save
+
+            def slow_save(store, data):
+                time.sleep(0.3)
+                return orig_save(store, data)
+
+            ticks = 0
+
+            async def ticker():
+                nonlocal ticks
+                while True:
+                    await asyncio.sleep(0.01)
+                    ticks += 1
+
+            ticking = asyncio.create_task(ticker())
+            try:
+                with patch("ytdl.AtomicJsonStore.save", slow_save):
+                    await pq.put(_FakeDownload(_make_info("http://a.example")))
+            finally:
+                ticking.cancel()
+
+            # An inline write would have starved the loop for the whole 0.3s and
+            # left ticks at 0.
+            self.assertGreater(ticks, 5)
+            self.assertTrue(pq.exists("http://a.example"))
 
 
 if __name__ == "__main__":

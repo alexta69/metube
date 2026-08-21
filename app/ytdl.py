@@ -1111,6 +1111,19 @@ class PersistentQueue:
         self.path = f"{path}.json"
         self.store = AtomicJsonStore(self.path, kind=f"persistent_queue:{name}")
         self.dict = OrderedDict()
+        # A state write fsyncs twice (the file and its directory). On a slow or
+        # contended filesystem that is seconds, and running it inline in an
+        # async caller blocked the event loop -- every other request stalled
+        # behind a single queue mutation. One dedicated thread keeps the writes
+        # off the loop and, being single, keeps them ordered. The default
+        # executor is not usable for this: extract_info shares it and can hold
+        # its threads for minutes, which is exactly when state writes happen.
+        self._store_executor = ThreadPoolExecutor(
+            max_workers=1, thread_name_prefix=f"state-{name}")
+        # Guards the mutate-write-rollback section. The write is awaited now, so
+        # without this two callers could interleave between changing self.dict
+        # and persisting it, and a rollback could revert the wrong entry.
+        self._lock = asyncio.Lock()
 
     def load(self):
         for k, v in self.saved_items():
@@ -1151,8 +1164,14 @@ class PersistentQueue:
             for key, download in self.dict.items()
         ]
 
-    def _save_dict(self):
-        self.store.save({"items": self._serialize_items()})
+    async def _save_dict_async(self):
+        # Serialize on the event loop -- it is pure CPU and sub-millisecond --
+        # and hand the finished payload to the writer thread. Serializing in the
+        # thread instead would have it walk live DownloadInfo objects while the
+        # loop mutates them.
+        payload = {"items": self._serialize_items()}
+        await asyncio.get_running_loop().run_in_executor(
+            self._store_executor, self.store.save, payload)
 
     def _load_state_items(self):
         payload = self.store.load()
@@ -1193,31 +1212,38 @@ class PersistentQueue:
         self.store.save({"items": items})
         return items
 
-    def put(self, value):
+    async def put(self, value):
         key = value.info.url
-        old = self.dict.get(key)
-        self.dict[key] = value
-        try:
-            self._save_dict()
-        except Exception:
-            if old is None:
-                del self.dict[key]
-            else:
-                self.dict[key] = old
-            raise
-
-    def delete(self, key):
-        if key in self.dict:
-            old = self.dict[key]
-            del self.dict[key]
+        async with self._lock:
+            old = self.dict.get(key)
+            self.dict[key] = value
             try:
-                self._save_dict()
+                await self._save_dict_async()
             except Exception:
-                self.dict[key] = old
+                if old is None:
+                    del self.dict[key]
+                else:
+                    self.dict[key] = old
                 raise
+
+    async def delete(self, key):
+        async with self._lock:
+            if key in self.dict:
+                old = self.dict[key]
+                del self.dict[key]
+                try:
+                    await self._save_dict_async()
+                except Exception:
+                    self.dict[key] = old
+                    raise
 
     def empty(self):
         return not bool(self.dict)
+
+    def close(self):
+        # wait=True so a write already in flight reaches disk before the
+        # process exits; there is at most one, and it is the newest state.
+        self._store_executor.shutdown(wait=True)
 
 class DownloadQueue:
     def __init__(self, config, notifier):
@@ -1395,8 +1421,8 @@ class DownloadQueue:
                 if not info.error:
                     info.error = str(exc)
                 self._unregister_scheduled(url)
-                self.queue.delete(url)
-                self.done.put(download)
+                await self.queue.delete(url)
+                await self.done.put(download)
                 await self.notifier.completed(info)
             else:
                 log.warning(
@@ -1430,9 +1456,9 @@ class DownloadQueue:
         await self.notifier.updated(info)
         bg_tasks.create_task(self.__start_download(download), name="start_download")
 
-    def _schedule_upcoming_download(self, download: Download) -> None:
+    async def _schedule_upcoming_download(self, download: Download) -> None:
         download.info.status = 'scheduled'
-        self.queue.put(download)
+        await self.queue.put(download)
         self._register_scheduled(download)
 
     def _force_start_scheduled(self, download: Download) -> None:
@@ -1451,9 +1477,9 @@ class DownloadQueue:
                 log.info(f"Download {download.info.title} was canceled, skipping start.")
                 return
             await download.start(self.notifier, self._download_executor)
-            self._post_download_cleanup(download)
+            await self._post_download_cleanup(download)
 
-    def _post_download_cleanup(self, download):
+    async def _post_download_cleanup(self, download):
         if download.info.status != 'finished':
             if download.tmpfilename and os.path.isfile(download.tmpfilename):
                 try:
@@ -1473,11 +1499,11 @@ class DownloadQueue:
                 download.info.size = None
         download.close()
         if self.queue.exists(download.info.url):
-            self.queue.delete(download.info.url)
+            await self.queue.delete(download.info.url)
             if download.canceled:
                 bg_tasks.create_task(self.notifier.canceled(download.info.url), name="notify_canceled")
             else:
-                self.done.put(download)
+                await self.done.put(download)
                 bg_tasks.create_task(self.notifier.completed(download.info), name="notify_completed")
                 try:
                     clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
@@ -1585,12 +1611,12 @@ class DownloadQueue:
         )
         if auto_start is True:
             if is_upcoming:
-                self._schedule_upcoming_download(download)
+                await self._schedule_upcoming_download(download)
             else:
-                self.queue.put(download)
+                await self.queue.put(download)
                 bg_tasks.create_task(self.__start_download(download), name="start_download")
         else:
-            self.pending.put(download)
+            await self.pending.put(download)
         await self.notifier.added(dl)
 
     def __write_feed_metadata_sync(self, entry, etype, download_type, folder,
@@ -1899,7 +1925,7 @@ class DownloadQueue:
         info.status = 'error'
         info.msg = msg
         download = Download(None, None, None, None, quality, format, {}, info)
-        self.done.put(download)
+        await self.done.put(download)
         await self.notifier.completed(info)
 
     async def add(
@@ -2086,11 +2112,11 @@ class DownloadQueue:
         for id in ids:
             if self.pending.exists(id):
                 dl = self.pending.get(id)
-                self.pending.delete(id)
+                await self.pending.delete(id)
                 if getattr(dl.info, 'live_status', None) == 'is_upcoming':
-                    self._schedule_upcoming_download(dl)
+                    await self._schedule_upcoming_download(dl)
                 else:
-                    self.queue.put(dl)
+                    await self.queue.put(dl)
                     bg_tasks.create_task(self.__start_download(dl), name="start_download")
                 continue
             if self.queue.exists(id):
@@ -2106,7 +2132,7 @@ class DownloadQueue:
             # Track URL so playlist add loop won't re-queue it
             self._canceled_urls.add(id)
             if self.pending.exists(id):
-                self.pending.delete(id)
+                await self.pending.delete(id)
                 await self.notifier.canceled(id)
                 continue
             if not self.queue.exists(id):
@@ -2119,7 +2145,7 @@ class DownloadQueue:
                 dl.cancel()
             else:
                 dl.canceled = True
-                self.queue.delete(id)
+                await self.queue.delete(id)
                 await self.notifier.canceled(id)
         return {'status': 'ok'}
 
@@ -2157,7 +2183,7 @@ class DownloadQueue:
                             pass
                         except OSError as e:
                             log.warning(f'deleting file "{rel_name}" for download {id} failed with error message {e!r}')
-            self.done.delete(id)
+            await self.done.delete(id)
             await self.notifier.cleared(id)
         return {'status': 'ok'}
 
@@ -2175,3 +2201,7 @@ class DownloadQueue:
             if download.started() and download.running():
                 download.cancel()
         self._download_executor.shutdown(wait=False, cancel_futures=True)
+        # Unlike the download executor these are drained, not cancelled: a
+        # queued write is the newest state and must reach disk before exit.
+        for queue in (self.queue, self.pending, self.done):
+            queue.close()

@@ -330,7 +330,7 @@ async def test_retry_restores_playlist_output_context(dq_env):
         chapter_template="",
     )
     failed_info.status = "error"
-    dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
+    await dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
 
     def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
@@ -389,7 +389,7 @@ async def test_retry_keeps_playlist_context_through_url_indirection(dq_env):
     dq = DownloadQueue(dq_env, notifier)
     url = "https://example.com/watch?v=1"
     resolved = "https://example.com/resolved?v=1"
-    dq.done.put(Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url)))
+    await dq.done.put(Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url)))
 
     def fake_extract(self, extracted_url, *_args, **_kwargs):
         if extracted_url == url:
@@ -427,7 +427,7 @@ async def test_retry_reapplies_current_options_gates(dq_env):
         ytdl_options_presets=["Still There", "Removed Preset"],
         ytdl_options_overrides={"paths": {"home": "/etc"}},
     )
-    dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
+    await dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
 
     def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
@@ -457,7 +457,7 @@ async def test_retry_keeps_overrides_while_still_allowed(dq_env):
     dq = DownloadQueue(dq_env, notifier)
     url = "https://example.com/watch?v=1"
     info = _failed_playlist_item(url, ytdl_options_overrides={"writesubtitles": True})
-    dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
+    await dq.done.put(Download(None, None, None, None, "best", "any", {}, info))
 
     def fake_extract(self, extracted_url, *_args, **_kwargs):
         return {
@@ -481,7 +481,7 @@ async def test_retry_carries_the_sponsorblock_flag(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)
     url = "https://example.com/watch?v=1"
-    dq.done.put(
+    await dq.done.put(
         Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url, sponsorblock=True))
     )
 
@@ -1441,9 +1441,9 @@ async def test_post_download_cleanup_clears_filename_on_error(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)
     download = _make_download(dq_env, status="downloading", filename="../tmp/partial.mp4")
-    dq.queue.put(download)
+    await dq.queue.put(download)
 
-    dq._post_download_cleanup(download)
+    await dq._post_download_cleanup(download)
 
     assert download.info.status == "error"
     assert download.info.filename is None
@@ -1456,9 +1456,9 @@ async def test_post_download_cleanup_keeps_captured_subtitles_on_error(dq_env):
     dq = DownloadQueue(dq_env, notifier)
     download = _make_download(dq_env, download_type="captions", status="downloading", filename="en.srt")
     download.info.subtitle_files = [{"filename": "en.srt", "size": 42}]
-    dq.queue.put(download)
+    await dq.queue.put(download)
 
-    dq._post_download_cleanup(download)
+    await dq._post_download_cleanup(download)
 
     assert download.info.status == "error"
     assert download.info.filename == "en.srt"
@@ -1478,7 +1478,7 @@ async def test_clear_skips_deletion_outside_download_directory(dq_env):
     # A crafted/legacy relative filename that escapes DOWNLOAD_DIR via '..'.
     escaping_filename = os.path.relpath(outside_file, dq_env.DOWNLOAD_DIR)
     download = _make_download(dq_env, status="finished", filename=escaping_filename)
-    dq.done.put(download)
+    await dq.done.put(download)
 
     await dq.clear([download.info.url])
 
