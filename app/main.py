@@ -16,12 +16,17 @@ import logging
 import json
 import pathlib
 import re
+import tempfile
 import time
+from concurrent.futures import ProcessPoolExecutor
+from functools import partial
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
 import bg_tasks
-from ytdl import DownloadQueueNotifier, DownloadQueue, Download
+import direct
+from url_guard import validate_url
+from ytdl import DownloadQueueNotifier, DownloadQueue, Download, _MP_CTX
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
 
@@ -1292,7 +1297,7 @@ async def robots(request):
         response = web.FileResponse(os.path.join(config.BASE_DIR, config.ROBOTS_TXT))
     else:
         response = web.Response(
-            text="User-agent: *\nDisallow: /download/\nDisallow: /audio_download/\n"
+            text="User-agent: *\nDisallow: /download/\nDisallow: /audio_download/\nDisallow: /dl/\nDisallow: /watch\n"
         )
     return response
 
@@ -1302,6 +1307,63 @@ async def version(request):
         "yt-dlp": yt_dlp_version,
         "version": os.getenv("METUBE_VERSION", "dev")
     })
+
+
+# Direct streaming: one yt-dlp run per request, served from a temp dir (see direct.py).
+# The queue's concurrency limit doubles as the cap here so a burst of requests
+# cannot fork an unbounded number of yt-dlp processes.
+_direct_slots = asyncio.Semaphore(int(config.MAX_CONCURRENT_DOWNLOADS))
+
+
+async def _run_direct_fetch(*args):
+    # A fresh single-worker pool per request: the socket guard needs a child
+    # process, and a throwaway one leaves no yt-dlp state behind and cannot
+    # break a shared pool when it dies.
+    pool = ProcessPoolExecutor(max_workers=1, mp_context=_MP_CTX)
+    try:
+        return await asyncio.get_running_loop().run_in_executor(pool, direct.fetch, *args)
+    finally:
+        pool.shutdown(wait=False)
+
+
+async def _direct_serve(request, source: str, ext: str):
+    loop = asyncio.get_running_loop()
+    err = await loop.run_in_executor(None, partial(validate_url, source, allow_private=config.ALLOW_PRIVATE_ADDRESSES))
+    if err is not None:
+        raise web.HTTPBadRequest(reason=err)
+    ts = direct.parse_ts(request.query.get('ts'))
+    download = direct.parse_flag(request.query.get('download'))
+    tmp = tempfile.TemporaryDirectory(prefix='metube-direct-', ignore_cleanup_errors=True)
+    try:
+        async with _direct_slots:
+            path, title = await _run_direct_fetch(
+                source, ext, ts, tmp.name, config.YTDL_OPTIONS, config.ALLOW_PRIVATE_ADDRESSES)
+    except direct.FetchError as exc:
+        tmp.cleanup()
+        log.warning('Direct fetch failed for %s: %s', source, exc)
+        raise web.HTTPBadGateway(text=f'yt-dlp: {exc}')
+    except BaseException:
+        tmp.cleanup()
+        raise
+    return direct.TempFileResponse(
+        path, tmp, headers={'Content-Disposition': direct.content_disposition(title, ext, download)})
+
+
+@routes.get(config.URL_PREFIX + 'watch')
+async def watch(request):
+    """``/watch?v=<id-or-url>[&download=1]`` — the video as mp4, like YouTube's own path."""
+    source = (request.query.get('v') or '').strip()
+    if not source:
+        raise web.HTTPBadRequest(reason="missing 'v'")
+    return await _direct_serve(request, source, 'mp4')
+
+
+@routes.get(config.URL_PREFIX + 'dl/{name}')
+async def dl(request):
+    """``/dl/<name>.<mp4|mp3|jpg>[?url=...][&download=1][&ts=90]`` — search by name, or fetch ``url``."""
+    term, ext = direct.parse_name(request.match_info['name'])
+    source = (request.query.get('url') or '').strip() or f'ytsearch1:{term}'
+    return await _direct_serve(request, source, ext)
 
 if config.URL_PREFIX != '/':
     @routes.get('/')

@@ -129,6 +129,7 @@ app/ytdl.py          — Download queue logic, yt-dlp integration
 app/subscriptions.py — Channel/playlist subscription manager
 app/state_store.py   — JSON-based persistent storage with atomic writes
 app/dl_formats.py    — Video/audio codec/quality mapping
+app/direct.py        — Synchronous /watch and /dl/<name>.<ext> routes (temp-dir fetch, no queue)
 app/tests/           — pytest tests (asyncio_mode=auto)
 ui/src/app/          — Angular standalone components (no NgModules)
 ```

@@ -249,6 +249,8 @@ __iOS Shortcut:__ [rithask](https://github.com/rithask) created an [iOS shortcut
 
 __Raycast:__ [dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) for adding videos to MeTube directly from Raycast.
 
+__Direct streaming:__ `/watch?v=<id>` plays a video as mp4 without saving it; `/dl/<name>.<mp4|mp3|jpg>` searches for `<name>` (or fetches `?url=`) and streams the top hit. Add `&download=1` to save instead, `&ts=42` for a video frame as jpg.
+
 ## 🎵 Pairing with a music tagger
 
 MeTube deliberately stops once the file is written — tagging and library organization belong to dedicated tools. Point one at your audio download folder (`AUDIO_DOWNLOAD_DIR`):
