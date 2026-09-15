@@ -27,7 +27,7 @@ from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
-from url_guard import validate_url, install_socket_guard
+from url_guard import validate_url, install_socket_guard, download_proxies
 from urllib.parse import urlsplit
 
 log = logging.getLogger('ytdl')
@@ -2007,8 +2007,15 @@ class DownloadQueue:
         # SSRF guard: reject non-http(s) schemes and hosts resolving to
         # internal/loopback/link-local/metadata addresses before yt-dlp fetches
         # anything. run_in_executor because validate_url may perform a DNS lookup.
+        # The merged options decide the proxy, same as the connect-time guard
+        # reads `proxy` from them — a proxied fetch resolves at the proxy, so
+        # the address check is skipped rather than leaking the hostname here.
+        proxies = download_proxies(
+            self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides))
         url_error = await asyncio.get_running_loop().run_in_executor(
-            None, partial(validate_url, url, allow_private=self.config.ALLOW_PRIVATE_ADDRESSES))
+            None, partial(validate_url, url,
+                          allow_private=self.config.ALLOW_PRIVATE_ADDRESSES,
+                          proxies=proxies))
         if url_error is not None:
             log.warning('Rejected URL "%s": %s', url, url_error)
             await self.__record_add_failure(

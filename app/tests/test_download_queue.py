@@ -5,6 +5,7 @@ from __future__ import annotations
 import copy
 import os
 import re
+import socket
 import tempfile
 from unittest.mock import AsyncMock, MagicMock, patch
 
@@ -27,6 +28,9 @@ def dq_env():
         cfg.AUDIO_DOWNLOAD_DIR = dl
         cfg.TEMP_DIR = dl
         cfg.MAX_CONCURRENT_DOWNLOADS = "3"
+        # Explicit: an unset attribute on a MagicMock is truthy, which would
+        # make validate_url bypass every SSRF check it is asked to run.
+        cfg.ALLOW_PRIVATE_ADDRESSES = False
         cfg.YTDL_OPTIONS = {}
         cfg.YTDL_OPTIONS_PRESETS = {}
         cfg.CUSTOM_DIRS = True
@@ -162,6 +166,43 @@ async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
     assert failed.info.status == "error"
     assert failed.info.error == result["msg"]
     notifier.completed.assert_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_does_not_resolve_hostname_when_proxied(dq_env):
+    """With a remote-DNS proxy configured, adding a URL must not look its host
+    up here: that both leaks the hostname to the local resolver and fails closed
+    when only the proxy can resolve it (issue #1079)."""
+    dq_env.YTDL_OPTIONS = {"proxy": "socks5h://tor:9050"}
+    notifier = AsyncMock()
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        return {"_type": "video", "id": "vid1", "title": "t", "webpage_url": url}
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch("url_guard.socket.getaddrinfo", side_effect=AssertionError("resolved")), \
+         patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://only-the-proxy-can-resolve.invalid/x",
+            "video", "auto", "any", "best", "", "", 0, auto_start=False,
+        )
+    assert result["status"] == "ok"
+    dq.close()
+
+
+@pytest.mark.asyncio
+async def test_add_resolves_hostname_when_not_proxied(dq_env):
+    """Without a proxy the address check still runs and still rejects."""
+    notifier = AsyncMock()
+    url = "https://internal.invalid/x"
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch("url_guard.socket.getaddrinfo",
+               return_value=[(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
+                              ("169.254.169.254", 0))]):
+        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+    assert result["status"] == "error"
+    dq.close()
 
 
 @pytest.mark.asyncio

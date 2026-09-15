@@ -13,6 +13,7 @@ from url_guard import (
     _address_is_global,
     _guarded_getaddrinfo,
     _url_endpoint,
+    download_proxies,
     install_socket_guard,
 )
 
@@ -298,6 +299,110 @@ class GuardedGetaddrinfoTests(unittest.TestCase):
         with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo("10.1.20.30")):
             with self.assertRaises(socket.gaierror):
                 _guarded_getaddrinfo("evil.example", 1080)
+
+
+class DownloadProxiesTests(unittest.TestCase):
+    """The proxy map is assembled the way YoutubeDL.proxies assembles it."""
+
+    def test_explicit_proxy_option_replaces_environment(self):
+        with mock.patch("url_guard.urllib.request.getproxies",
+                        return_value={"http": "http://env:3128", "no": "example.com"}):
+            self.assertEqual(download_proxies({"proxy": "socks5h://tor:9050"}),
+                             {"all": "socks5h://tor:9050"})
+
+    def test_empty_proxy_option_means_no_proxy(self):
+        self.assertEqual(download_proxies({"proxy": ""}), {"all": "__noproxy__"})
+
+    def test_environment_used_when_no_proxy_option(self):
+        with mock.patch("url_guard.urllib.request.getproxies",
+                        return_value={"http": "http://env:3128"}):
+            # http_proxy alone also covers https, as in yt-dlp.
+            self.assertEqual(download_proxies({}),
+                             {"http": "http://env:3128", "https": "http://env:3128"})
+
+    def test_no_options_at_all(self):
+        with mock.patch("url_guard.urllib.request.getproxies", return_value={}):
+            self.assertEqual(download_proxies(), {})
+
+
+class ProxiedHostnameTests(unittest.TestCase):
+    """A proxy that resolves hostnames itself makes a local lookup both wrong
+    and harmful, so the address check is skipped for hostnames behind one."""
+
+    def _validate(self, url, proxies):
+        with mock.patch("url_guard.socket.getaddrinfo") as gai:
+            gai.side_effect = AssertionError("resolved a hostname that the proxy resolves")
+            return validate_url(url, proxies=proxies)
+
+    def test_socks5h_hostname_not_resolved(self):
+        self.assertIsNone(self._validate("https://youtube.com/x", {"all": "socks5h://tor:9050"}))
+
+    def test_plain_socks5_treated_as_remote_dns(self):
+        # yt-dlp rewrites socks5 to socks5h on every request for compatibility.
+        self.assertIsNone(self._validate("https://youtube.com/x", {"all": "socks5://tor:9050"}))
+
+    def test_socks4a_hostname_not_resolved(self):
+        self.assertIsNone(self._validate("https://youtube.com/x", {"all": "socks4a://tor:9050"}))
+
+    def test_http_proxy_hostname_not_resolved(self):
+        self.assertIsNone(self._validate("https://youtube.com/x", {"https": "http://squid:3128"}))
+
+    def test_scheme_less_proxy_treated_as_http(self):
+        self.assertIsNone(self._validate("https://youtube.com/x", {"all": "squid:3128"}))
+
+    def test_per_scheme_entry_selected(self):
+        # Only http is proxied here, so an https URL keeps the check.
+        proxies = {"http": "http://squid:3128"}
+        self.assertIsNone(self._validate("http://youtube.com/x", proxies))
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("10.0.0.5")):
+            self.assertIsNotNone(validate_url("https://youtube.com/x", proxies=proxies))
+
+    def test_socks4_still_resolved_locally(self):
+        # SOCKS4 resolves in this process, so the address check still applies.
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("10.0.0.5")):
+            self.assertIsNotNone(validate_url("https://youtube.com/x",
+                                              proxies={"all": "socks4://tor:9050"}))
+
+    def test_noproxy_host_still_resolved(self):
+        # A host excluded from the proxy is fetched directly, so it is checked.
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("169.254.169.254")):
+            self.assertIsNotNone(validate_url(
+                "http://metadata.internal/x",
+                proxies={"all": "socks5h://tor:9050", "no": "metadata.internal"}))
+
+    def test_noproxy_marker_keeps_check(self):
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("10.0.0.5")):
+            self.assertIsNotNone(validate_url("https://youtube.com/x",
+                                              proxies={"all": "__noproxy__"}))
+
+    def test_ip_literal_still_checked_behind_a_proxy(self):
+        # An IP literal needs no name resolution, so nothing leaks by judging it
+        # and the proxy changes nothing: the request names this address either
+        # way. Unmocked on purpose — getaddrinfo on a literal never hits DNS.
+        self.assertIsNotNone(validate_url("http://169.254.169.254/latest/meta-data/",
+                                          proxies={"all": "socks5h://tor:9050"}))
+
+    def test_ipv6_literal_still_checked_behind_a_proxy(self):
+        self.assertIsNotNone(validate_url("http://[::1]:8080/x",
+                                          proxies={"all": "socks5h://tor:9050"}))
+
+    def test_blocked_hostname_still_blocked_behind_a_proxy(self):
+        self.assertIsNotNone(validate_url("http://localhost:8080/x",
+                                          proxies={"all": "socks5h://tor:9050"}))
+
+    def test_scheme_still_enforced_behind_a_proxy(self):
+        self.assertIsNotNone(validate_url("file:///etc/passwd",
+                                          proxies={"all": "socks5h://tor:9050"}))
+
+    def test_unparseable_proxy_keeps_check(self):
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("10.0.0.5")):
+            self.assertIsNotNone(validate_url("https://youtube.com/x",
+                                              proxies={"all": "gopher://weird:70"}))
+
+    def test_no_proxies_argument_keeps_check(self):
+        # The default: callers that pass nothing get today's behaviour.
+        with mock.patch("url_guard.socket.getaddrinfo", return_value=_addrinfo("10.0.0.5")):
+            self.assertIsNotNone(validate_url("https://youtube.com/x"))
 
 
 class AllowPrivateBypassTests(unittest.TestCase):

@@ -25,6 +25,14 @@ all of these:
   impact, blind SSRF, since the extraction response is not written to disk).
 * Native resolvers (curl_cffi/libcurl via ``--impersonate``) resolve outside
   Python's socket module and bypass the connect-time guard entirely.
+* When a proxy carries the fetch and resolves hostnames itself (an HTTP proxy,
+  ``socks5h``, ``socks4a``, or the plain ``socks5`` yt-dlp rewrites to
+  ``socks5h``), ``validate_url`` cannot check where a *hostname* leads: the
+  proxy resolves it on its own network, and looking it up here would both
+  describe the wrong network and leak the hostname to the local resolver. The
+  address check is skipped for those, and what the proxy's network exposes is
+  the proxy's to police. Hosts written as IP literals are still checked, and
+  the connect-time guard still covers everything dialled directly.
 """
 
 import ipaddress
@@ -46,6 +54,13 @@ _SCHEME_DEFAULT_PORTS = {
     'socks5': 1080,
     'socks5h': 1080,
 }
+
+# Proxy schemes that hand the destination hostname to the proxy instead of
+# resolving it here. yt-dlp rewrites a scheme-less proxy to ``http`` and plain
+# ``socks5`` to ``socks5h`` on every request (``clean_proxies``), so only SOCKS4
+# — and the non-standard ``socks`` alias yt-dlp maps onto it — still resolves
+# locally and is therefore absent from this list.
+_REMOTE_DNS_PROXY_SCHEMES = ('http', 'https', 'socks5', 'socks5h', 'socks4a')
 
 # Hostnames that must be blocked without needing a lookup. ``localhost`` and any
 # subdomain of it are conventionally loopback, and the GCP metadata name is a
@@ -183,6 +198,68 @@ def _collect_proxy_endpoints(proxy_urls) -> set:
     return _endpoints(candidates)
 
 
+def _proxy_scheme(proxy: str) -> str:
+    """The scheme of a configured proxy URL.
+
+    Defaults to ``http`` for the bare ``host:port`` form the ``*_proxy``
+    variables accept, which is the same default yt-dlp applies to them.
+    """
+    if not isinstance(proxy, str):
+        return ''
+    candidate = proxy.strip()
+    if '://' not in candidate:
+        return 'http' if candidate else ''
+    return urlsplit(candidate).scheme.lower()
+
+
+def download_proxies(ytdl_opts=None) -> dict:
+    """The proxy map a fetch will use, assembled as ``YoutubeDL.proxies`` does.
+
+    An explicit yt-dlp ``proxy`` option replaces the environment wholesale —
+    including any ``no_proxy`` exceptions — while without one the ``*_proxy``
+    variables apply as they stand. Mirrored rather than imported because
+    ``YoutubeDL.proxies`` is only reachable from a constructed instance, and
+    because this decides whether a security check runs: a quiet upstream change
+    should leave the check in place rather than silently skip it.
+    """
+    opts_proxy = (ytdl_opts or {}).get('proxy')
+    if opts_proxy is not None:
+        # '' means "no proxy, ignore the environment", which yt-dlp spells
+        # '__noproxy__' internally.
+        return {'all': opts_proxy or '__noproxy__'}
+    proxies = urllib.request.getproxies()
+    # compat, as in yt-dlp: http_proxy alone also covers https.
+    if 'http' in proxies and 'https' not in proxies:
+        proxies['https'] = proxies['http']
+    return proxies
+
+
+def _proxy_resolves_remotely(parts, proxies) -> bool:
+    """True when the proxy carrying this URL looks its hostname up itself.
+
+    Follows yt-dlp's ``select_proxy``: ``no_proxy`` exclusions first, then the
+    per-scheme entry, then the catch-all. Anything unrecognised answers False,
+    so an unparseable or unusual configuration keeps the address check.
+    """
+    if not proxies:
+        return False
+    hostname = parts.hostname
+    if not hostname:
+        return False
+    no_proxy = proxies.get('no')
+    if no_proxy:
+        hostport = hostname if parts.port is None else f'{hostname}:{parts.port}'
+        try:
+            if urllib.request.proxy_bypass_environment(hostport, {'no': no_proxy}):
+                return False
+        except (ValueError, UnicodeError):
+            return False
+    proxy = proxies.get(parts.scheme.lower()) or proxies.get('all')
+    if not proxy or proxy == '__noproxy__':
+        return False
+    return _proxy_scheme(proxy) in _REMOTE_DNS_PROXY_SCHEMES
+
+
 # Captured at import so re-installing the guard never wraps the wrapper.
 _real_getaddrinfo = socket.getaddrinfo
 
@@ -264,7 +341,7 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=(), service_url
     socket.getaddrinfo = _guarded_getaddrinfo
 
 
-def validate_url(url: str, allow_private: bool = False) -> str | None:
+def validate_url(url: str, allow_private: bool = False, proxies: dict | None = None) -> str | None:
     """Return an error message if the URL is disallowed, else ``None``.
 
     Inputs without a ``://`` scheme separator (bare video IDs, ``ytsearch:``
@@ -275,6 +352,10 @@ def validate_url(url: str, allow_private: bool = False) -> str | None:
     and internal-address checks are skipped so that trusted proxy/VPN setups —
     e.g. Fake-IP clients that resolve YouTube to ``198.18.0.0/15`` — can be used.
     Scheme validation (http/https only) still applies.
+
+    *proxies* is the proxy map the fetch will use (see ``download_proxies``).
+    When it routes this URL through a proxy that resolves hostnames itself, the
+    address check is skipped — see the comment at that branch for why.
     """
     if not isinstance(url, str):
         return 'Invalid URL'
@@ -299,6 +380,21 @@ def validate_url(url: str, allow_private: bool = False) -> str | None:
 
     if _hostname_is_blocked(hostname):
         return f'Refusing to fetch internal host "{hostname}"'
+
+    # A host written as an IP literal needs no lookup, so it is judged directly
+    # whatever the proxy setup: nothing leaves this process, and the address is
+    # exactly the one the request will name.
+    if _normalise_ip(hostname) is None and _proxy_resolves_remotely(parts, proxies):
+        # The proxy resolves this hostname on its own network, so a lookup here
+        # answers a different question than the one that matters, and asking it
+        # is itself the harm: it leaks the hostname of every queued URL to the
+        # local resolver, which is the single thing a SOCKS/Tor setup exists to
+        # prevent. It also fails closed against resolvers this process cannot
+        # reach — a container pointed at the proxy's own DNS port resolves
+        # nothing here and every add is refused. What the proxy's network
+        # exposes is the proxy's to police; the connect-time guard still holds
+        # everything that is dialled directly.
+        return None
 
     try:
         addrinfo = socket.getaddrinfo(hostname, parts.port, proto=socket.IPPROTO_TCP)
