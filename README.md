@@ -247,6 +247,8 @@ __Bookmarklets__ send the currently open page to MeTube with one click. Add the 
 
 __iOS Shortcut:__ [rithask](https://github.com/rithask) created an [iOS shortcut](https://www.icloud.com/shortcuts/66627a9f334c467baabdb2769763a1a6) for sending URLs to MeTube from Safari's share menu; it prompts for your instance address on first use.
 
+__Android:__ [sagheerys](https://github.com/sagheerys) created [MeTube Mobile](https://github.com/sagheerys/metube-mobile), two apps that take links from Android's share menu: Lite pulls finished downloads to the phone and removes them from the server, Super keeps them on the server and streams them.
+
 __Raycast:__ [dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) for adding videos to MeTube directly from Raycast.
 
 ## 🎵 Pairing with a music tagger
