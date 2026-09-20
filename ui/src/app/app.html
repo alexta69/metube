@@ -754,7 +754,7 @@
               <td>{{ download.value.speed | speed }}</td>
               <td>{{ download.value.eta | eta }}</td>
               <td>
-                <div class="d-flex">
+                <div class="d-flex justify-content-end">
                   @if (download.value.status === 'pending' || download.value.status === 'scheduled') {
                     <button type="button" class="btn btn-link" [attr.aria-label]="'Start download for ' + download.value.title" (click)="downloadItemByKey(download.key)"><fa-icon [icon]="faDownload" /></button>
                   }
@@ -881,7 +881,7 @@
                 }
               </td>
               <td>
-                <div class="d-flex">
+                <div class="d-flex justify-content-end">
                   @if (entry[1].status === 'error') {
                     <button type="button" class="btn btn-link" [attr.aria-label]="'Retry download for ' + entry[1].title" (click)="retryDownload(entry[0], entry[1])"><fa-icon [icon]="faRedoAlt" /></button>
                   }
