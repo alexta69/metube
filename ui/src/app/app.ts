@@ -1728,7 +1728,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         speed += download.speed || 0;
       } else if (download.status === 'preparing' || download.status === 'postprocessing') {
         active++;
-      } else if (download.status === 'pending' || download.status === 'scheduled') {
+      } else if (download.status === 'queued' || download.status === 'pending' || download.status === 'scheduled') {
         queued++;
       }
     });

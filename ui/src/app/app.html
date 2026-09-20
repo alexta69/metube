@@ -728,6 +728,9 @@
                     @if (download.value.live_status === 'is_live' && download.value.status !== 'scheduled') {
                       <span class="badge bg-danger">LIVE</span>
                     }
+                    @if (download.value.status === 'queued') {
+                      <span class="badge bg-secondary">Queued</span>
+                    }
                   </div>
                   @if (download.value.status === 'scheduled') {
                     <span class="badge bg-warning text-dark">

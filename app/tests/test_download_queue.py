@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import asyncio
 import copy
 import os
 import re
@@ -311,6 +312,47 @@ async def test_start_pending_moves_to_queue(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
         await dq.start_pending([url])
     assert not dq.pending.exists(url)
+    # It is in the queue now and starts on its own, so it must not keep
+    # advertising the Start button the UI draws for 'pending' (#1081), and the
+    # client has to be told before the concurrency slot frees up.
+    assert dq.queue.get(url).info.status == "queued"
+    assert notifier.updated.await_args[0][0].status == "queued"
+
+
+@pytest.mark.asyncio
+async def test_queued_download_is_not_offered_as_startable(dq_env):
+    """A download waiting on a MAX_CONCURRENT_DOWNLOADS slot used to sit at
+    'pending', which is the status the UI draws a Start button for — but
+    start_pending has nothing to do for an item already in the queue, so the
+    button silently did nothing and still reported success (#1081).
+    """
+    notifier = AsyncMock()
+    dq_env.MAX_CONCURRENT_DOWNLOADS = "1"
+    dq = DownloadQueue(dq_env, notifier)
+    released = asyncio.Event()
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        return {"_type": "video", "id": url[-1], "title": f"Video {url[-1]}",
+                "url": url, "webpage_url": url}
+
+    async def blocking_start(self, notifier_, executor=None):
+        await released.wait()
+
+    first, second = "https://example.com/v1", "https://example.com/v2"
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch("ytdl.Download.start", blocking_start), \
+         patch("ytdl.Download.close", lambda self: None):
+        for url in (first, second):
+            await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+        await asyncio.sleep(0)
+
+        # The first holds the only slot; the second is waiting behind it.
+        assert dq.queue.get(second).info.status == "queued"
+        assert not dq.pending.exists(second)
+
+        released.set()
+
+    await asyncio.sleep(0)
 
 
 @pytest.mark.asyncio
@@ -1200,7 +1242,7 @@ async def test_probe_scheduled_starts_when_live(dq_env):
 
     assert url not in dq._scheduled_probe_at
     assert download.info.live_status == "is_live"
-    assert download.info.status == "pending"
+    assert download.info.status == "queued"
     start_mock.assert_called_once_with(download)
 
 
@@ -1345,7 +1387,7 @@ async def test_probe_recovers_after_transient_then_starts(dq_env):
 
     assert url not in dq._scheduled_probe_at
     assert url not in dq._scheduled_probe_failures
-    assert download.info.status == "pending"
+    assert download.info.status == "queued"
     # Placeholder error/msg cleared now that a real download is starting.
     assert download.info.error is None
     assert download.info.msg is None

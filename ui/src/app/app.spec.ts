@@ -544,4 +544,57 @@ describe('App', () => {
     });
   });
 
+  // Issue #1081: a download waiting for a concurrency slot ('queued') starts on
+  // its own, so it must not offer the Start button that a 'pending' row — one
+  // added with auto-start off — legitimately has.
+  describe('queued rows do not offer a dead Start button (#1081)', () => {
+    const queueEntry = (status: string): Download => ({
+      id: 'vid1',
+      title: 'Test',
+      url: 'https://example.com/v',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status,
+      msg: '',
+      percent: 0,
+      speed: 0,
+      eta: 0,
+      filename: '',
+      checked: false,
+    } as Download);
+
+    const render = (status: string) => {
+      const fixture = TestBed.createComponent(App);
+      downloads.queue.set('https://example.com/v', queueEntry(status));
+      downloads.queueChanged.next();
+      fixture.detectChanges();
+      return fixture;
+    };
+
+    it('hides Start for a queued row but keeps it for a pending one', () => {
+      const queued = render('queued');
+      expect(
+        (queued.nativeElement as HTMLElement).querySelector('[aria-label="Start download for Test"]')
+      ).toBeNull();
+
+      downloads.queue.clear();
+
+      const pending = render('pending');
+      expect(
+        (pending.nativeElement as HTMLElement).querySelector('[aria-label="Start download for Test"]')
+      ).not.toBeNull();
+    });
+
+    it('says why the row is idle and counts it as queued', () => {
+      const fixture = render('queued');
+      expect((fixture.nativeElement as HTMLElement).textContent).toContain('Queued');
+      expect(fixture.componentInstance.queuedDownloads).toBe(1);
+      expect(fixture.componentInstance.activeDownloads).toBe(0);
+    });
+  });
+
 });

@@ -495,6 +495,12 @@ class DownloadInfo:
         self.folder = folder
         self.custom_name_prefix = custom_name_prefix
         self.msg = self.percent = self.speed = self.eta = None
+        # 'pending' means "waiting for the user to press Start" — an item added
+        # with auto_start=False, sitting in self.pending. A download that is in
+        # self.queue waiting for a MAX_CONCURRENT_DOWNLOADS slot is 'queued'
+        # instead: it starts on its own and there is nothing to press. Keeping
+        # both under one name left the UI showing a Start button that silently
+        # did nothing (#1081).
         self.status = "pending"
         self.size = None
         self.timestamp = time.time_ns()
@@ -1484,7 +1490,7 @@ class DownloadQueue:
             return
 
         self._unregister_scheduled(url)
-        info.status = 'pending'
+        info.status = 'queued'
         # Clear the "scheduled to start at ..." placeholder now that the stream
         # is live and a real download is about to begin.
         info.error = None
@@ -1499,7 +1505,7 @@ class DownloadQueue:
 
     def _force_start_scheduled(self, download: Download) -> None:
         self._unregister_scheduled(download.info.url)
-        download.info.status = 'pending'
+        download.info.status = 'queued'
         download.info.error = None
         download.info.msg = None
         bg_tasks.create_task(self.__start_download(download), name="start_download")
@@ -1649,6 +1655,7 @@ class DownloadQueue:
             if is_upcoming:
                 await self._schedule_upcoming_download(download)
             else:
+                download.info.status = 'queued'
                 await self.queue.put(download)
                 bg_tasks.create_task(self.__start_download(download), name="start_download")
         else:
@@ -2159,7 +2166,13 @@ class DownloadQueue:
                 if getattr(dl.info, 'live_status', None) == 'is_upcoming':
                     await self._schedule_upcoming_download(dl)
                 else:
+                    dl.info.status = 'queued'
                     await self.queue.put(dl)
+                    # Tell the client it moved out of 'pending' now, not when a
+                    # slot frees up: with MAX_CONCURRENT_DOWNLOADS saturated the
+                    # wait is unbounded, and until this lands the row still
+                    # offers the Start button it has already outgrown.
+                    await self.notifier.updated(dl.info)
                     bg_tasks.create_task(self.__start_download(dl), name="start_download")
                 continue
             if self.queue.exists(id):
