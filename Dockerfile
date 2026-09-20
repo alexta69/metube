@@ -2,7 +2,19 @@
 # has lagged behind and resolved to a Node patch older than the Angular CLI's
 # minimum supported version, breaking the build. node:22-alpine currently
 # satisfies @angular/cli's >=22.22.3 requirement.
-FROM node:22-alpine AS builder
+#
+# Pinned further, to a digest: Docker Hub rebuilt node:22-alpine on 2026-09-17
+# with the same Node (22.23.2) but refreshed Alpine layers, and that rebuild
+# dies under QEMU while cross-building the arm64 leg — `qemu: uncaught target
+# signal 4 (Illegal instruction)`, exit 132, during `pnpm install`. Three
+# consecutive release builds failed identically on it while every other input
+# (runner image, binfmt digest, pnpm version, lockfile) was unchanged.
+#
+# This digest is the last image known to cross-build cleanly (built 2026-07-29).
+# It ships nothing: this stage is thrown away and only ui/dist is copied out.
+# Unpin once the arm64 leg builds natively instead of under emulation, or once
+# a later node:22-alpine is confirmed to survive QEMU.
+FROM node:22-alpine@sha256:c610fcdfb1d5b4740dd70c284ed3cb16bb857e0f7166196e36a5501df7a3aa32 AS builder
 
 WORKDIR /metube
 COPY ui ./
