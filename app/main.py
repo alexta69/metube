@@ -83,6 +83,7 @@ class Config:
         'YTDL_OPTIONS_PRESETS_FILE': '',
         'ALLOW_YTDL_OPTIONS_OVERRIDES': 'false',
         'ALLOW_PRIVATE_ADDRESSES': 'false',
+        'URL_HOST_ALIASES': '{}',
         'CORS_ALLOWED_ORIGINS': '',
         'ROBOTS_TXT': '',
         'HOST': '0.0.0.0',
@@ -183,6 +184,21 @@ class Config:
         self._validate_int('SUBSCRIPTION_DEFAULT_CHECK_INTERVAL', minimum=1)
         self._validate_int('SUBSCRIPTION_SCAN_PLAYLIST_END', minimum=1)
         self._validate_int('SUBSCRIPTION_MAX_SEEN_IDS', minimum=1)
+
+        # Hostname substitution applied to submitted URLs, so a link copied from a
+        # self-hosted frontend (Invidious, Piped, ...) can be pasted as it appears in
+        # the address bar. The alias replaces the host and nothing else: path and
+        # query are carried over byte-for-byte, so this states which host serves the
+        # same URL layout rather than teaching MeTube any platform's URL conventions.
+        try:
+            aliases = json.loads(self.URL_HOST_ALIASES)
+            assert isinstance(aliases, dict)
+            assert all(isinstance(src, str) and src and isinstance(dst, str) and dst
+                       for src, dst in aliases.items())
+        except (json.decoder.JSONDecodeError, AssertionError):
+            log.error('Environment variable "URL_HOST_ALIASES" is invalid')
+            sys.exit(1)
+        self.URL_HOST_ALIASES = {src.strip().lower(): dst.strip() for src, dst in aliases.items()}
 
         self._runtime_overrides = {}
 
@@ -738,6 +754,18 @@ async def _read_json_request(request: web.Request) -> dict:
     return post
 
 
+def rewrite_url_host(url: str) -> str:
+    """Replace a submitted URL's host with its URL_HOST_ALIASES target, if any."""
+    if not config.URL_HOST_ALIASES:
+        return url
+    parts = urlparse(url)
+    target = config.URL_HOST_ALIASES.get((parts.hostname or '').lower())
+    if not target:
+        return url
+    log.info('Rewriting host "%s" to "%s"', parts.hostname, target)
+    return urlunparse(parts._replace(netloc=target))
+
+
 def parse_download_options(post: dict) -> dict:
     """Validate add/subscribe body; raise HTTPBadRequest on invalid input."""
     post = _migrate_legacy_request(dict(post))
@@ -748,7 +776,7 @@ def parse_download_options(post: dict) -> dict:
     quality = post.get('quality')
     if not url or not quality or not download_type:
         raise web.HTTPBadRequest(reason="missing 'url', 'download_type', or 'quality'")
-    url = str(url).strip()
+    url = rewrite_url_host(str(url).strip())
     folder = post.get('folder')
     custom_name_prefix = post.get('custom_name_prefix')
     playlist_item_limit = post.get('playlist_item_limit')

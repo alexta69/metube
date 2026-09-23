@@ -297,3 +297,27 @@ class ConfigTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UrlHostAliasesTests(unittest.TestCase):
+    def test_parsed_and_keys_normalised(self):
+        env = _base_env(URL_HOST_ALIASES=json.dumps({" YT.Example.com ": " www.youtube.com "}))
+        with patch.dict(os.environ, env, clear=False):
+            c = Config()
+        self.assertEqual(c.URL_HOST_ALIASES, {"yt.example.com": "www.youtube.com"})
+
+    def test_defaults_to_empty(self):
+        with patch.dict(os.environ, _base_env(), clear=False):
+            c = Config()
+        self.assertEqual(c.URL_HOST_ALIASES, {})
+
+    def test_invalid_json_exits(self):
+        with patch.dict(os.environ, _base_env(URL_HOST_ALIASES="not json"), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
+
+    def test_non_string_value_exits(self):
+        env = _base_env(URL_HOST_ALIASES=json.dumps({"yt.example.com": 1}))
+        with patch.dict(os.environ, env, clear=False):
+            with self.assertRaises(SystemExit):
+                Config()

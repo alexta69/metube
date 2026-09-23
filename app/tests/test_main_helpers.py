@@ -350,3 +350,33 @@ class WarnIfCookiefileShadowedTests(unittest.TestCase):
             main.config.YTDL_OPTIONS["cookiefile"] = value
             with self.assertNoLogs("main", level="WARNING"):
                 main.warn_if_cookiefile_shadowed()
+
+
+class RewriteUrlHostTests(unittest.TestCase):
+    def setUp(self):
+        self._saved = main.config.URL_HOST_ALIASES
+        main.config.URL_HOST_ALIASES = {"yt.example.com": "www.youtube.com"}
+
+    def tearDown(self):
+        main.config.URL_HOST_ALIASES = self._saved
+
+    def test_host_swapped_and_rest_of_url_preserved(self):
+        self.assertEqual(
+            main.rewrite_url_host("https://yt.example.com/watch?v=abc123&t=30"),
+            "https://www.youtube.com/watch?v=abc123&t=30",
+        )
+
+    def test_match_is_case_insensitive_and_alias_replaces_the_port(self):
+        self.assertEqual(
+            main.rewrite_url_host("https://YT.example.com:8443/watch?v=abc123"),
+            "https://www.youtube.com/watch?v=abc123",
+        )
+
+    def test_unlisted_host_is_untouched(self):
+        url = "https://www.youtube.com/watch?v=abc123"
+        self.assertEqual(main.rewrite_url_host(url), url)
+
+    def test_no_aliases_configured_is_a_noop(self):
+        main.config.URL_HOST_ALIASES = {}
+        url = "https://yt.example.com/watch?v=abc123"
+        self.assertEqual(main.rewrite_url_host(url), url)
