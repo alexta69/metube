@@ -1347,11 +1347,24 @@ class DownloadQueue:
 
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
-            await self.__add_download(v, True)
+            await self.__import_saved(v, True)
 
     async def __import_pending(self):
         for k, v in self.pending.saved_items():
-            await self.__add_download(v, False)
+            await self.__import_saved(v, False)
+
+    async def __import_saved(self, info, auto_start):
+        # A saved download can stop being addable across a restart (its folder
+        # was removed, or CUSTOM_DIRS was switched off). Dropping it would lose
+        # it without a trace, so keep it as a failed entry the user can see
+        # and retry once the folder is usable again.
+        error = await self.__add_download(info, auto_start)
+        if error is not None:
+            log.warning(f'could not restore download {info.url}: {error["msg"]}')
+            info.status = 'error'
+            info.msg = error['msg']
+            await self.done.put(Download(None, None, None, None, info.quality, info.format, {}, info))
+            await self.notifier.completed(info)
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
@@ -1875,7 +1888,9 @@ class DownloadQueue:
                     )
                 )
             if any(res['status'] == 'error' for res in results):
-                return {'status': 'error', 'msg': ', '.join(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)}
+                # Deduplicated: a folder error repeats identically for every item.
+                msgs = dict.fromkeys(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)
+                return {'status': 'error', 'msg': ', '.join(msgs)}
             return {'status': 'ok'}
         elif etype == 'video':
             log.debug('Processing as a video')
@@ -1914,7 +1929,11 @@ class DownloadQueue:
                 live_release_timestamp=entry.get('release_timestamp'),
                 sponsorblock=sponsorblock,
             )
-            await self.__add_download(dl, auto_start)
+            error = await self.__add_download(dl, auto_start)
+            if error is not None:
+                # Must not read as success: a subscription marks an entry seen
+                # when its add succeeds, and would never offer it again.
+                return error
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 

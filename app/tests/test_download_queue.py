@@ -638,6 +638,80 @@ async def test_add_entry_duplicate_while_queued_is_skipped(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_add_entry_reports_unusable_folder_instead_of_succeeding(dq_env):
+    # A subscription marks an entry seen when add_entry succeeds, so a folder
+    # error reported as success lost the video for good (issue #1082).
+    dq_env.CREATE_CUSTOM_DIRS = False
+    dq = DownloadQueue(dq_env, AsyncMock())
+    entry = {
+        "_type": "video",
+        "id": "vid1",
+        "title": "Test Video",
+        "url": "https://example.com/watch?v=1",
+        "webpage_url": "https://example.com/watch?v=1",
+    }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add_entry(entry, "video", "auto", "any", "best", "Missing", "", 0, auto_start=True)
+
+    assert result["status"] == "error"
+    assert "Missing" in result["msg"]
+    assert not dq.queue.exists("https://example.com/watch?v=1")
+
+
+@pytest.mark.asyncio
+async def test_playlist_folder_error_is_reported_once(dq_env):
+    dq_env.CUSTOM_DIRS = False
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        return {
+            "_type": "playlist",
+            "id": "PL1",
+            "title": "Playlist",
+            "entries": [
+                {"id": f"vid{i}", "title": f"Video {i}", "url": f"https://example.com/watch?v={i}"}
+                for i in range(3)
+            ],
+        }
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch("ytdl.validate_url", return_value=None), \
+         patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://example.com/playlist?list=PL1", "video", "auto", "any", "best", "Sub", "", 0,
+            auto_start=False,
+        )
+
+    assert result["status"] == "error"
+    assert result["msg"].count("CUSTOM_DIRS") == 1
+    assert list(dq.pending.items()) == []
+
+
+@pytest.mark.asyncio
+async def test_saved_download_that_cannot_be_restored_is_kept_as_failed(dq_env):
+    url = "https://example.com/watch?v=1"
+    os.makedirs(os.path.join(dq_env.DOWNLOAD_DIR, "Shows"))
+    first = DownloadQueue(dq_env, AsyncMock())
+    entry = {"_type": "video", "id": "vid1", "title": "Test Video", "url": url, "webpage_url": url}
+    await first.add_entry(entry, "video", "auto", "any", "best", "Shows", "", 0, auto_start=False)
+    assert first.pending.exists(url)
+
+    # The folder is gone by the next start, and may not be recreated.
+    os.rmdir(os.path.join(dq_env.DOWNLOAD_DIR, "Shows"))
+    dq_env.CREATE_CUSTOM_DIRS = False
+    notifier = AsyncMock()
+    second = DownloadQueue(dq_env, notifier)
+    await second._DownloadQueue__import_pending()
+
+    assert not second.pending.exists(url)
+    assert second.done.exists(url)
+    restored = second.done.get(url).info
+    assert restored.status == "error"
+    assert "Shows" in restored.msg
+    notifier.completed.assert_awaited_once()
+
+
+@pytest.mark.asyncio
 async def test_channel_download_uses_output_template_when_channel_template_empty(dq_env):
     """Channel tabs reported as playlists must honor OUTPUT_TEMPLATE when OUTPUT_TEMPLATE_CHANNEL is empty."""
     notifier = AsyncMock()

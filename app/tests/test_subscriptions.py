@@ -364,6 +364,51 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sub.error, "queue failed")
             self.assertEqual(sub.seen_ids, ["v1"])
 
+    async def test_repeated_queue_errors_are_reported_once(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                    ),
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [
+                            {"id": "v3", "title": "Three", "webpage_url": "https://example.com/v3"},
+                            {"id": "v2", "title": "Two", "webpage_url": "https://example.com/v2"},
+                            {"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"},
+                        ],
+                    ),
+                ],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+                queue.fail = True
+                await mgr.check_now([result["subscription"]["id"]])
+
+            sub = mgr.list_all()[0]
+            self.assertEqual(sub.error, "queue failed")
+            self.assertEqual(sub.seen_ids, ["v1"])
+
     async def test_check_now_queues_new_video_and_updates_seen_ids(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()

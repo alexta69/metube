@@ -1066,7 +1066,7 @@ class SubscriptionManager:
             previous = copy.deepcopy(cur)
             cur.seen_ids = merged
             cur.last_checked = time.time()
-            cur.error = "; ".join(queue_errors[:3]) if queue_errors else None
+            cur.error = "; ".join(list(dict.fromkeys(queue_errors))[:3]) if queue_errors else None
             try:
                 self._save_locked()
             except Exception:
