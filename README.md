@@ -162,4 +162,4 @@ The [Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshootin
 
 MeTube's scope is deliberately narrow: it downloads well, and stops once the file is written. Tagging and library organization belong to dedicated tools — point [beets](https://beets.io) (headless, scriptable), [MusicBrainz Picard](https://picard.musicbrainz.org) (GUI, acoustic fingerprinting) or [Lidarr](https://lidarr.audio) (full library manager) at your `AUDIO_DOWNLOAD_DIR`.
 
-MeTube relies on community contributions. Features that improve the download itself are welcome as pull requests — open an issue to discuss the approach first, since requests without a PR are unlikely to be implemented. [CONTRIBUTING.md](https://github.com/alexta69/metube/blob/master/CONTRIBUTING.md) has the scope policy and how to build and run MeTube locally.
+Feature requests that fit this scope are welcome, and so are pull requests — for a change that isn't obvious, start a discussion first. [CONTRIBUTING.md](https://github.com/alexta69/metube/blob/master/CONTRIBUTING.md) has the scope policy and how to build and run MeTube locally.

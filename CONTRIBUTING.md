@@ -1,7 +1,6 @@
 # Contributing to MeTube
 
-MeTube development relies on community contributions. If you need a feature, the way
-to get it is a pull request: requests without one are unlikely to be implemented.
+Feature requests and pull requests are both welcome.
 
 ## Before you write code
 
@@ -25,8 +24,9 @@ Then:
 1. Check the [wiki](https://github.com/alexta69/metube/wiki) — many requests are
    already a configuration recipe — and the "Already decided" list in the
    [feature request form](https://github.com/alexta69/metube/issues/new?template=feature_request.yml).
-2. Open an issue to discuss the approach before writing code.
-3. Keep the pull request minimal: one feature, with a sensible default rather than a
+2. For a change that isn't obvious, open an issue or a discussion about the
+   approach before writing code.
+3. Keep a pull request minimal: one feature, with a sensible default rather than a
    new setting where possible. Follow-ups can add options once users ask for them.
 
 `master` is released continuously — every merge ships the same day — so a pull
