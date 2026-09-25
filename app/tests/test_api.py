@@ -652,3 +652,126 @@ async def test_cors_vary_appends_to_existing_value(monkeypatch):
     async with TestClient(TestServer(app)) as client:
         resp = await client.get("/v", headers={"Origin": "https://www.youtube.com"})
         assert resp.headers["Vary"] == "Accept-Encoding, Origin"
+
+
+# --- Cross-origin request forgery -----------------------------------------
+#
+# CORS decides only whether a page may read a response. A cross-site
+# text/plain or multipart POST needs no preflight, so without an origin check
+# it reached the handler and acted, carrying whatever credentials the browser
+# held. cross_origin_guard refuses those before they act; the WebSocket gets
+# the same policy through _socketio_origin_allowed.
+
+async def _guarded_post(request):
+    return web.Response(text="acted")
+
+
+def _guarded_app():
+    app = web.Application(middlewares=[main.cross_origin_guard])
+    app.router.add_post("/add", _guarded_post)
+    app.router.add_get("/history", _guarded_post)
+    return app
+
+
+async def _guarded_status(monkeypatch, origins, headers, method="POST", path="/add"):
+    monkeypatch.setattr(main, "_cors_origins", origins)
+    async with TestClient(TestServer(_guarded_app())) as client:
+        resp = await client.request(method, path, data='{"url": "x"}', headers=headers)
+        return resp.status
+
+
+_CROSS_SITE = {"Origin": "https://evil.example", "Sec-Fetch-Site": "cross-site",
+               "Content-Type": "text/plain"}
+
+
+@pytest.mark.asyncio
+async def test_cross_site_post_is_refused(monkeypatch):
+    # The advisory's proof of concept: a text/plain POST from another site.
+    assert await _guarded_status(monkeypatch, [], _CROSS_SITE) == 403
+
+
+@pytest.mark.asyncio
+async def test_same_site_sibling_post_is_refused(monkeypatch):
+    # A sibling subdomain shares SameSite=Lax cookies with MeTube, so the
+    # cookie's own protection does not cover it.
+    headers = {**_CROSS_SITE, "Origin": "https://evil.home.example", "Sec-Fetch-Site": "same-site"}
+    assert await _guarded_status(monkeypatch, [], headers) == 403
+
+
+@pytest.mark.asyncio
+async def test_same_origin_post_is_allowed(monkeypatch):
+    headers = {"Origin": "https://metube.example", "Sec-Fetch-Site": "same-origin"}
+    assert await _guarded_status(monkeypatch, [], headers) == 200
+
+
+@pytest.mark.asyncio
+async def test_non_browser_post_is_allowed(monkeypatch):
+    # curl, the iOS shortcut and Raycast send neither header.
+    assert await _guarded_status(monkeypatch, [], {}) == 200
+
+
+@pytest.mark.asyncio
+async def test_named_origin_post_is_allowed(monkeypatch):
+    # A bookmarklet runs in the page it was clicked on, so it is cross-site by
+    # construction; naming that site in CORS_ALLOWED_ORIGINS is what admits it.
+    headers = {**_CROSS_SITE, "Origin": "https://www.youtube.com"}
+    assert await _guarded_status(monkeypatch, ["https://www.youtube.com"], headers) == 200
+    assert await _guarded_status(monkeypatch, ["https://www.youtube.com"], _CROSS_SITE) == 403
+
+
+@pytest.mark.asyncio
+async def test_wildcard_admits_any_origin(monkeypatch):
+    # '*' is what the README tells extension users to set; it keeps working.
+    assert await _guarded_status(monkeypatch, ["*"], _CROSS_SITE) == 200
+
+
+@pytest.mark.asyncio
+async def test_cross_site_get_is_not_blocked(monkeypatch):
+    # Safe methods change nothing; reading is CORS's job.
+    assert await _guarded_status(monkeypatch, [], _CROSS_SITE, method="GET", path="/history") == 200
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("headers, expected", [
+    # Browsers without Sec-Fetch-Site fall back to comparing Origin with Host.
+    ({"Origin": "http://metube.example:8081", "Host": "metube.example:8081"}, 200),
+    ({"Origin": "https://evil.example", "Host": "metube.example:8081"}, 403),
+    # A reverse proxy that rewrites Host usually passes the original along.
+    ({"Origin": "https://metube.example", "Host": "127.0.0.1:8081",
+      "X-Forwarded-Host": "metube.example"}, 200),
+    ({"Origin": "null", "Host": "metube.example"}, 403),
+])
+async def test_legacy_browser_origin_falls_back_to_host(monkeypatch, headers, expected):
+    assert await _guarded_status(monkeypatch, [], headers) == expected
+
+
+def test_guard_is_installed_on_the_real_app():
+    assert main.cross_origin_guard in main.app.middlewares
+    assert main.sio.eio.cors_allowed_origins is main._socketio_origin_allowed
+
+
+async def _socketio_handshake_status(monkeypatch, origins, headers):
+    import socketio
+
+    monkeypatch.setattr(main, "_cors_origins", origins)
+    sio = socketio.AsyncServer(cors_allowed_origins=main._socketio_origin_allowed)
+    app = web.Application()
+    sio.attach(app)
+    async with TestClient(TestServer(app)) as client:
+        resp = await client.get("/socket.io/?EIO=4&transport=polling", headers=headers)
+        return resp.status
+
+
+@pytest.mark.asyncio
+async def test_socketio_refuses_cross_site_connection(monkeypatch):
+    # Browsers apply no CORS to WebSockets: accepting this handshake would let
+    # any page read the queue, history and configuration.
+    assert await _socketio_handshake_status(monkeypatch, [], _CROSS_SITE) == 400
+
+
+@pytest.mark.asyncio
+async def test_socketio_accepts_own_ui_when_origins_are_named(monkeypatch):
+    # With a bare list, engine.io admitted only the listed origins, so naming a
+    # bookmarklet's site locked MeTube's own UI out of its socket.
+    headers = {"Origin": "https://metube.example", "Sec-Fetch-Site": "same-origin"}
+    assert await _socketio_handshake_status(monkeypatch, ["https://www.youtube.com"], headers) == 200

@@ -98,7 +98,7 @@ Enabling `writeinfojson` or `writethumbnail` in `YTDL_OPTIONS` also writes a fee
 * __HTTPS__: Use `https` instead of `http` (__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
 * __CERTFILE__: HTTPS certificate file path.
 * __KEYFILE__: HTTPS key file path.
-* __CORS_ALLOWED_ORIGINS__: Comma-separated list of origins permitted to make cross-origin requests to the MeTube API; `*` allows all. When unset or empty, all cross-origin requests are denied. Required for browser extensions and bookmarklets — see [Sending links to MeTube](#-sending-links-to-metube). Naming origins explicitly also lets them send credentials (a login cookie, or the `Authorization` header a reverse proxy checks), which `*` deliberately does not: it would let any site you visit drive your instance with your own session.
+* __CORS_ALLOWED_ORIGINS__: Comma-separated list of origins permitted to make cross-origin requests to the MeTube API; `*` allows all. When unset or empty, all cross-origin requests are denied. Required for browser extensions and bookmarklets — see [Sending links to MeTube](#-sending-links-to-metube). Naming origins explicitly also lets them send credentials (a login cookie, or the `Authorization` header a reverse proxy checks). `*` lets any site you visit send downloads to your instance, so prefer naming origins.
 * __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container.
 
 ## 🎛️ Configuring yt-dlp options

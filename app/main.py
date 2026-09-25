@@ -356,7 +356,68 @@ async def state_dir_guard(request, handler):
     return await handler(request)
 
 
-app = web.Application(middlewares=[state_dir_guard])
+def _origin_is_trusted(origin, sec_fetch_site, hosts) -> bool:
+    """Whether a browser request from *origin* may act on this instance.
+
+    CORS only decides whether a page may *read* a response. A browser still
+    sends a cross-site text/plain or multipart POST without a preflight, with
+    whatever credentials it holds for MeTube (a reverse proxy's login cookie,
+    cached basic auth), and on an instance without auth any page the user
+    visits can reach it over the LAN. So the origin has to be checked before
+    the request acts, not after.
+
+    Passes MeTube's own UI (same-origin), the origins named in
+    CORS_ALLOWED_ORIGINS, and everything under the '*' wildcard, which is the
+    operator letting every site in. A request carrying neither Origin nor
+    Sec-Fetch-Site is not from a browser page (curl, the iOS shortcut, Raycast)
+    and passes too: a forged request needs a victim's browser. Modelled on Go's
+    net/http CrossOriginProtection.
+    """
+    if origin and ('*' in _cors_origins or origin in _cors_origins):
+        return True
+    if sec_fetch_site:
+        # Sent by every current browser. It answers the question directly and,
+        # unlike comparing Origin with Host, survives a reverse proxy that
+        # rewrites Host. 'none' is a user-initiated request, such as one typed
+        # into the address bar.
+        return sec_fetch_site in ('same-origin', 'none')
+    if not origin:
+        return True
+    # An older browser: fall back to comparing Origin with the host the request
+    # was addressed to. X-Forwarded-Host is safe to accept here, since a page
+    # cannot set it on a cross-origin request without a preflight.
+    try:
+        netloc = urlparse(origin).netloc.lower()
+    except ValueError:
+        return False
+    return bool(netloc) and any(h and h.split(',')[0].strip().lower() == netloc for h in hosts)
+
+
+_SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
+
+
+@web.middleware
+async def cross_origin_guard(request, handler):
+    if request.method not in _SAFE_METHODS:
+        origin = request.headers.get('Origin')
+        hosts = (request.headers.get('Host'), request.headers.get('X-Forwarded-Host'))
+        if not _origin_is_trusted(origin, request.headers.get('Sec-Fetch-Site'), hosts):
+            log.warning(
+                'Refused cross-origin %s %s from %s. If this is a bookmarklet or extension you '
+                'use, add its origin to CORS_ALLOWED_ORIGINS.', request.method, request.path, origin)
+            raise web.HTTPForbidden(reason='Cross-origin request not allowed')
+    return await handler(request)
+
+
+def _socketio_origin_allowed(origin, environ):
+    # Browsers apply no CORS to WebSockets, so this check is all that stops a
+    # page on another site from connecting and reading the queue, history and
+    # configuration the connect handler sends.
+    hosts = (environ.get('HTTP_HOST'), environ.get('HTTP_X_FORWARDED_HOST'))
+    return _origin_is_trusted(origin, environ.get('HTTP_SEC_FETCH_SITE'), hosts)
+
+
+app = web.Application(middlewares=[cross_origin_guard, state_dir_guard])
 _cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
 if '*' in _cors_origins and len(_cors_origins) > 1:
     log.warning(
@@ -364,7 +425,7 @@ if '*' in _cors_origins and len(_cors_origins) > 1:
         "cross-origin requests stay disabled for every origin in the list. Remove '*' if you "
         "need a bookmarklet to reach an authenticated instance.",
         [o for o in _cors_origins if o != '*'])
-sio = socketio.AsyncServer(cors_allowed_origins=_cors_origins if _cors_origins else [])
+sio = socketio.AsyncServer(cors_allowed_origins=_socketio_origin_allowed)
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
 VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
