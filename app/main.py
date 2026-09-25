@@ -405,7 +405,23 @@ async def cross_origin_guard(request, handler):
             log.warning(
                 'Refused cross-origin %s %s from %s. If this is a bookmarklet or extension you '
                 'use, add its origin to CORS_ALLOWED_ORIGINS.', request.method, request.path, origin)
-            raise web.HTTPForbidden(reason='Cross-origin request not allowed')
+            # Make the refusal itself readable to the page that sent it. A
+            # bookmarklet whose site is not listed would otherwise see only a
+            # network error, indistinguishable from MeTube being down, and
+            # bookmarklets written before this check was added show nothing
+            # at all on one. The body names nothing but the page's own origin,
+            # so the page learns only that it was refused.
+            headers = {}
+            if origin:
+                headers = {
+                    'Access-Control-Allow-Origin': origin,
+                    'Access-Control-Allow-Credentials': 'true',
+                    'Vary': 'Origin',
+                }
+            raise web.HTTPForbidden(
+                reason='Cross-origin request not allowed', headers=headers,
+                text=f'MeTube refused this request from {origin}. '
+                     'Add that origin to CORS_ALLOWED_ORIGINS to allow it.')
     return await handler(request)
 
 

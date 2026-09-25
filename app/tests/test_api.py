@@ -691,6 +691,21 @@ async def test_cross_site_post_is_refused(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_refusal_is_readable_by_the_refused_page(monkeypatch):
+    # A bookmarklet on an unlisted site must be able to tell "refused" from
+    # "MeTube is down", and one sent with credentials can only read a response
+    # that allows them.
+    monkeypatch.setattr(main, "_cors_origins", [])
+    async with TestClient(TestServer(_guarded_app())) as client:
+        resp = await client.post("/add", data="{}", headers=_CROSS_SITE)
+        assert resp.status == 403
+        assert resp.headers["Access-Control-Allow-Origin"] == "https://evil.example"
+        assert resp.headers["Access-Control-Allow-Credentials"] == "true"
+        assert "CORS_ALLOWED_ORIGINS" in await resp.text()
+        assert "acted" not in await resp.text()
+
+
+@pytest.mark.asyncio
 async def test_same_site_sibling_post_is_refused(monkeypatch):
     # A sibling subdomain shares SameSite=Lax cookies with MeTube, so the
     # cookie's own protection does not cover it.
