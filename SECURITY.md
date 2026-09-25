@@ -22,3 +22,9 @@ trusted network or behind an authenticating reverse proxy (see the
 [wiki](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations)).
 Reports that reduce to "the UI is reachable without a login" are expected
 behavior, not vulnerabilities.
+
+## CVEs
+
+Fixed vulnerabilities are published as GitHub security advisories, which
+credit the reporter and name the fixed release. MeTube does not request CVE
+IDs.
