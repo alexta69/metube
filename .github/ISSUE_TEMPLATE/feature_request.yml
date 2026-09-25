@@ -15,10 +15,13 @@ body:
         maintainer is unlikely to implement requests ([details](https://github.com/alexta69/metube#-submitting-feature-requests)).
         Post-download file management is out of scope regardless of implementation quality.
 
+        **Check the [wiki](https://github.com/alexta69/metube/wiki) first** — many requests are already a configuration recipe there.
+
         **Already decided — please don't re-request:**
         - 🔒 Built-in authentication / password → use a reverse proxy ([#931](https://github.com/alexta69/metube/issues/931), [wiki](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations))
         - 🔔 Notifications on download completion → available today via the `Exec` postprocessor ([recipe](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook))
-        - ✏️ Renaming, converting, tagging, or organizing files after download → out of scope ([#495](https://github.com/alexta69/metube/issues/495), [#1027](https://github.com/alexta69/metube/issues/1027))
+        - 🎞️ Re-encoding / transcoding, including on a GPU → available today as a preset ([wiki](https://github.com/alexta69/metube/wiki/Hardware-accelerated-transcoding))
+        - ✏️ Renaming, tagging, organizing, or re-processing files that already exist → out of scope ([#495](https://github.com/alexta69/metube/issues/495), [#1027](https://github.com/alexta69/metube/issues/1027))
         - 🎚️ Pre-download format/quality/audio-track picker → tracked in [#1032](https://github.com/alexta69/metube/issues/1032)
         - 📋 Pre-download playlist item browser → tracked in [#1030](https://github.com/alexta69/metube/issues/1030)
         - 🎛️ Config switches to disable individual features → declined ([#976](https://github.com/alexta69/metube/issues/976))
@@ -30,7 +33,7 @@ body:
       label: Prerequisites
       description: Please confirm before submitting
       options:
-        - label: I have searched existing issues and checked the "Already decided" list above
+        - label: I have searched existing issues, checked the "Already decided" list above, and looked in the [wiki](https://github.com/alexta69/metube/wiki)
           required: true
         - label: I have considered if this feature belongs in yt-dlp instead (downloading, processing, site support) — if so, please request it in the [yt-dlp repository](https://github.com/yt-dlp/yt-dlp/issues)
           required: true

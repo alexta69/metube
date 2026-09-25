@@ -10,6 +10,8 @@ Key capabilities:
 * Download playlists and channels, with configurable output and download options.
 * [Subscribe](https://github.com/alexta69/metube/wiki/Subscriptions) to channels and playlists, periodically check for new items, and queue new uploads automatically.
 
+📖 **Guides and recipes live in the [wiki](https://github.com/alexta69/metube/wiki)** — [subscriptions](https://github.com/alexta69/metube/wiki/Subscriptions), [yt-dlp option recipes](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook), [filename templates](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook), [GPU transcoding](https://github.com/alexta69/metube/wiki/Hardware-accelerated-transcoding), [yt-dlp plugins](https://github.com/alexta69/metube/wiki/yt-dlp-plugins), [bookmarklets](https://github.com/alexta69/metube/wiki/Bookmarklets), [reverse proxies](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations), and a [troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ). Many feature requests are already a recipe there — check before filing one.
+
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif?v=2)
 
 ## 🐳 Run using Docker
@@ -47,7 +49,7 @@ Certain values can be set via environment variables, using the `-e` parameter on
 
 ### ⬇️ Download Behavior
 
-* __MAX_CONCURRENT_DOWNLOADS__: Maximum number of simultaneous downloads allowed. For example, if set to `5`, then at most five downloads will run concurrently, and any additional downloads will wait until one of the active downloads completes. Defaults to `3`.
+* __MAX_CONCURRENT_DOWNLOADS__: Maximum number of simultaneous downloads; further downloads wait for a free slot. Defaults to `3`.
 * __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
 * __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
 * __SUBSCRIPTION_DEFAULT_CHECK_INTERVAL__: Default minutes between automatic checks for each subscription. Defaults to `60`.
@@ -59,8 +61,8 @@ Certain values can be set via environment variables, using the `-e` parameter on
 
 * __DOWNLOAD_DIR__: Path to where the downloads will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
 * __AUDIO_DOWNLOAD_DIR__: Path to where audio-only downloads will be saved, if you wish to separate them from the video downloads. Defaults to the value of `DOWNLOAD_DIR`.
-* __CUSTOM_DIRS__: Whether to enable downloading videos into custom directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__). When enabled, a **Download Folder** field appears under **Advanced Options**, where the directory for each download can be specified. Defaults to `true`.
-* __CREATE_CUSTOM_DIRS__: Whether to support automatically creating directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__) if they do not exist. When enabled, the download directory selector supports free-text input, and the specified directory will be created recursively. Defaults to `true`.
+* __CUSTOM_DIRS__: Whether to allow downloading into custom directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__). When enabled, a **Download Folder** field under **Advanced Options** sets the directory per download. Defaults to `true`.
+* __CREATE_CUSTOM_DIRS__: Whether to create directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__) that do not exist yet. When enabled, the folder field accepts free text and the directory is created recursively. Defaults to `true`.
 * __CUSTOM_DIRS_EXCLUDE_REGEX__: Regular expression to exclude some custom directories from the folder field's suggestions. Empty regex disables exclusion. Defaults to `(^|/)[.@].*$`, which means directories starting with `.` or `@`.
 * __DEFAULT_FOLDER__: Custom directory to pre-select in the download folder field, relative to __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__), for when most downloads go to the same place. It is only a starting value — the field stays editable, so any other folder can still be picked per download. Requires __CUSTOM_DIRS__; ignored with a warning otherwise. Defaults to empty, i.e. the base download directory.
 * __DOWNLOAD_DIRS_INDEXABLE__: If `true`, the download directories (__DOWNLOAD_DIR__ and __AUDIO_DOWNLOAD_DIR__) are indexable on the web server. Defaults to `false`.
@@ -68,21 +70,21 @@ Certain values can be set via environment variables, using the `-e` parameter on
 * __TEMP_DIR__: Path where intermediary download files will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
   * Set this to an SSD or RAM filesystem (e.g., `tmpfs`) for better performance.
   * __Note__: Using a RAM filesystem may prevent downloads from being resumed.
-* __CHOWN_DIRS__: If `false`, ownership of `DOWNLOAD_DIR`, `STATE_DIR`, and `TEMP_DIR` (and their contents) will not be set on container start. Ensure user under which MeTube runs has necessary access to these directories already. Defaults to `true`.
+* __CHOWN_DIRS__: If `false`, ownership of `DOWNLOAD_DIR`, `STATE_DIR`, and `TEMP_DIR` (and their contents) will not be set on container start. MeTube's user must then already have access to them. Defaults to `true`.
 
 ### 📝 File Naming & yt-dlp
 
-* __OUTPUT_TEMPLATE__: The template for the filenames of the downloaded videos, formatted according to [this spec](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
-* __OUTPUT_TEMPLATE_CHAPTER__: The template for the filenames of the downloaded videos when split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
-* __OUTPUT_TEMPLATE_PLAYLIST__: The template for the filenames of the downloaded videos when downloaded as a playlist. Defaults to `%(playlist_title)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
-* __OUTPUT_TEMPLATE_CHANNEL__: The template for the filenames of the downloaded videos when downloaded as a channel. Defaults to `%(channel)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
+* __OUTPUT_TEMPLATE__: Filename template for downloaded videos, formatted according to [this spec](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
+* __OUTPUT_TEMPLATE_CHAPTER__: Filename template for videos split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
+* __OUTPUT_TEMPLATE_PLAYLIST__: Filename template for videos downloaded as a playlist. Defaults to `%(playlist_title)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
+* __OUTPUT_TEMPLATE_CHANNEL__: Filename template for videos downloaded as a channel. Defaults to `%(channel)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
 * __YTDL_OPTIONS__: Additional options to pass to yt-dlp, as a JSON object. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for details, examples, and available options reference.
 * __YTDL_OPTIONS_FILE__: Path to a JSON file containing yt-dlp options. Monitored and reloaded automatically on changes. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options).
 * __YTDL_OPTIONS_PRESETS__: Named bundles of yt-dlp options, selectable per download in the UI. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for format and examples.
 * __YTDL_OPTIONS_PRESETS_FILE__: Path to a JSON file containing presets. Monitored and reloaded automatically on changes. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options).
 * __ALLOW_YTDL_OPTIONS_OVERRIDES__: Whether to show a free-text field in the UI for per-download yt-dlp option overrides. Defaults to `false`. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for details and security considerations.
 * __ALLOW_PRIVATE_ADDRESSES__: Whether to allow downloads from private, loopback, link-local and other non-global addresses. Defaults to `false`, which protects against SSRF by refusing URLs that resolve to internal hosts. Set to `true` only in trusted environments — for example when routing traffic through a proxy/VPN client in Fake-IP mode (sing-box, Clash, Mihomo), which resolves hosts to the `198.18.0.0/15` range. Enabling this disables the SSRF protection entirely, so only use it when you control the network. You do **not** need this to use a proxy on an internal address: a proxy configured through the `proxy` option in `YTDL_OPTIONS` (or the `*_proxy` environment variables) is always reachable at its own host and port, wherever it lives. Nor do you need it for a proxy that resolves hostnames itself (an HTTP proxy, `socks5`, `socks5h` or `socks4a`): MeTube leaves those lookups to the proxy rather than resolving submitted URLs locally, so none leak and proxy-only hosts still work.
-* __YTDL_NIGHTLY_UPDATE_TIME__: If set, will cause MeTube to use [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds) instead of the stable releases. Set to the time (`HH:MM`, 24-hour) when you want the daily upgrades and MeTube restart to happen. Defaults to empty (disabled).
+* __YTDL_NIGHTLY_UPDATE_TIME__: If set, MeTube uses [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds) instead of stable releases, upgrading and restarting daily at this time (`HH:MM`, 24-hour). Defaults to empty (disabled).
 
 A filename that would exceed the limit the filesystem accepts is shortened to fit, keeping its extension, with room left for the suffixes yt-dlp adds while downloading. Sites that put a long description in the title would otherwise fail the download outright with `File name too long`. Use `trim_file_name` in `YTDL_OPTIONS` if you want names shorter than the filesystem's own limit, or `restrictfilenames` to strip non-ASCII characters.
 
@@ -93,7 +95,7 @@ Enabling `writeinfojson` or `writethumbnail` in `YTDL_OPTIONS` also writes a fee
 * __HOST__: The host address the web server will bind to. Defaults to `0.0.0.0`, which is every IPv4 interface but no IPv6 one. Set it to `*` (or leave it empty) to listen on both stacks, or to `::` for IPv6 only — `::` does not also accept IPv4, whatever the host's `bindv6only` setting says.
 * __PORT__: The port number the web server will listen on. Defaults to `8081`.
 * __URL_PREFIX__: Base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
-* __PUBLIC_HOST_URL__: Base URL for the download links shown in the UI for completed files. By default, MeTube serves them under its own URL. If your download directory is accessible on another URL and you want the download links to be based there, use this variable to set it.
+* __PUBLIC_HOST_URL__: Base URL for the download links of completed files, if your download directory is served from somewhere other than MeTube itself. Defaults to MeTube's own URL.
 * __PUBLIC_HOST_AUDIO_URL__: Same as PUBLIC_HOST_URL but for audio downloads.
 * __HTTPS__: Use `https` instead of `http` (__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
 * __CERTFILE__: HTTPS certificate file path.
@@ -154,7 +156,7 @@ The file is monitored for changes and reloaded automatically — no container re
 
 ### Presets
 
-Presets let you define named bundles of options that appear in the web UI under **Advanced Options** as "Option Presets". Users can select one or more presets per download, making it easy to apply common option combinations without editing global settings.
+Presets are named bundles of options that appear in the web UI under **Advanced Options** as "Option Presets". Users can select one or more per download, without editing global settings.
 
 Like global options, presets can be set inline or via a file:
 
@@ -216,12 +218,6 @@ When a download starts, the final set of yt-dlp options is built in this order:
 MeTube always forces its own flat-extract behaviour during the initial metadata fetch (`extract_flat`, `noplaylist`, etc.); presets cannot override those keys for that phase.
 
 **Example:** Suppose your global options set `"writesubtitles": false`, but you select a preset that sets `"writesubtitles": true`. Subtitles will be written for that download because the preset overrides the global setting. If you additionally enter `{"writesubtitles": false}` in the per-download overrides field, that value wins and subtitles will not be written.
-
-### Configuration cookbooks
-
-The project's Wiki contains examples of useful configurations contributed by users of MeTube:
-* [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)
-* [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)
 
 ## 🍪 Using browser cookies
 

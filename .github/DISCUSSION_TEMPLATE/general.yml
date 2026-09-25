@@ -8,6 +8,7 @@ body:
         - **Bug reports** → [open an issue](https://github.com/alexta69/metube/issues/new?template=bug_report.yml)
         - **Feature requests** → [open an issue](https://github.com/alexta69/metube/issues/new?template=feature_request.yml) or post in [Ideas](https://github.com/alexta69/metube/discussions/categories/ideas)
         - **Questions** → post in [Q&A](https://github.com/alexta69/metube/discussions/categories/q-a)
+        - **Guides and recipes** → the [wiki](https://github.com/alexta69/metube/wiki)
 
   - type: textarea
     id: discussion-topic

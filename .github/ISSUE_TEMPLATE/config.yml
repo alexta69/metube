@@ -3,9 +3,9 @@ contact_links:
   - name: ❓ Questions & Support
     url: https://github.com/alexta69/metube/discussions/categories/q-a
     about: Ask usage and configuration questions in Discussions Q&A — issues are for bugs and feature requests
-  - name: 📖 Troubleshooting FAQ
-    url: https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ
-    about: Common problems and their fixes
+  - name: 📖 Wiki — guides, recipes, and troubleshooting FAQ
+    url: https://github.com/alexta69/metube/wiki
+    about: Many requests are already a configuration recipe (GPU transcoding, notifications, yt-dlp plugins, …) — check here first
   - name: ⬇️ yt-dlp Issues
     url: https://github.com/yt-dlp/yt-dlp/issues
     about: Report issues related to video downloading, authentication, or site support

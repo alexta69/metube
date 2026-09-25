@@ -6,9 +6,8 @@ body:
 
         Your question may already be answered here:
         - **[README](https://github.com/alexta69/metube#readme)** — complete setup and configuration guide
+        - **[Wiki](https://github.com/alexta69/metube/wiki)** — guides and recipes: subscriptions, yt-dlp option and filename-template cookbooks, GPU transcoding, yt-dlp plugins, bookmarklets, reverse proxies
         - **[Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ)** — common problems and their fixes
-        - **[YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook)** — common yt-dlp configurations (notifications, metadata, audio extraction, ...)
-        - **[OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook)** — filename template examples
 
   - type: textarea
     id: question
