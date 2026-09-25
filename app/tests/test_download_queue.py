@@ -151,6 +151,24 @@ async def test_add_unsupported_url_recorded_as_failed_entry(dq_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("url", ["127.0.0.1:18443/probe", "//127.0.0.1:18443/probe"])
+async def test_add_scheme_less_internal_url_refused_before_any_connection(dq_env, url):
+    """validate_url passes inputs without '://' (bare IDs, ytsearch:), and
+    yt-dlp's generic extractor turns a host-like one into https://host/...
+    That is safe only because extraction is flat: the rewrite comes back as a
+    url result, which re-enters add() and meets validate_url in its absolute
+    form before anything is fetched. Real extraction, no mocks, so a change to
+    the extraction params that follows url results in-process fails here."""
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(socket.socket, "connect", side_effect=AssertionError("connected")) as connect:
+        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+    connect.assert_not_called()
+    assert result["status"] == "error"
+    assert "internal address" in result["msg"]
+
+
+@pytest.mark.asyncio
 async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
     """A URL rejected by the SSRF guard (before yt-dlp ever runs) must also
     surface as a failed entry, not just an error status returned to the caller."""
