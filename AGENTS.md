@@ -45,14 +45,29 @@ against this line before writing any code.
   ask. PRs that bundle several "reasonable next steps" invite rejection of the
   whole.
 
-If a feature idea fails this test, the accepted alternative is usually a README
-section documenting how to pair MeTube with the right dedicated tool.
+If a feature idea fails this test, the accepted alternative is usually documentation
+on pairing MeTube with the right dedicated tool — a wiki guide, or a pointer in the
+README.
 
-## README.md size constraint
+## Documentation: where content goes
 
-The README.md is synced to Docker Hub, which has a **25,000 character limit**.
-Any change to README.md **must** keep the file under 25,000 characters (`wc -c README.md`).
-If an addition would exceed the limit, trim existing prose elsewhere — prefer tightening verbose descriptions over removing sections.
+The README is synced verbatim to Docker Hub, which rejects descriptions over
+**25,000 bytes** (CI checks `wc -c README.md`). Rather than trimming prose to fit,
+each kind of content has one home:
+
+- **README.md** — what MeTube is, the quick start, and the environment variable
+  reference: **one table row per variable**, a sentence or two at most. A variable
+  that needs more explanation gets a section in a wiki guide, linked from its row.
+  No free-text paragraphs in the configuration section. A PR that adds an env var
+  adds its row in the same diff.
+- **Wiki** (<https://github.com/alexta69/metube/wiki>, a separate git repository:
+  `https://github.com/alexta69/metube.wiki.git`) — guides, concepts, recipes,
+  integrations, and troubleshooting. Explanations of behavior go here.
+- **CONTRIBUTING.md** — the scope summary for humans, the feature request policy,
+  and building and testing locally.
+
+Links in README.md must be absolute URLs: on Docker Hub, relative links break. If the
+README passes 15,000 bytes, something in it belongs in the wiki.
 
 ## Tech stack
 

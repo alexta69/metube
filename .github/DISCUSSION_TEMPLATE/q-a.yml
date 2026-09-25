@@ -5,8 +5,8 @@ body:
         ## Quick Resources
 
         Your question may already be answered here:
-        - **[README](https://github.com/alexta69/metube#readme)** — complete setup and configuration guide
-        - **[Wiki](https://github.com/alexta69/metube/wiki)** — guides and recipes: subscriptions, yt-dlp option and filename-template cookbooks, GPU transcoding, yt-dlp plugins, bookmarklets, reverse proxies
+        - **[README](https://github.com/alexta69/metube#readme)** — setup, and the reference for every environment variable
+        - **[Wiki](https://github.com/alexta69/metube/wiki)** — guides and recipes: subscriptions, yt-dlp options, output templates, browser cookies, sending links from browsers and phones, reverse proxies, GPU transcoding, yt-dlp plugins
         - **[Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ)** — common problems and their fixes
 
   - type: textarea

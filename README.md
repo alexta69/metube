@@ -3,24 +3,23 @@
 ![Build Status](https://github.com/alexta69/metube/actions/workflows/main.yml/badge.svg)
 ![Docker Pulls](https://img.shields.io/docker/pulls/alexta69/metube.svg)
 
-MeTube is a self-hosted web UI for `yt-dlp`, for downloading media from YouTube and [dozens of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md). Docker images are multi-arch (amd64/arm64).
+MeTube is a self-hosted web UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Paste a link from YouTube or [hundreds of other sites](https://github.com/yt-dlp/yt-dlp/blob/master/supportedsites.md), and it downloads to your server:
 
-Key capabilities:
-* Download videos, audio, captions, and thumbnails from a browser UI.
-* Download playlists and channels, with configurable output and download options.
-* [Subscribe](https://github.com/alexta69/metube/wiki/Subscriptions) to channels and playlists, periodically check for new items, and queue new uploads automatically.
+* Video, audio, subtitles and thumbnails — from single videos, whole playlists or entire channels.
+* [Subscriptions](https://github.com/alexta69/metube/wiki/Subscriptions) to channels and playlists, which queue new uploads as they appear.
+* Per-download choices of quality, format and folder, plus server-wide [yt-dlp options and presets](https://github.com/alexta69/metube/wiki/yt-dlp-options).
 
-📖 **Guides and recipes live in the [wiki](https://github.com/alexta69/metube/wiki)** — [subscriptions](https://github.com/alexta69/metube/wiki/Subscriptions), [yt-dlp option recipes](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook), [filename templates](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook), [GPU transcoding](https://github.com/alexta69/metube/wiki/Hardware-accelerated-transcoding), [yt-dlp plugins](https://github.com/alexta69/metube/wiki/yt-dlp-plugins), [bookmarklets](https://github.com/alexta69/metube/wiki/Bookmarklets), [reverse proxies](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations), and a [troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ). Many feature requests are already a recipe there — check before filing one.
+📖 **Guides, recipes and a troubleshooting FAQ live in the [wiki](https://github.com/alexta69/metube/wiki)** — many feature requests are already a recipe there, so check it before filing one.
 
 ![screenshot1](https://github.com/alexta69/metube/raw/master/screenshot.gif?v=2)
 
-## 🐳 Run using Docker
+## Quick start
 
 ```bash
 docker run -d -p 8081:8081 -v /path/to/downloads:/downloads ghcr.io/alexta69/metube
 ```
 
-## 🐳 Run using Docker Compose
+Or with Docker Compose:
 
 ```yaml
 services:
@@ -34,304 +33,133 @@ services:
       - /path/to/downloads:/downloads
 ```
 
-## ⚙️ Configuration via environment variables
+Then open `http://<host>:8081` in your browser. Images are multi-arch (amd64/arm64), and also published on Docker Hub as `alexta69/metube`.
 
-Certain values can be set via environment variables, using the `-e` parameter on the docker command line, or the `environment:` section in Docker Compose.
+## Configuration
 
-### 🏠 Runtime & Permissions
+MeTube is configured with environment variables: `-e NAME=value` on the `docker run` command line, or the `environment:` section in Compose. Defaults are the Docker image's; outside Docker, the directories default to the working directory.
 
-* __PUID__: User under which MeTube will run. Defaults to `1000` (legacy `UID` also supported).
-* __PGID__: Group under which MeTube will run. Defaults to `1000` (legacy `GID` also supported).
-* __UMASK__: Umask value used by MeTube. Defaults to `022`.
-* __DEFAULT_THEME__: Default theme to use for the UI, can be set to `light`, `dark`, or `auto`. Defaults to `auto`.
-* __LOGLEVEL__: Log level, can be set to `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL`, or `NONE`. Defaults to `INFO`.
-* __ENABLE_ACCESSLOG__: Whether to enable access log. Defaults to `false`.
+### Runtime and permissions
 
-### ⬇️ Download Behavior
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `PUID` / `PGID` | `1000` | User and group MeTube runs as and writes files with. Legacy `UID`/`GID` also work. |
+| `UMASK` | `022` | Umask for the files MeTube creates. |
+| `CHOWN_DIRS` | `true` | Make `PUID:PGID` the owner of the download, state and temp directories at startup. With `false`, MeTube's user must already have access. |
+| `LOGLEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `NONE`. |
+| `ENABLE_ACCESSLOG` | `false` | Log every HTTP request. |
+| `DEFAULT_THEME` | `auto` | UI theme: `light`, `dark`, or `auto` to follow the system. |
 
-* __MAX_CONCURRENT_DOWNLOADS__: Maximum number of simultaneous downloads; further downloads wait for a free slot. Defaults to `3`.
-* __DELETE_FILE_ON_TRASHCAN__: if `true`, downloaded files are deleted on the server, when they are trashed from the "Completed" section of the UI. Defaults to `false`.
-* __DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT__: Maximum number of playlist items that can be downloaded. Defaults to `0` (no limit).
-* __SUBSCRIPTION_DEFAULT_CHECK_INTERVAL__: Default minutes between automatic checks for each subscription. Defaults to `60`.
-* __SUBSCRIPTION_SCAN_PLAYLIST_END__: Maximum playlist/channel entries to fetch per subscription check (newest-first). Defaults to `50`.
-* __SUBSCRIPTION_MAX_SEEN_IDS__: Cap on stored video IDs per subscription to limit state file growth. Defaults to `50000`.
-* __CLEAR_COMPLETED_AFTER__: Number of seconds after which completed (and failed) downloads are automatically removed from the "Completed" list. Defaults to `0` (disabled).
+### Downloads
 
-### 📁 Storage & Directories
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `MAX_CONCURRENT_DOWNLOADS` | `3` | Downloads that run at once; the rest wait their turn. |
+| `DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT` | `0` | Default for the **Items Limit** field: how many entries of a playlist or channel to download (`0` = all). |
+| `CLEAR_COMPLETED_AFTER` | `0` | Seconds before finished and failed downloads leave the Completed list (`0` = never). |
+| `DELETE_FILE_ON_TRASHCAN` | `false` | Also delete the file from disk when its entry is removed from Completed. |
+| `SUBSCRIPTION_DEFAULT_CHECK_INTERVAL` | `60` | Default minutes between checks of a [subscription](https://github.com/alexta69/metube/wiki/Subscriptions). |
+| `SUBSCRIPTION_SCAN_PLAYLIST_END` | `50` | Newest entries fetched each time a subscription is checked. |
+| `SUBSCRIPTION_MAX_SEEN_IDS` | `50000` | Video IDs remembered per subscription, to bound the state file's size. |
 
-* __DOWNLOAD_DIR__: Path to where the downloads will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
-* __AUDIO_DOWNLOAD_DIR__: Path to where audio-only downloads will be saved, if you wish to separate them from the video downloads. Defaults to the value of `DOWNLOAD_DIR`.
-* __CUSTOM_DIRS__: Whether to allow downloading into custom directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__). When enabled, a **Download Folder** field under **Advanced Options** sets the directory per download. Defaults to `true`.
-* __CREATE_CUSTOM_DIRS__: Whether to create directories within the __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__) that do not exist yet. When enabled, the folder field accepts free text and the directory is created recursively. Defaults to `true`.
-* __CUSTOM_DIRS_EXCLUDE_REGEX__: Regular expression to exclude some custom directories from the folder field's suggestions. Empty regex disables exclusion. Defaults to `(^|/)[.@].*$`, which means directories starting with `.` or `@`.
-* __DEFAULT_FOLDER__: Custom directory to pre-select in the download folder field, relative to __DOWNLOAD_DIR__ (or __AUDIO_DOWNLOAD_DIR__), for when most downloads go to the same place. It is only a starting value — the field stays editable, so any other folder can still be picked per download. Requires __CUSTOM_DIRS__; ignored with a warning otherwise. Defaults to empty, i.e. the base download directory.
-* __DOWNLOAD_DIRS_INDEXABLE__: If `true`, the download directories (__DOWNLOAD_DIR__ and __AUDIO_DOWNLOAD_DIR__) are indexable on the web server. Defaults to `false`.
-* __STATE_DIR__: Path to where MeTube will store its persistent state files (`queue.json`, `pending.json`, `completed.json`, `subscriptions.json`). Defaults to `/downloads/.metube` in the Docker image, and `.` otherwise.
-* __TEMP_DIR__: Path where intermediary download files will be saved. Defaults to `/downloads` in the Docker image, and `.` otherwise.
-  * Set this to an SSD or RAM filesystem (e.g., `tmpfs`) for better performance.
-  * __Note__: Using a RAM filesystem may prevent downloads from being resumed.
-* __CHOWN_DIRS__: If `false`, ownership of `DOWNLOAD_DIR`, `STATE_DIR`, and `TEMP_DIR` (and their contents) will not be set on container start. MeTube's user must then already have access to them. Defaults to `true`.
+### Directories
 
-### 📝 File Naming & yt-dlp
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `DOWNLOAD_DIR` | `/downloads` | Where downloads are saved. |
+| `AUDIO_DOWNLOAD_DIR` | same as `DOWNLOAD_DIR` | Where audio-only downloads are saved, to keep them apart from video. |
+| `TEMP_DIR` | `/downloads` | Where files are written while downloading. An SSD or `tmpfs` is faster, but on a RAM disk interrupted downloads can't resume. |
+| `STATE_DIR` | `/downloads/.metube` | Where MeTube keeps its queue, history, subscriptions and uploaded cookies. |
+| `CUSTOM_DIRS` | `true` | Show a **Download Folder** field under Advanced Options, to save into a subfolder of the download directory. |
+| `CREATE_CUSTOM_DIRS` | `true` | Let that field create folders that don't exist yet. |
+| `CUSTOM_DIRS_EXCLUDE_REGEX` | `(^\|/)[.@].*$` | Folders left out of the field's suggestions; the default hides names starting with `.` or `@`. Empty hides none. |
+| `DEFAULT_FOLDER` | | Folder the field starts with, relative to the download directory. Requires `CUSTOM_DIRS`. |
+| `DOWNLOAD_DIRS_INDEXABLE` | `false` | Serve browsable listings of the download directories. |
 
-* __OUTPUT_TEMPLATE__: Filename template for downloaded videos, formatted according to [this spec](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). Defaults to `%(title)s.%(ext)s`.
-* __OUTPUT_TEMPLATE_CHAPTER__: Filename template for videos split into chapters via postprocessors. Defaults to `%(title)s - %(section_number)s %(section_title)s.%(ext)s`.
-* __OUTPUT_TEMPLATE_PLAYLIST__: Filename template for videos downloaded as a playlist. Defaults to `%(playlist_title)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
-* __OUTPUT_TEMPLATE_CHANNEL__: Filename template for videos downloaded as a channel. Defaults to `%(channel)s/%(title)s.%(ext)s`. Set to empty to use `OUTPUT_TEMPLATE` instead.
-* __YTDL_OPTIONS__: Additional options to pass to yt-dlp, as a JSON object. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for details, examples, and available options reference.
-* __YTDL_OPTIONS_FILE__: Path to a JSON file containing yt-dlp options. Monitored and reloaded automatically on changes. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options).
-* __YTDL_OPTIONS_PRESETS__: Named bundles of yt-dlp options, selectable per download in the UI. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for format and examples.
-* __YTDL_OPTIONS_PRESETS_FILE__: Path to a JSON file containing presets. Monitored and reloaded automatically on changes. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options).
-* __ALLOW_YTDL_OPTIONS_OVERRIDES__: Whether to show a free-text field in the UI for per-download yt-dlp option overrides. Defaults to `false`. See [Configuring yt-dlp options](#%EF%B8%8F-configuring-yt-dlp-options) for details and security considerations.
-* __ALLOW_PRIVATE_ADDRESSES__: Whether to allow downloads from private, loopback, link-local and other non-global addresses. Defaults to `false`, which protects against SSRF by refusing URLs that resolve to internal hosts. Set to `true` only in trusted environments — for example when routing traffic through a proxy/VPN client in Fake-IP mode (sing-box, Clash, Mihomo), which resolves hosts to the `198.18.0.0/15` range. Enabling this disables the SSRF protection entirely, so only use it when you control the network. You do **not** need this to use a proxy on an internal address: a proxy configured through the `proxy` option in `YTDL_OPTIONS` (or the `*_proxy` environment variables) is always reachable at its own host and port, wherever it lives. Nor do you need it for a proxy that resolves hostnames itself (an HTTP proxy, `socks5`, `socks5h` or `socks4a`): MeTube leaves those lookups to the proxy rather than resolving submitted URLs locally, so none leak and proxy-only hosts still work.
-* __YTDL_NIGHTLY_UPDATE_TIME__: If set, MeTube uses [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds) instead of stable releases, upgrading and restarting daily at this time (`HH:MM`, 24-hour). Defaults to empty (disabled).
+### File naming
 
-A filename that would exceed the limit the filesystem accepts is shortened to fit, keeping its extension, with room left for the suffixes yt-dlp adds while downloading. Sites that put a long description in the title would otherwise fail the download outright with `File name too long`. Use `trim_file_name` in `YTDL_OPTIONS` if you want names shorter than the filesystem's own limit, or `restrictfilenames` to strip non-ASCII characters.
+Templates use [yt-dlp's output template syntax](https://github.com/yt-dlp/yt-dlp/blob/master/README.md#output-template). How MeTube applies them is explained in [Output templates](https://github.com/alexta69/metube/wiki/Output-templates).
 
-Enabling `writeinfojson` or `writethumbnail` in `YTDL_OPTIONS` also writes a feed-level `.info.json` and thumbnail when you add a playlist or channel. These reuse the template of the items they belong to — `OUTPUT_TEMPLATE_CHANNEL` or `OUTPUT_TEMPLATE_PLAYLIST` — evaluated against the feed itself, so with the defaults they land in the same folder as the videos, named after the feed. Set `allow_playlist_files` to `false` in `YTDL_OPTIONS` to skip them.
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `OUTPUT_TEMPLATE` | `%(title)s.%(ext)s` | Filename for downloads. |
+| `OUTPUT_TEMPLATE_PLAYLIST` | `%(playlist_title)s/%(title)s.%(ext)s` | Filename for items added from a playlist. Empty means `OUTPUT_TEMPLATE`. |
+| `OUTPUT_TEMPLATE_CHANNEL` | `%(channel)s/%(title)s.%(ext)s` | Filename for items added from a channel. Empty means `OUTPUT_TEMPLATE`. |
+| `OUTPUT_TEMPLATE_CHAPTER` | `%(title)s - %(section_number)02d - %(section_title)s.%(ext)s` | Default filename for each chapter when **Split by chapters** is on. |
 
-### 🌐 Web Server & URLs
+### yt-dlp
 
-* __HOST__: The host address the web server will bind to. Defaults to `0.0.0.0`, which is every IPv4 interface but no IPv6 one. Set it to `*` (or leave it empty) to listen on both stacks, or to `::` for IPv6 only — `::` does not also accept IPv4, whatever the host's `bindv6only` setting says.
-* __PORT__: The port number the web server will listen on. Defaults to `8081`.
-* __URL_PREFIX__: Base path for the web server (for use when hosting behind a reverse proxy). Defaults to `/`.
-* __PUBLIC_HOST_URL__: Base URL for the download links of completed files, if your download directory is served from somewhere other than MeTube itself. Defaults to MeTube's own URL.
-* __PUBLIC_HOST_AUDIO_URL__: Same as PUBLIC_HOST_URL but for audio downloads.
-* __HTTPS__: Use `https` instead of `http` (__CERTFILE__ and __KEYFILE__ required). Defaults to `false`.
-* __CERTFILE__: HTTPS certificate file path.
-* __KEYFILE__: HTTPS key file path.
-* __CORS_ALLOWED_ORIGINS__: Comma-separated list of origins permitted to make cross-origin requests to the MeTube API; `*` allows all. When unset or empty, all cross-origin requests are denied. Required for browser extensions and bookmarklets — see [Sending links to MeTube](#-sending-links-to-metube). Naming origins explicitly also lets them send credentials (a login cookie, or the `Authorization` header a reverse proxy checks). `*` lets any site you visit send downloads to your instance, so prefer naming origins.
-* __ROBOTS_TXT__: A path to a `robots.txt` file mounted in the container.
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `YTDL_OPTIONS` | `{}` | Options for every download, as a JSON object — see [yt-dlp options](#yt-dlp-options). |
+| `YTDL_OPTIONS_FILE` | | Path to a JSON file of such options. Reloaded when it changes; wins over `YTDL_OPTIONS` for the same key. |
+| `YTDL_OPTIONS_PRESETS` | `{}` | Named option bundles, picked per download in the UI. |
+| `YTDL_OPTIONS_PRESETS_FILE` | | Path to a JSON file of presets. Reloaded when it changes; wins over `YTDL_OPTIONS_PRESETS` for the same name. |
+| `ALLOW_YTDL_OPTIONS_OVERRIDES` | `false` | Show a field for per-download yt-dlp options in the UI. Trusted users only: it allows running commands in the container. |
+| `YTDL_NIGHTLY_UPDATE_TIME` | | Use [nightly yt-dlp builds](https://github.com/yt-dlp/yt-dlp-nightly-builds), upgrading and restarting daily at this time (`HH:MM`, 24-hour). |
 
-## 🎛️ Configuring yt-dlp options
+### Web server and network
 
-MeTube lets you customize how [yt-dlp](https://github.com/yt-dlp/yt-dlp) behaves at three levels, from broadest to most specific:
+| Variable | Default | Description |
+| :--- | :--- | :--- |
+| `HOST` | `0.0.0.0` | Address to listen on. The default is every IPv4 interface; `*` (or empty) adds IPv6; `::` is IPv6 only. |
+| `PORT` | `8081` | Port to listen on. |
+| `URL_PREFIX` | `/` | Base path, for serving MeTube under a subpath of a [reverse proxy](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations). |
+| `HTTPS` | `false` | Serve HTTPS directly, using `CERTFILE` and `KEYFILE`. |
+| `CERTFILE` / `KEYFILE` | | Paths to the HTTPS certificate and key. |
+| `PUBLIC_HOST_URL` | `download/` | Base URL for the links to completed files. The default is relative to MeTube itself; set a full URL if the files are served from elsewhere. |
+| `PUBLIC_HOST_AUDIO_URL` | `audio_download/` | The same, for audio downloads. |
+| `CORS_ALLOWED_ORIGINS` | | Comma-separated origins allowed to call MeTube from other sites, as [browser extensions and bookmarklets](https://github.com/alexta69/metube/wiki/Sending-links-to-MeTube) do. `*` allows any site, so prefer naming them. |
+| `ALLOW_PRIVATE_ADDRESSES` | `false` | Allow URLs on private and internal addresses, turning off SSRF protection. Needed for Fake-IP proxy clients, not for ordinary proxies — [details](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ#refusing-to-fetch-internal-host-proxies-and-vpns). |
+| `ROBOTS_TXT` | | Path to a `robots.txt` file to serve, mounted into the container. |
 
-1. **Global options** — apply to every download by default.
-2. **Presets** — named bundles of options that users can pick per download from the UI.
-3. **Per-download overrides** — free-form options entered in the UI for a single download.
+## yt-dlp options
 
-When a download starts, these layers are combined in order. If the same option appears in more than one layer, the more specific one wins: per-download overrides beat presets, and presets beat global options.
+yt-dlp options are JSON objects keyed by yt-dlp's [API option names](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L224), which differ from its command-line flags ([converter](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py)). They apply at three levels, and for an option set at more than one, the more specific level wins:
 
-In JSON presets and overrides, setting an option to **`null`** clears that option for that download (for example, `"download_archive": null` overrides a global archive path so the archive is not used). This follows yt-dlp’s usual meaning of `None` for that option.
-
-### Option format
-
-yt-dlp options in MeTube are expressed as JSON objects. The keys are yt-dlp API option names, which roughly correspond to command-line flags with dashes replaced by underscores. For example, the command-line flag `--write-subs` becomes `"writesubtitles": true` in JSON.
-
-> **Tip:** Some command-line flags don't have a direct single-key equivalent — for instance, `--embed-thumbnail` and `--recode-video` must be expressed via `"postprocessors"`. A full list of available API options can be found [in the yt-dlp source](https://github.com/yt-dlp/yt-dlp/blob/master/yt_dlp/YoutubeDL.py#L224), and [this conversion script](https://github.com/yt-dlp/yt-dlp/blob/master/devscripts/cli_to_api.py) can help translate command-line flags to their API equivalents.
-
-### Global options
-
-Global options form the baseline for every download. There are two ways to define them, and you can use either or both:
-
-**Inline via environment variable** (`YTDL_OPTIONS`) — pass a JSON object directly:
+1. **Global** — `YTDL_OPTIONS` and `YTDL_OPTIONS_FILE`, for every download.
+2. **Presets** — `YTDL_OPTIONS_PRESETS` and `YTDL_OPTIONS_PRESETS_FILE`, picked per download under **Advanced Options**.
+3. **Overrides** — typed into the UI for a single download, when `ALLOW_YTDL_OPTIONS_OVERRIDES` is on.
 
 ```yaml
 environment:
-  - 'YTDL_OPTIONS={"writesubtitles": true, "subtitleslangs": ["en", "de"], "updatetime": false, "writethumbnail": true}'
+  - 'YTDL_OPTIONS={"writesubtitles": true, "subtitleslangs": ["en", "de"], "updatetime": false}'
 ```
 
-**Via a JSON file** (`YTDL_OPTIONS_FILE`) — mount a file into the container and point to it:
+The [yt-dlp options guide](https://github.com/alexta69/metube/wiki/yt-dlp-options) covers presets, overrides and option files in detail, and the [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook) has ready-made recipes.
 
-```yaml
-volumes:
-  - /path/to/ytdl-options.json:/config/ytdl-options.json
-environment:
-  - YTDL_OPTIONS_FILE=/config/ytdl-options.json
-```
+## Guides
 
-where `ytdl-options.json` contains:
+The [wiki](https://github.com/alexta69/metube/wiki) covers everything beyond the reference above:
 
-```json
-{
-  "writesubtitles": true,
-  "subtitleslangs": ["en", "de"],
-  "updatetime": false,
-  "writethumbnail": true
-}
-```
+* [Subscriptions](https://github.com/alexta69/metube/wiki/Subscriptions) — download new uploads from channels and playlists automatically.
+* [yt-dlp options](https://github.com/alexta69/metube/wiki/yt-dlp-options) and the [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook) — notifications, embedded metadata, subtitles and more.
+* [Output templates](https://github.com/alexta69/metube/wiki/Output-templates) and the [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook) — how files are named and sorted into folders.
+* [Using browser cookies](https://github.com/alexta69/metube/wiki/Using-browser-cookies) — for private, age-restricted and "confirm you're not a bot" videos.
+* [Sending links to MeTube](https://github.com/alexta69/metube/wiki/Sending-links-to-MeTube) — browser extensions, bookmarklets, iOS and Android apps, Raycast.
+* [HTTPS and reverse proxies](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations) — NGINX, Apache, Caddy and swag examples, and adding authentication.
+* [Hardware-accelerated transcoding](https://github.com/alexta69/metube/wiki/Hardware-accelerated-transcoding) — re-encode downloads on an Intel or AMD GPU.
+* [yt-dlp plugins](https://github.com/alexta69/metube/wiki/yt-dlp-plugins) — extend yt-dlp, e.g. to accept links from Invidious or Piped.
+* [Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ) — common problems and how to diagnose them.
 
-The file is monitored for changes and reloaded automatically — no container restart needed. If you use both methods and they define the same key, the **file takes precedence**.
+## Keeping yt-dlp up to date
 
-### Presets
+Sites change constantly, and yt-dlp keeps up with frequent releases. A new MeTube image is published automatically for every yt-dlp stable release, so keep your container updated — [watchtower](https://github.com/nicholas-fedor/watchtower) can do it for you. To follow yt-dlp's nightly builds instead, set `YTDL_NIGHTLY_UPDATE_TIME`.
 
-Presets are named bundles of options that appear in the web UI under **Advanced Options** as "Option Presets". Users can select one or more per download, without editing global settings.
+## Troubleshooting and support
 
-Like global options, presets can be set inline or via a file:
-
-* `YTDL_OPTIONS_PRESETS` — a JSON object where each key is a preset name and its value is a set of yt-dlp options.
-* `YTDL_OPTIONS_PRESETS_FILE` — path to a JSON file containing presets, monitored and reloaded on changes.
-
-If both are used and they define a preset with the same name, the **file's version takes precedence**.
-
-**Example** — a presets file defining three presets:
-
-```json
-{
-  "sponsorblock": {
-    "postprocessors": [
-      { "key": "SponsorBlock", "categories": ["sponsor", "selfpromo", "interaction"] },
-      { "key": "ModifyChapters", "remove_sponsor_segments": ["sponsor", "selfpromo", "interaction"] }
-    ]
-  },
-  "embed-subs": {
-    "writesubtitles": true,
-    "writeautomaticsub": true,
-    "subtitleslangs": ["en", "de"],
-    "postprocessors": [{ "key": "FFmpegEmbedSubtitle" }]
-  },
-  "limit-rate": {
-    "ratelimit": 5000000
-  }
-}
-```
-
-This makes three presets available in the UI:
-* **sponsorblock** — strips sponsor, self-promo, and interaction segments from videos.
-* **embed-subs** — downloads English and German subtitles and embeds them into the video file.
-* **limit-rate** — caps download speed to ~5 MB/s.
-
-When multiple presets are selected for a download, they are applied in order. If two presets set the same option, the later one wins.
-
-### Per-download overrides
-
-For one-off tweaks, MeTube can expose a free-text JSON field in the UI ("Custom yt-dlp Options") where users type yt-dlp options that apply only to that single download. This is disabled by default:
-
-```yaml
-environment:
-  - ALLOW_YTDL_OPTIONS_OVERRIDES=true
-```
-
-Once enabled, the field appears under **Advanced Options**. Any options entered there take the highest priority, overriding both global options and selected presets.
-
-> **⚠️ Security note:** Enabling this allows arbitrary yt-dlp API options to be supplied by anyone with access to the UI. Depending on the options used, this may enable arbitrary command execution inside the container. Enable only in trusted environments.
-
-### How the layers combine
-
-When a download starts, the final set of yt-dlp options is built in this order:
-
-1. Start with **global options** (`YTDL_OPTIONS` / `YTDL_OPTIONS_FILE`).
-2. Apply each selected **preset** in order (later presets overwrite earlier ones for conflicting keys).
-3. Apply any **per-download overrides** on top (overwrite everything else for conflicting keys).
-
-MeTube always forces its own flat-extract behaviour during the initial metadata fetch (`extract_flat`, `noplaylist`, etc.); presets cannot override those keys for that phase.
-
-**Example:** Suppose your global options set `"writesubtitles": false`, but you select a preset that sets `"writesubtitles": true`. Subtitles will be written for that download because the preset overrides the global setting. If you additionally enter `{"writesubtitles": false}` in the per-download overrides field, that value wins and subtitles will not be written.
-
-## 🍪 Using browser cookies
-
-In case you need to use your browser's cookies with MeTube, for example to download restricted or private videos:
-
-* Install in your browser an extension to extract cookies:
-  * [Firefox](https://addons.mozilla.org/en-US/firefox/addon/export-cookies-txt/)
-  * [Chrome](https://chrome.google.com/webstore/detail/get-cookiestxt-locally/cclelndahbckbenkjhflpdbgdldlbecc)
-* Extract the cookies you need with the extension and save/export them as `cookies.txt`.
-* In MeTube, open **Advanced Options** and use the **Upload Cookies** button to upload the file.
-* After upload, the cookie indicator should show as active.
-* Use **Delete Cookies** in the same section to remove uploaded cookies.
-
-## 🔗 Sending links to MeTube
-
-Several integrations let you send URLs to MeTube from wherever you are, instead of pasting them into the UI. The browser-based ones make cross-origin requests, so they require `CORS_ALLOWED_ORIGINS` to be set; and if you're on an HTTPS page, your MeTube instance must be served over HTTPS too (with `HTTPS=true` or behind an HTTPS reverse proxy — see below).
-
-__Browser extensions__ allow right-clicking videos and sending them directly to MeTube. Since extensions request from their own origin, set `CORS_ALLOWED_ORIGINS=*`.
-* __Chrome:__ contributed by [Rpsl](https://github.com/rpsl) — install from the [Chrome Webstore](https://chrome.google.com/webstore/detail/metube-downloader/fbmkmdnlhacefjljljlbhkodfmfkijdh) or [from sources](https://github.com/Rpsl/metube-browser-extension).
-* __Firefox:__ contributed by [nanocortex](https://github.com/nanocortex) — install from [Firefox Addons](https://addons.mozilla.org/en-US/firefox/addon/metube-downloader) or get sources [here](https://github.com/nanocortex/metube-firefox-addon).
-
-__Bookmarklets__ send the currently open page to MeTube with one click. Add the origins of the sites where you use them to `CORS_ALLOWED_ORIGINS`, e.g. `https://www.youtube.com,https://www.vimeo.com`. If your instance sits behind authentication, list the origins individually rather than using `*` — only named origins are allowed to send credentials. The code (Chrome and Firefox variants, contributed by [kushfest](https://github.com/kushfest) and [shoonya75](https://github.com/shoonya75)) is in the [Bookmarklets wiki page](https://github.com/alexta69/metube/wiki/Bookmarklets).
-
-__iOS Shortcut:__ [rithask](https://github.com/rithask) created an [iOS shortcut](https://www.icloud.com/shortcuts/66627a9f334c467baabdb2769763a1a6) for sending URLs to MeTube from Safari's share menu; it prompts for your instance address on first use.
-
-__Android:__ [sagheerys](https://github.com/sagheerys) created [MeTube Mobile](https://github.com/sagheerys/metube-mobile), two apps that take links from Android's share menu: Lite pulls finished downloads to the phone and removes them from the server, Super keeps them on the server and streams them.
-
-__Raycast:__ [dotvhs](https://github.com/dotvhs) has created an [extension for Raycast](https://www.raycast.com/dot/metube) for adding videos to MeTube directly from Raycast.
-
-## 🎵 Pairing with a music tagger
-
-MeTube deliberately stops once the file is written — tagging and library organization belong to dedicated tools. Point one at your audio download folder (`AUDIO_DOWNLOAD_DIR`):
-
-* [beets](https://beets.io) — `beet import` matches tracks against MusicBrainz, fixes tags, and files them into an Artist/Album library; headless and scriptable.
-* [MusicBrainz Picard](https://picard.musicbrainz.org) — GUI tagger with acoustic fingerprinting.
-* [Lidarr](https://lidarr.audio) — full music library manager; add the folder as an import path.
-
-## 🔒 HTTPS support, and running behind a reverse proxy
-
-It's possible to configure MeTube to listen in HTTPS mode. `docker-compose` example:
-
-```yaml
-services:
-  metube:
-    image: ghcr.io/alexta69/metube
-    container_name: metube
-    restart: unless-stopped
-    ports:
-      - "8081:8081"
-    volumes:
-      - /path/to/downloads:/downloads
-      - /path/to/ssl/crt:/ssl/crt.pem
-      - /path/to/ssl/key:/ssl/key.pem
-    environment:
-      - HTTPS=true
-      - CERTFILE=/ssl/crt.pem
-      - KEYFILE=/ssl/key.pem
-```
-
-MeTube can also run behind a reverse proxy for HTTPS termination or authentication. When serving under a subdirectory, set `URL_PREFIX` accordingly. MeTube uses WebSocket for real-time updates, so the proxy must pass the `Upgrade`/`Connection` headers, as in this NGINX example:
-
-```nginx
-location /metube/ {
-        proxy_pass http://metube:8081;
-        proxy_http_version 1.1;
-        proxy_set_header Upgrade $http_upgrade;
-        proxy_set_header Connection "upgrade";
-        proxy_set_header Host $host;
-}
-```
-
-Apache, Caddy, and [linuxserver/swag](https://docs.linuxserver.io/general/swag) (with Authelia) examples are in the [Reverse proxy configurations wiki page](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations).
-
-## 🔄 Updating yt-dlp
-
-MeTube is powered by [yt-dlp](https://github.com/yt-dlp/yt-dlp), which requires frequent updates as video sites change their layouts. A new MeTube Docker image is published automatically when a new yt-dlp stable release is available, so keep your container up to date — [watchtower](https://github.com/nicholas-fedor/watchtower) works well for this. To follow yt-dlp's nightly channel instead, set `YTDL_NIGHTLY_UPDATE_TIME`.
-
-## 🔧 Troubleshooting and submitting issues
-
-MeTube is only a UI for [yt-dlp](https://github.com/yt-dlp/yt-dlp). Issues with authentication, postprocessing, permissions, or `YTDL_OPTIONS` should be debugged with yt-dlp directly first — once working, import those options into MeTube. To test inside the container:
+MeTube is only a UI for yt-dlp, so most download failures are yt-dlp's. Reproduce them with yt-dlp inside the container, and once a set of options works there, carry it over to `YTDL_OPTIONS`:
 
 ```bash
 docker exec -ti metube sh
 cd /downloads
+yt-dlp <url>
 ```
 
-Common issues and their fixes are collected in the [Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ) on the wiki.
+The [Troubleshooting FAQ](https://github.com/alexta69/metube/wiki/Troubleshooting-FAQ) covers common problems. Ask questions in [Discussions](https://github.com/alexta69/metube/discussions/categories/q-a); [issues](https://github.com/alexta69/metube/issues) are for bugs in MeTube itself.
 
-## 💡 Submitting feature requests
+## Scope and contributing
 
-MeTube development relies on community contributions. If you need additional features, please submit a PR. Create an issue first to discuss the implementation before writing code — MeTube's scope is deliberately narrow: it downloads well and stops once the file is written. Features that improve the download itself are welcome; post-download file management (tag editing, metadata lookups, library organization) is out of scope regardless of implementation quality — see [AGENTS.md](AGENTS.md) for the full policy. Feature requests without an accompanying PR are unlikely to be fulfilled.
+MeTube's scope is deliberately narrow: it downloads well, and stops once the file is written. Tagging and library organization belong to dedicated tools — point [beets](https://beets.io) (headless, scriptable), [MusicBrainz Picard](https://picard.musicbrainz.org) (GUI, acoustic fingerprinting) or [Lidarr](https://lidarr.audio) (full library manager) at your `AUDIO_DOWNLOAD_DIR`.
 
-## 🛠️ Building and running locally
-
-Make sure you have Node.js 22+ and Python 3.13 installed.
-
-```bash
-# install Angular and build the UI
-cd ui
-curl -fsSL https://get.pnpm.io/install.sh | sh -
-pnpm install
-pnpm run build
-# install python dependencies
-cd ..
-curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
-# run
-uv run python3 app/main.py
-```
-
-A Docker image can be built locally (it will build the UI too):
-
-```bash
-docker build -t metube .
-```
-
-Note that if you're running the server in VSCode, your downloads will go to your user's Downloads folder (this is configured via the environment in `.vscode/launch.json`).
+MeTube relies on community contributions. Features that improve the download itself are welcome as pull requests — open an issue to discuss the approach first, since requests without a PR are unlikely to be implemented. [CONTRIBUTING.md](https://github.com/alexta69/metube/blob/master/CONTRIBUTING.md) has the scope policy and how to build and run MeTube locally.

@@ -6,7 +6,7 @@ body:
 
         MeTube's scope is deliberately narrow: **it downloads well and stops once the file is written.**
         Ideas that improve the download itself are welcome — usually as community PRs, since the
-        maintainer is unlikely to implement requests ([details](https://github.com/alexta69/metube#-submitting-feature-requests)).
+        maintainer is unlikely to implement requests ([details](https://github.com/alexta69/metube/blob/master/CONTRIBUTING.md)).
         Post-download file management is out of scope regardless of implementation quality.
 
         **Check the [wiki](https://github.com/alexta69/metube/wiki) first** — many requests are already a configuration recipe there.
