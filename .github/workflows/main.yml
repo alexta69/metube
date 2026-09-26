@@ -98,17 +98,15 @@ jobs:
     needs: dockerhub-build-push
     runs-on: ubuntu-latest
     steps:
-      - name: Sync README
-        uses: docker://lsiodev/readme-sync:latest
-        env:
-          DOCKERHUB_USERNAME: ${{ secrets.DOCKERHUB_USERNAME }}
-          DOCKERHUB_PASSWORD: ${{ secrets.DOCKERHUB_PASSWORD }}
-          GIT_REPOSITORY: ${{ github.repository }}
-          DOCKER_REPOSITORY: ${{ secrets.DOCKERHUB_REPOSITORY }}
-          GIT_BRANCH: master
+      - name: Checkout
+        uses: actions/checkout@v7
+      - name: Sync README and short description
+        uses: peter-evans/dockerhub-description@v5
         with:
-          entrypoint: node
-          args: /opt/docker-readme-sync/sync
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_PASSWORD }}
+          repository: ${{ secrets.DOCKERHUB_REPOSITORY }}
+          short-description: ${{ github.event.repository.description }}
 
   create-release:
     needs: dockerhub-build-push
