@@ -896,6 +896,16 @@ class Download:
                 os.setpgrp()
             except OSError:
                 pass
+        # A forked child inherits the parent's signal handlers, and the aiohttp
+        # event loop has replaced SIGINT's with asyncio's no-op (plus a wakeup
+        # fd pointing at the parent's loop). Left in place, the SIGINT cancel()
+        # sends is swallowed and every cancel waits out the grace period for
+        # SIGKILL. Restore the default so yt-dlp gets its KeyboardInterrupt.
+        try:
+            signal.set_wakeup_fd(-1)
+            signal.signal(signal.SIGINT, signal.default_int_handler)
+        except ValueError:
+            pass  # not the main thread; nothing was inherited to undo
         # Re-validate every outbound connection at fetch time. validate_url only
         # saw the submitted URL string; this catches redirects, DNS rebinding and
         # attacker-controlled media URLs pulled from a remote manifest, none of
@@ -985,6 +995,10 @@ class Download:
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
             self.status_queue.put({'status': 'error', 'msg': ytdl_logger.failure_message(str(exc))})
+        except KeyboardInterrupt:
+            # cancel()'s SIGINT: the download is being removed, so there is no
+            # status to report; just exit without a traceback.
+            log.info(f"Download interrupted: {self.info.title}")
 
     async def start(self, notifier, executor=None):
         log.info(f"Preparing download for: {self.info.title}")

@@ -3,14 +3,17 @@
 from __future__ import annotations
 
 import asyncio
+import multiprocessing
 import os
 import pickle
 import signal
 import sys
 import tempfile
 import threading
+import time
 import types
 import unittest
+import warnings
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -767,6 +770,51 @@ class AudioTagsParamsTests(unittest.TestCase):
         self.assertEqual(
             [pp["key"] for pp in params["postprocessors"]], ["FFmpegExtractAudio", "FFmpegMetadata"]
         )
+
+
+@unittest.skipUnless("fork" in multiprocessing.get_all_start_methods(), "needs the fork start method")
+class CancelSignalTests(unittest.TestCase):
+    def test_sigint_stops_a_download_forked_from_an_asyncio_app(self):
+        """cancel() sends SIGINT so yt-dlp can wind down, escalating to SIGKILL
+        after a grace period. On Linux the download process is forked from the
+        aiohttp app, whose event loop replaces the SIGINT handler with asyncio's
+        no-op; a forked child inherited it, so SIGINT was always swallowed and
+        every cancel ended in SIGKILL."""
+        download = _make_test_download()
+        download.status_queue = types.SimpleNamespace(put=lambda _: None)
+
+        class SlowYdl:
+            def download(self, urls):
+                time.sleep(20)
+                return 0
+
+        # What loop.add_signal_handler(SIGINT, ...) leaves in the parent.
+        previous = signal.signal(signal.SIGINT, lambda *_: None)
+        try:
+            with patch('ytdl.install_socket_guard'), \
+                    patch.object(Download, '_make_youtube_dl', return_value=SlowYdl()):
+                proc = multiprocessing.get_context('fork').Process(target=download._download)
+                # Earlier tests leave executor threads behind; MeTube also forks
+                # from a threaded process, so the warning is expected here.
+                with warnings.catch_warnings():
+                    warnings.simplefilter('ignore', DeprecationWarning)
+                    proc.start()
+        finally:
+            signal.signal(signal.SIGINT, previous)
+
+        try:
+            deadline = time.monotonic() + 5
+            while os.getpgid(proc.pid) != proc.pid and time.monotonic() < deadline:
+                time.sleep(0.05)
+            time.sleep(0.5)  # let it get past setup and into download()
+            os.killpg(proc.pid, signal.SIGINT)
+            proc.join(5)
+            self.assertFalse(proc.is_alive(), 'SIGINT did not stop the download process')
+            self.assertEqual(proc.exitcode, 0)
+        finally:
+            if proc.is_alive():
+                proc.kill()
+                proc.join()
 
 
 class ProgressThrottleTests(unittest.TestCase):
