@@ -314,6 +314,57 @@ describe('App', () => {
     expect(app.formatLabel(base)).toBe('-');
   });
 
+  describe('audio Auto format and Tags dropdown', () => {
+    it('lists Auto first but still defaults a switch to Audio to M4A', () => {
+      const app = TestBed.createComponent(App).componentInstance;
+      expect(app.audioFormats[0].id).toBe('auto');
+
+      app.downloadType = 'audio';
+      app.downloadTypeChanged();
+
+      expect(app.format).toBe('m4a');
+    });
+
+    it('sends the remembered Tags choice with the download', () => {
+      const cookies = TestBed.inject(CookieService);
+      cookies.set('metube_audio_tags', 'none');
+      const app = TestBed.createComponent(App).componentInstance;
+
+      expect(app['buildAddPayload']().audioTags).toBe('none');
+    });
+
+    it('falls back to With cover for an unknown remembered choice', () => {
+      TestBed.inject(CookieService).set('metube_audio_tags', 'everything');
+      const app = TestBed.createComponent(App).componentInstance;
+
+      expect(app.audioTags).toBe('with_cover');
+    });
+
+    it('shows None, disabled, for WAV without forgetting the choice', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      app.downloadType = 'audio';
+      app.downloadTypeChanged();
+      app.audioTagsChanged('no_cover');
+      app.format = 'wav';
+      app.formatChanged();
+      fixture.detectChanges();
+      // ngModel writes the value and disabled state in a microtask.
+      await Promise.resolve();
+      fixture.detectChanges();
+
+      const select = (fixture.nativeElement as HTMLElement).querySelector<HTMLSelectElement>(
+        'select[name=audioTags]',
+      );
+      expect(select?.disabled).toBe(true);
+      expect(select?.selectedOptions[0]?.textContent?.trim()).toBe('None');
+
+      app.format = 'mp3';
+      app.formatChanged();
+      expect(app.displayedAudioTags()).toBe('no_cover');
+    });
+  });
+
   it('includes titleRegex in subscribe payload', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;

@@ -43,6 +43,7 @@ export const VIDEO_QUALITIES: Quality[] = [
 ];
 
 export const AUDIO_FORMATS: AudioFormatOption[] = [
+  { id: "auto", text: "Auto", qualities: [{ id: "best", text: "Best" }] },
   {
     id: "m4a",
     text: "M4A",
@@ -65,6 +66,16 @@ export const AUDIO_FORMATS: AudioFormatOption[] = [
   { id: "opus", text: "OPUS", qualities: [{ id: "best", text: "Best" }] },
   { id: "wav", text: "WAV", qualities: [{ id: "best", text: "Best" }] },
   { id: "flac", text: "FLAC", qualities: [{ id: "best", text: "Best" }] },
+];
+
+// Selected when switching to Audio; Auto is listed first to match Video, but
+// the default stays what it was before Auto existed.
+export const DEFAULT_AUDIO_FORMAT = "m4a";
+
+export const AUDIO_TAGS: Option[] = [
+  { id: "with_cover", text: "With cover" },
+  { id: "no_cover", text: "No cover" },
+  { id: "none", text: "None" },
 ];
 
 export const CAPTION_FORMATS: Option[] = [

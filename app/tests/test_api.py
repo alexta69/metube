@@ -386,6 +386,64 @@ async def test_subscribe_defaults_sponsorblock_off(mock_dqueue, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_add_audio_auto_passes_audio_tags(mock_dqueue):
+    req = _json_request(
+        _valid_video_add_body(download_type="audio", format="auto", audio_tags="none")
+    )
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call.args[3] == "auto"
+    assert call.kwargs["audio_tags"] == "none"
+
+
+@pytest.mark.asyncio
+async def test_add_defaults_audio_tags_to_with_cover(mock_dqueue):
+    # API clients that predate the field keep today's cover-and-tags behaviour.
+    req = _json_request(_valid_video_add_body(download_type="audio", format="mp3"))
+    await main.add(req)
+    assert mock_dqueue.add.await_args.kwargs["audio_tags"] == "with_cover"
+
+
+@pytest.mark.asyncio
+async def test_add_invalid_audio_tags(mock_dqueue):
+    req = _json_request(_valid_video_add_body(download_type="audio", format="mp3", audio_tags="all"))
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(req)
+    mock_dqueue.add.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_add_audio_auto_allows_only_best_quality(mock_dqueue):
+    req = _json_request(_valid_video_add_body(download_type="audio", format="auto", quality="192"))
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(req)
+
+
+@pytest.mark.asyncio
+async def test_add_legacy_auto_format_is_not_read_as_audio(mock_dqueue):
+    # 'auto' became an audio format after the legacy API was retired; a legacy
+    # body carrying it must not turn into an audio download.
+    req = _json_request({"url": "https://example.com/v", "format": "auto", "quality": "best"})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(req)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_passes_audio_tags(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request(
+        {
+            **_valid_video_add_body(download_type="audio", format="auto", audio_tags="none"),
+            "check_interval_minutes": 60,
+        }
+    )
+    resp = await main.subscribe(req)
+    assert resp.status == 200
+    assert main.submgr.add_subscription.await_args.kwargs["audio_tags"] == "none"
+
+
+@pytest.mark.asyncio
 async def test_subscribe_without_clip_fields_stores_none(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
     req = _json_request({**_valid_video_add_body(), "check_interval_minutes": 60})

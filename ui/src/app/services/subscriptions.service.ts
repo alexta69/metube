@@ -93,6 +93,7 @@ export class SubscriptionsService {
       auto_start: payload.autoStart,
       split_by_chapters: payload.splitByChapters,
       sponsorblock: payload.sponsorblock,
+      audio_tags: payload.audioTags,
       chapter_template: payload.chapterTemplate,
       subtitle_language: payload.subtitleLanguage,
       subtitle_mode: payload.subtitleMode,

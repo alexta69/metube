@@ -484,6 +484,7 @@ class DownloadInfo:
         live_status=None,
         live_release_timestamp=None,
         sponsorblock=False,
+        audio_tags='with_cover',
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -510,6 +511,7 @@ class DownloadInfo:
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.sponsorblock = sponsorblock
+        self.audio_tags = audio_tags
         self.chapter_template = chapter_template
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
@@ -581,6 +583,8 @@ class DownloadInfo:
             self.split_by_chapters = False
         if not hasattr(self, "sponsorblock"):
             self.sponsorblock = False
+        if not hasattr(self, "audio_tags"):
+            self.audio_tags = "with_cover"
         if not hasattr(self, "chapter_template"):
             self.chapter_template = ""
         if not hasattr(self, "subtitle_language"):
@@ -626,6 +630,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "playlist_item_limit",
     "split_by_chapters",
     "sponsorblock",
+    "audio_tags",
     "chapter_template",
     "subtitle_language",
     "subtitle_mode",
@@ -737,6 +742,7 @@ class Download:
             ytdl_opts,
             subtitle_language=getattr(info, 'subtitle_language', 'en'),
             subtitle_mode=getattr(info, 'subtitle_mode', 'prefer_manual'),
+            audio_tags=getattr(info, 'audio_tags', 'with_cover'),
         )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
@@ -1773,6 +1779,7 @@ class DownloadQueue:
         _add_gen=None,
         retry_entry=None,
         sponsorblock=False,
+        audio_tags='with_cover',
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1817,6 +1824,7 @@ class DownloadQueue:
                 _add_gen,
                 retry_entry,
                 sponsorblock=sponsorblock,
+                audio_tags=audio_tags,
             )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
@@ -1885,6 +1893,7 @@ class DownloadQueue:
                         already,
                         _add_gen,
                         sponsorblock=sponsorblock,
+                        audio_tags=audio_tags,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -1928,6 +1937,7 @@ class DownloadQueue:
                 live_status=entry.get('live_status'),
                 live_release_timestamp=entry.get('release_timestamp'),
                 sponsorblock=sponsorblock,
+                audio_tags=audio_tags,
             )
             error = await self.__add_download(dl, auto_start)
             if error is not None:
@@ -2013,13 +2023,14 @@ class DownloadQueue:
         _add_gen=None,
         retry_entry=None,
         sponsorblock=False,
+        audio_tags='with_cover',
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
         log.info(
             f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
             f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=} {sponsorblock=}'
+            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=} {sponsorblock=} {audio_tags=}'
         )
         if already is None:
             _add_gen = self._add_generation
@@ -2090,6 +2101,7 @@ class DownloadQueue:
             _add_gen,
             retry_entry,
             sponsorblock=sponsorblock,
+            audio_tags=audio_tags,
         )
 
     async def retry(self, id):
@@ -2127,6 +2139,7 @@ class DownloadQueue:
             info.clip_end,
             retry_entry=info.entry,
             sponsorblock=info.sponsorblock,
+            audio_tags=info.audio_tags,
         )
 
     async def add_entry(
@@ -2149,6 +2162,7 @@ class DownloadQueue:
         clip_start=None,
         clip_end=None,
         sponsorblock=False,
+        audio_tags='with_cover',
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -2175,6 +2189,7 @@ class DownloadQueue:
             already,
             None,
             sponsorblock=sponsorblock,
+            audio_tags=audio_tags,
         )
 
     async def start_pending(self, ids):

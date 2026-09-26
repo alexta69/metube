@@ -12,6 +12,7 @@ export interface Download {
   playlist_item_limit: number;
   split_by_chapters?: boolean;
   sponsorblock?: boolean;
+  audio_tags?: string;
   chapter_template?: string;
   subtitle_language?: string;
   subtitle_mode?: string;

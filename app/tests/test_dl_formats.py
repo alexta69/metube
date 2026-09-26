@@ -39,6 +39,9 @@ class DlFormatsTests(unittest.TestCase):
             with self.subTest(fmt=fmt):
                 self.assertIn(f"ext={fmt}", get_format("audio", "auto", fmt, "best"))
 
+    def test_audio_auto_takes_what_the_site_serves(self):
+        self.assertEqual(get_format("audio", "auto", "auto", "best"), "bestaudio/best")
+
     def test_video_unknown_format_raises(self):
         with self.assertRaises(ValueError):
             get_format("video", "auto", "mkv", "best")
@@ -180,3 +183,93 @@ class MergeYtdlOptionLayersTests(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+def _pp_keys(opts):
+    return [p["key"] for p in opts["postprocessors"]]
+
+
+def _extract_audio(opts):
+    return next(p for p in opts["postprocessors"] if p["key"] == "FFmpegExtractAudio")
+
+
+class AudioTagsTests(unittest.TestCase):
+    TAG_CHAIN = ["FFmpegExtractAudio", "FFmpegThumbnailsConvertor", "FFmpegMetadata", "EmbedThumbnail"]
+
+    def test_with_cover_is_the_existing_chain(self):
+        for fmt in ("auto", "m4a", "mp3", "opus", "flac"):
+            with self.subTest(fmt=fmt):
+                opts = get_opts("audio", "auto", fmt, "best", {}, audio_tags="with_cover")
+                self.assertEqual(_pp_keys(opts), self.TAG_CHAIN)
+                self.assertTrue(opts["writethumbnail"])
+
+    def test_default_and_unknown_modes_mean_with_cover(self):
+        self.assertEqual(_pp_keys(get_opts("audio", "auto", "mp3", "best", {})), self.TAG_CHAIN)
+        self.assertEqual(
+            _pp_keys(get_opts("audio", "auto", "mp3", "best", {}, audio_tags="bogus")), self.TAG_CHAIN
+        )
+
+    def test_no_cover_writes_tags_only(self):
+        opts = get_opts("audio", "auto", "mp3", "best", {}, audio_tags="no_cover")
+        self.assertEqual(_pp_keys(opts), ["FFmpegExtractAudio", "FFmpegMetadata"])
+        self.assertNotIn("writethumbnail", opts)
+
+    def test_none_writes_nothing_into_the_file(self):
+        for fmt in ("auto", "mp3"):
+            with self.subTest(fmt=fmt):
+                opts = get_opts("audio", "auto", fmt, "best", {}, audio_tags="none")
+                self.assertEqual(_pp_keys(opts), ["FFmpegExtractAudio"])
+                self.assertNotIn("writethumbnail", opts)
+
+    def test_wav_never_gets_tags(self):
+        for mode in ("with_cover", "no_cover", "none"):
+            with self.subTest(mode=mode):
+                opts = get_opts("audio", "auto", "wav", "best", {}, audio_tags=mode)
+                self.assertEqual(_pp_keys(opts), ["FFmpegExtractAudio"])
+
+    def test_user_writethumbnail_still_wins(self):
+        # Any writethumbnail key in YTDL_OPTIONS means the user manages
+        # thumbnails, so the dropdown does not add the chain back.
+        for mode in ("with_cover", "no_cover"):
+            with self.subTest(mode=mode):
+                opts = get_opts("audio", "auto", "mp3", "best", {"writethumbnail": False}, audio_tags=mode)
+                self.assertEqual(_pp_keys(opts), ["FFmpegExtractAudio"])
+                self.assertIs(opts["writethumbnail"], False)
+
+    def test_tags_do_not_apply_to_video(self):
+        opts = get_opts("video", "auto", "any", "best", {}, audio_tags="with_cover")
+        self.assertEqual(opts["postprocessors"], [])
+
+
+class AutoAudioMappingTests(unittest.TestCase):
+    """The "auto" rules, resolved by yt-dlp's own --audio-format rule parser."""
+
+    @staticmethod
+    def _target(audio_tags, downloaded_ext):
+        from yt_dlp.postprocessor.ffmpeg import resolve_mapping
+
+        mapping = _extract_audio(get_opts("audio", "auto", "auto", "best", {}, audio_tags=audio_tags))[
+            "preferredcodec"
+        ]
+        return resolve_mapping(downloaded_ext, mapping)[0]
+
+    def test_without_tags_audio_files_are_left_as_served(self):
+        # No rule means FFmpegExtractAudio returns before ffprobe/ffmpeg run.
+        for ext in ("webm", "m4a", "opus", "mp3", "ogg", "flac", "wav"):
+            with self.subTest(ext=ext):
+                self.assertIsNone(self._target("none", ext))
+
+    def test_without_tags_a_video_file_still_yields_audio(self):
+        for ext in ("mp4", "mkv", "mov", "flv"):
+            with self.subTest(ext=ext):
+                self.assertEqual(self._target("none", ext), "best")
+
+    def test_with_tags_the_codec_is_kept(self):
+        for ext in ("webm", "m4a", "opus", "mp3", "ogg", "flac", "mp4"):
+            with self.subTest(ext=ext):
+                self.assertEqual(self._target("with_cover", ext), "best")
+
+    def test_with_tags_files_that_cannot_hold_a_cover_are_converted(self):
+        self.assertEqual(self._target("with_cover", "wav"), "flac")
+        self.assertEqual(self._target("with_cover", "aiff"), "flac")
+        self.assertEqual(self._target("with_cover", "wma"), "mp3")

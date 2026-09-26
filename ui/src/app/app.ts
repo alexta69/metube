@@ -29,6 +29,8 @@ import {
   VIDEO_FORMATS,
   VIDEO_QUALITIES,
   AUDIO_FORMATS,
+  AUDIO_TAGS,
+  DEFAULT_AUDIO_FORMAT,
   CAPTION_FORMATS,
   THUMBNAIL_FORMATS,
   State,
@@ -73,6 +75,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   videoCodecs: Option[] = VIDEO_CODECS;
   videoFormats: Option[] = VIDEO_FORMATS;
   audioFormats: AudioFormatOption[] = AUDIO_FORMATS;
+  audioTagsOptions: Option[] = AUDIO_TAGS;
   captionFormats: Option[] = CAPTION_FORMATS;
   thumbnailFormats: Option[] = THUMBNAIL_FORMATS;
   formatOptions: Option[] = [];
@@ -87,6 +90,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   playlistItemLimit!: number;
   splitByChapters: boolean;
   sponsorblock: boolean;
+  audioTags: string;
   chapterTemplate: string;
   clipStart = '';
   clipEnd = '';
@@ -264,6 +268,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     this.sponsorblock = this.cookieService.get('metube_sponsorblock') === 'true';
+    this.audioTags = this.cookieService.get('metube_audio_tags') || 'with_cover';
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.clipStart = this.cookieService.get('metube_clip_start') || '';
@@ -279,6 +284,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
     if (!allowedVideoCodecs.has(this.codec)) {
       this.codec = 'auto';
+    }
+    if (!this.audioTagsOptions.some(o => o.id === this.audioTags)) {
+      this.audioTags = 'with_cover';
     }
     const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
     if (!allowedSubtitleModes.has(this.subtitleMode)) {
@@ -863,6 +871,17 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
 
+  audioTagsChanged(value: string) {
+    this.audioTags = value;
+    this.cookieService.set('metube_audio_tags', this.audioTags, { expires: this.settingsCookieExpiryDays });
+  }
+
+  // WAV cannot carry tags in the audio chain, so the dropdown shows None there
+  // (disabled) without overwriting the saved choice for other formats.
+  displayedAudioTags(): string {
+    return this.format === 'wav' ? 'none' : this.audioTags;
+  }
+
   sponsorblockChanged() {
     this.cookieService.set('metube_sponsorblock', this.sponsorblock ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
   }
@@ -1045,7 +1064,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     } else if (this.downloadType === 'audio') {
       const allowedFormats = new Set(this.audioFormats.map(f => f.id));
       if (resetForTypeChange || !allowedFormats.has(this.format)) {
-        this.format = this.audioFormats[0].id;
+        this.format = DEFAULT_AUDIO_FORMAT;
       }
     } else if (this.downloadType === 'captions') {
       const allowedFormats = new Set(this.captionFormats.map(f => f.id));
@@ -1124,6 +1143,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       autoStart: overrides.autoStart ?? this.autoStart,
       splitByChapters: overrides.splitByChapters ?? this.splitByChapters,
       sponsorblock: overrides.sponsorblock ?? this.sponsorblock,
+      audioTags: overrides.audioTags ?? this.audioTags,
       chapterTemplate: overrides.chapterTemplate ?? this.chapterTemplate,
       subtitleLanguage: overrides.subtitleLanguage ?? this.subtitleLanguage,
       subtitleMode: overrides.subtitleMode ?? this.subtitleMode,

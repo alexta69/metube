@@ -450,7 +450,8 @@ SUBTITLE_LANGUAGE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,34}$')
 VALID_DOWNLOAD_TYPES = {'video', 'audio', 'captions', 'thumbnail'}
 VALID_VIDEO_CODECS = {'auto', 'h264', 'h265', 'av1', 'vp9'}
 VALID_VIDEO_FORMATS = {'any', 'mp4', 'ios'}
-VALID_AUDIO_FORMATS = {'m4a', 'mp3', 'opus', 'wav', 'flac'}
+VALID_AUDIO_FORMATS = {'auto', 'm4a', 'mp3', 'opus', 'wav', 'flac'}
+VALID_AUDIO_TAGS = {'with_cover', 'no_cover', 'none'}
 VALID_THUMBNAIL_FORMATS = {'jpg'}
 def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
     if value is None or value == '':
@@ -628,7 +629,8 @@ def _migrate_legacy_request(post: dict) -> dict:
     old_quality = str(post.get("quality") or "best").strip().lower()
     old_video_codec = str(post.get("video_codec") or "auto").strip().lower()
 
-    if old_format in VALID_AUDIO_FORMATS:
+    # 'auto' postdates the legacy API, where it never named an audio format.
+    if old_format in VALID_AUDIO_FORMATS - {'auto'}:
         post["download_type"] = "audio"
         post["codec"] = "auto"
         post["format"] = old_format
@@ -832,6 +834,7 @@ def parse_download_options(post: dict) -> dict:
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
     sponsorblock = bool(post.get('sponsorblock'))
+    audio_tags = str(post.get('audio_tags') or 'with_cover').strip().lower()
     chapter_template = post.get('chapter_template')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
@@ -870,6 +873,9 @@ def parse_download_options(post: dict) -> dict:
     for preset_name in ytdl_options_presets:
         if preset_name not in config.YTDL_OPTIONS_PRESETS:
             raise web.HTTPBadRequest(reason='ytdl_options_presets must only contain configured preset names')
+
+    if audio_tags not in VALID_AUDIO_TAGS:
+        raise web.HTTPBadRequest(reason=f'audio_tags must be one of {sorted(VALID_AUDIO_TAGS)}')
 
     if download_type not in VALID_DOWNLOAD_TYPES:
         raise web.HTTPBadRequest(reason=f'download_type must be one of {sorted(VALID_DOWNLOAD_TYPES)}')
@@ -953,6 +959,7 @@ def parse_download_options(post: dict) -> dict:
         'auto_start': auto_start,
         'split_by_chapters': split_by_chapters,
         'sponsorblock': sponsorblock,
+        'audio_tags': audio_tags,
         'chapter_template': chapter_template,
         'subtitle_language': subtitle_language,
         'subtitle_mode': subtitle_mode,
@@ -999,6 +1006,7 @@ async def add(request):
         o['clip_start'],
         o['clip_end'],
         sponsorblock=o['sponsorblock'],
+        audio_tags=o['audio_tags'],
     )
     return web.Response(text=serializer.encode(status))
 
@@ -1080,6 +1088,7 @@ async def subscribe(request):
         ytdl_options_presets=o['ytdl_options_presets'],
         ytdl_options_overrides=o['ytdl_options_overrides'],
         sponsorblock=o['sponsorblock'],
+        audio_tags=o['audio_tags'],
         title_regex=post.get('title_regex'),
         skip_subscriber_only=skip_subscriber_only,
         clip_start=sub_clip_start,

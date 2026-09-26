@@ -587,6 +587,66 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
             self.assertTrue(reloaded.get(sub_id).sponsorblock)
 
+    async def test_check_now_applies_subscription_audio_tags(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                    ),
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [
+                            {"id": "v2", "title": "Two", "webpage_url": "https://example.com/v2"},
+                            {"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"},
+                        ],
+                    ),
+                ],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="audio",
+                    codec="auto",
+                    format="auto",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    audio_tags="none",
+                )
+                sub_id = result["subscription"]["id"]
+                await mgr.check_now([sub_id])
+
+            self.assertEqual(len(queue.entries), 1)
+            _entry, _args, kwargs = queue.entries[0]
+            self.assertEqual(kwargs["audio_tags"], "none")
+
+    async def test_audio_tags_survive_reload_and_default_to_with_cover(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+            sub_id = await self._add_one_subscription(mgr)
+            # Records written before the field existed simply take the default.
+            self.assertEqual(mgr.get(sub_id).audio_tags, "with_cover")
+
+            mgr.get(sub_id).audio_tags = "no_cover"
+            async with mgr._lock:
+                mgr._save_locked()
+
+            reloaded = SubscriptionManager(cfg, _Queue(), _Notifier())
+            self.assertEqual(reloaded.get(sub_id).audio_tags, "no_cover")
+
     async def test_check_now_queues_subscriber_only_when_skip_disabled(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()

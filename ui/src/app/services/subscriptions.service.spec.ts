@@ -29,6 +29,7 @@ function basePayload(): SubscribePayload {
     autoStart: true,
     splitByChapters: false,
     sponsorblock: false,
+    audioTags: 'with_cover',
     chapterTemplate: '',
     subtitleLanguage: 'en',
     subtitleMode: 'prefer_manual',
@@ -65,6 +66,15 @@ describe('SubscriptionsService', () => {
     const req = httpMock.expectOne('subscribe');
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual(expect.objectContaining({ sponsorblock: true }));
+    req.flush({ status: 'ok' });
+  });
+
+  it('subscribe() carries the audio tags choice', () => {
+    service
+      .subscribe({ ...basePayload(), downloadType: 'audio', format: 'auto', audioTags: 'none' })
+      .subscribe();
+    const req = httpMock.expectOne('subscribe');
+    expect(req.request.body).toEqual(expect.objectContaining({ audio_tags: 'none' }));
     req.flush({ status: 'ok' });
   });
 

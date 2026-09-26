@@ -604,6 +604,32 @@ async def test_retry_carries_the_sponsorblock_flag(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_retry_carries_the_audio_tags_choice(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    await dq.done.put(
+        Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url, audio_tags="none"))
+    )
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    assert dq.queue.get(url).info.audio_tags == "none"
+
+
+@pytest.mark.asyncio
 async def test_add_entry_duplicate_while_pending_is_skipped_not_clobbered(dq_env):
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)

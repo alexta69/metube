@@ -18,6 +18,7 @@ export interface AddDownloadPayload {
   autoStart: boolean;
   splitByChapters: boolean;
   sponsorblock: boolean;
+  audioTags: string;
   chapterTemplate: string;
   subtitleLanguage: string;
   subtitleMode: string;
@@ -150,6 +151,7 @@ export class DownloadsService {
       auto_start: payload.autoStart,
       split_by_chapters: payload.splitByChapters,
       sponsorblock: payload.sponsorblock,
+      audio_tags: payload.audioTags,
       chapter_template: payload.chapterTemplate,
       subtitle_language: payload.subtitleLanguage,
       subtitle_mode: payload.subtitleMode,

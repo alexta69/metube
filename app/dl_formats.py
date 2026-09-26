@@ -1,7 +1,26 @@
 import copy
 
-AUDIO_FORMATS = ("m4a", "mp3", "opus", "wav", "flac")
+AUDIO_FORMATS = ("auto", "m4a", "mp3", "opus", "wav", "flac")
+AUDIO_TAGS_MODES = ("with_cover", "no_cover", "none")
 CAPTION_MODES = ("auto_only", "manual_only", "prefer_manual", "prefer_auto")
+
+# FFmpegExtractAudio targets for the "auto" audio format, in yt-dlp's
+# --audio-format rule syntax ("SOURCE>TARGET/.../FALLBACK", matched on the
+# downloaded file's extension).
+#
+# With tags: "best" keeps the codec the site served and only moves it into a
+# container that can carry tags and a cover (YouTube's webm Opus -> .opus, by
+# stream copy). The explicit rules cover the files "best" would leave as they
+# are but EmbedThumbnail refuses; a failed embed would fail the download.
+_AUTO_AUDIO_TAGGABLE = "wav>flac/aiff>flac/wma>mp3/best"
+# Without tags the file is kept exactly as served; only a video container
+# (a site with no audio-only stream) has its audio copied out. An extension
+# with no rule is skipped before ffmpeg runs at all. webm is deliberately
+# absent: YouTube's audio-only streams are webm.
+_AUTO_AUDIO_AS_SERVED = "/".join(
+    f"{ext}>best"
+    for ext in ("mp4", "m4v", "mov", "mkv", "flv", "avi", "3gp", "wmv", "mpg", "ogv")
+)
 
 
 def merge_ytdl_option_layers(presets, overrides, presets_config) -> dict:
@@ -73,6 +92,8 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
     if download_type == "audio":
         if format not in AUDIO_FORMATS:
             raise ValueError(f"Unknown audio format {format}")
+        if format == "auto":
+            return "bestaudio/best"
         return f"bestaudio[ext={format}]/bestaudio/best"
 
     if download_type == "video":
@@ -101,6 +122,7 @@ def get_opts(
     ytdl_opts: dict,
     subtitle_language: str = "en",
     subtitle_mode: str = "prefer_manual",
+    audio_tags: str = "with_cover",
 ) -> dict:
     """
     Returns extra yt-dlp options/postprocessors.
@@ -111,6 +133,8 @@ def get_opts(
       format (str): selected format/profile
       quality (str): selected quality
       ytdl_opts (dict): current options selected
+      audio_tags (str): for audio, what to write into the file
+        (with_cover, no_cover, none)
 
     Returns:
       dict: extended options
@@ -122,25 +146,36 @@ def get_opts(
     postprocessors = []
 
     if download_type == "audio":
+        if audio_tags not in AUDIO_TAGS_MODES:
+            audio_tags = "with_cover"
+
+        if format == "auto":
+            preferredcodec = _AUTO_AUDIO_AS_SERVED if audio_tags == "none" else _AUTO_AUDIO_TAGGABLE
+        else:
+            preferredcodec = format
         postprocessors.append(
             {
                 "key": "FFmpegExtractAudio",
-                "preferredcodec": format,
+                "preferredcodec": preferredcodec,
                 "preferredquality": 0 if quality == "best" else quality,
             }
         )
 
-        if format != "wav" and "writethumbnail" not in opts:
-            opts["writethumbnail"] = True
-            postprocessors.append(
-                {
-                    "key": "FFmpegThumbnailsConvertor",
-                    "format": "jpg",
-                    "when": "before_dl",
-                }
-            )
+        # A writethumbnail key in the user's options means they manage
+        # thumbnails themselves, so the whole tagging chain stays off.
+        if format != "wav" and audio_tags != "none" and "writethumbnail" not in opts:
+            if audio_tags == "with_cover":
+                opts["writethumbnail"] = True
+                postprocessors.append(
+                    {
+                        "key": "FFmpegThumbnailsConvertor",
+                        "format": "jpg",
+                        "when": "before_dl",
+                    }
+                )
             postprocessors.append({"key": "FFmpegMetadata"})
-            postprocessors.append({"key": "EmbedThumbnail"})
+            if audio_tags == "with_cover":
+                postprocessors.append({"key": "EmbedThumbnail"})
 
     if download_type == "thumbnail":
         opts["skip_download"] = True

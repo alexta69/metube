@@ -744,6 +744,31 @@ class SponsorBlockPostprocessorTests(unittest.TestCase):
         self.assertEqual(params['outtmpl']['chapter'], '%(section_number)s.%(ext)s')
 
 
+class AudioTagsParamsTests(unittest.TestCase):
+    """The per-download Tags choice reaches the yt-dlp params the subprocess builds."""
+
+    @staticmethod
+    def _audio_download(fmt, audio_tags):
+        download = _make_test_download()
+        download.info.download_type = "audio"
+        download.info.audio_tags = audio_tags
+        return Download(
+            "/tmp", "/tmp", "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", fmt, {}, download.info
+        )
+
+    def test_auto_without_tags_adds_no_tagging(self):
+        params = _capture_ytdl_params(self._audio_download("auto", "none"))
+        self.assertEqual(params["format"], "bestaudio/best")
+        self.assertEqual([pp["key"] for pp in params["postprocessors"]], ["FFmpegExtractAudio"])
+        self.assertNotIn("writethumbnail", params)
+
+    def test_no_cover_writes_tags_only(self):
+        params = _capture_ytdl_params(self._audio_download("mp3", "no_cover"))
+        self.assertEqual(
+            [pp["key"] for pp in params["postprocessors"]], ["FFmpegExtractAudio", "FFmpegMetadata"]
+        )
+
+
 class ProgressThrottleTests(unittest.TestCase):
     def test_downloading_ticks_are_throttled(self):
         dl = _make_test_download()
@@ -1156,6 +1181,13 @@ class DownloadInfoSetstateTests(unittest.TestCase):
         self.assertEqual(di.playlist_item_limit, 0)
         self.assertFalse(di.split_by_chapters)
         self.assertEqual(di.chapter_template, "")
+
+    def test_records_from_before_audio_tags_keep_the_cover_and_tags(self):
+        state = self._base_state(download_type="audio", codec="auto", format="mp3", quality="best")
+        state.pop("audio_tags", None)
+        di = DownloadInfo.__new__(DownloadInfo)
+        di.__setstate__(state)
+        self.assertEqual(di.audio_tags, "with_cover")
 
 
 class CompactPersistedEntryTests(unittest.TestCase):

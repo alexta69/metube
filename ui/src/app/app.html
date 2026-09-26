@@ -160,9 +160,11 @@
       </div>
 
       <!-- Options Row -->
+      <!-- Four fields per row are too tight at ~768px for the longer values, so
+           every four-field type goes 2×2 from md to lg and one row from lg up. -->
       <div class="row mb-3 g-3">
         @if (downloadType === 'video') {
-          <div class="col-md-3">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Type</span>
               <select class="form-select"
@@ -176,7 +178,7 @@
               </select>
             </div>
           </div>
-          <div class="col-md-3">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Codec</span>
               <select class="form-select"
@@ -190,7 +192,7 @@
               </select>
             </div>
           </div>
-          <div class="col-md-3">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Format</span>
               <select class="form-select"
@@ -204,7 +206,7 @@
               </select>
             </div>
           </div>
-          <div class="col-md-3">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Quality</span>
               <select class="form-select"
@@ -219,7 +221,7 @@
             </div>
           </div>
         } @else if (downloadType === 'audio') {
-          <div class="col-md-4">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Type</span>
               <select class="form-select"
@@ -233,7 +235,7 @@
               </select>
             </div>
           </div>
-          <div class="col-md-4">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Format</span>
               <select class="form-select"
@@ -247,7 +249,7 @@
               </select>
             </div>
           </div>
-          <div class="col-md-4">
+          <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Quality</span>
               <select class="form-select"
@@ -261,8 +263,21 @@
               </select>
             </div>
           </div>
+          <div class="col-12 col-md-6 col-lg-3">
+            <div class="input-group">
+              <span class="input-group-text help-title" ngbPopover="Tags and cover art written into the file. Format Auto with Tags None saves the audio exactly as the site serves it." triggers="click" autoClose="outside" container="body">Tags</span>
+              <select class="form-select"
+                name="audioTags"
+                [ngModel]="displayedAudioTags()"
+                (ngModelChange)="audioTagsChanged($event)"
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading || format === 'wav'">
+                @for (t of audioTagsOptions; track t.id) {
+                  <option [ngValue]="t.id">{{ t.text }}</option>
+                }
+              </select>
+            </div>
+          </div>
         } @else if (downloadType === 'captions') {
-          <!-- 4× col-md-3 is too tight at ~768px (long addons wrap the 4th field); 2×2 md–lg, one row lg+ -->
           <div class="col-12 col-md-6 col-lg-3">
             <div class="input-group">
               <span class="input-group-text">Type</span>
