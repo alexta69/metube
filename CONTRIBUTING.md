@@ -34,7 +34,7 @@ request must be release-ready exactly as merged.
 
 ## Building and running locally
 
-You need Node.js 22+ and Python 3.13.
+You need Node.js 22+ and Python 3.13 or newer (the Docker image ships 3.14).
 
 ```bash
 # install Angular and build the UI
