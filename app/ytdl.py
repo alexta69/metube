@@ -81,6 +81,41 @@ class _DownloadYtdlLogger:
         return '\n'.join(lines)
 
 
+class _ExtractYtdlLogger(_DownloadYtdlLogger):
+    """Forward yt-dlp output from an add's extraction and remember why it came
+    back empty. extract_info returns None, without raising, in two cases: the
+    URL is already recorded in the download archive (checked before any
+    extraction), or an ignoreerrors option turned an extraction error into a
+    logged one."""
+
+    # The notice YoutubeDL.extract_info prints for an archived URL. Pinned by a
+    # real-extraction test, so a yt-dlp upgrade that rewords it fails there.
+    _ARCHIVE_NOTICE = 'has already been recorded in the archive'
+
+    def __init__(self):
+        super().__init__()
+        self.in_archive = False
+        self.errors = []
+
+    def debug(self, msg):
+        super().debug(msg)
+        if msg is not None and self._ARCHIVE_NOTICE in str(msg):
+            self.in_archive = True
+
+    def error(self, msg):
+        super().error(msg)
+        if msg is not None and (error := str(msg).strip()):
+            self.errors.append(error)
+
+    def empty_result_message(self):
+        if self.in_archive:
+            return ('Already recorded in the download archive, so yt-dlp skipped it. To download it '
+                    'again, use a preset or override with "download_archive": null.')
+        if self.errors:
+            return self.errors[-1]
+        return 'yt-dlp returned nothing for this URL; see the MeTube log for its output.'
+
+
 # Python 3.14 switches the default multiprocessing start method on Linux
 # (this app's only supported deployment target, per the Dockerfile) from fork
 # to forkserver. Download._download relies on inheriting process state the
@@ -1592,7 +1627,7 @@ class DownloadQueue:
         ))
         return opts
 
-    def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None, logger=None):
         # NOTE: extraction runs in the main process, so the connect-time socket
         # guard (installed only in the download subprocess) does not apply here.
         # The ingress validate_url check guards the submitted URL, but redirects
@@ -1618,6 +1653,8 @@ class DownloadQueue:
             # feed is accepted. See issues #1040 and #660.
             'allow_playlist_files': False,
         }
+        if logger is not None:
+            params['logger'] = logger
         imp = user_opts.get('impersonate')
         if imp is not None:
             params['impersonate'] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(imp)
@@ -2062,10 +2099,12 @@ class DownloadQueue:
                 clip_start, clip_end, retry_entry,
             )
             return {'status': 'error', 'msg': url_error}
+        extract_logger = _ExtractYtdlLogger()
         try:
             entry = await asyncio.get_running_loop().run_in_executor(
                 None,
-                partial(self.__extract_info, url, ytdl_options_presets, ytdl_options_overrides),
+                partial(self.__extract_info, url, ytdl_options_presets, ytdl_options_overrides,
+                        extract_logger),
             )
         except yt_dlp.utils.YoutubeDLError as exc:
             msg = str(exc)
@@ -2075,6 +2114,11 @@ class DownloadQueue:
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
                 clip_start, clip_end, retry_entry,
             )
+            return {'status': 'error', 'msg': msg}
+        if entry is None:
+            # Not a failure to record: nothing was attempted (#691).
+            msg = extract_logger.empty_result_message()
+            log.info('Nothing to add for %s: %s', url, msg)
             return {'status': 'error', 'msg': msg}
         retry_context = _compact_persisted_entry(retry_entry)
         if isinstance(entry, dict) and retry_context is not None:

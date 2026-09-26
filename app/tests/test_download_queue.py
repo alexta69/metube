@@ -169,6 +169,51 @@ async def test_add_scheme_less_internal_url_refused_before_any_connection(dq_env
 
 
 @pytest.mark.asyncio
+async def test_add_of_an_archived_video_says_it_is_in_the_archive(dq_env):
+    """yt-dlp checks the download archive before extracting and returns None
+    without raising, which used to surface as "Invalid/empty data was given"
+    (#691). Real extraction, no mocks: the archive check runs before any
+    network access, and this pins the yt-dlp notice the message relies on."""
+    archive = os.path.join(dq_env.STATE_DIR, "archive.txt")
+    with open(archive, "w") as f:
+        f.write("youtube jNQXAC9IVRw\n")
+    dq_env.YTDL_OPTIONS = {"download_archive": archive}
+    dq = DownloadQueue(dq_env, AsyncMock())
+
+    with patch("ytdl.validate_url", return_value=None), \
+            patch.object(socket.socket, "connect", side_effect=AssertionError("connected")):
+        result = await dq.add(
+            "https://www.youtube.com/watch?v=jNQXAC9IVRw", "audio", "auto", "mp3", "best", "", "", 0,
+            auto_start=True,
+        )
+
+    assert result["status"] == "error"
+    assert "download archive" in result["msg"]
+    assert '"download_archive": null' in result["msg"]
+    assert not dq.queue.exists("https://www.youtube.com/watch?v=jNQXAC9IVRw")
+
+
+@pytest.mark.asyncio
+async def test_add_reports_an_error_swallowed_by_ignoreerrors(dq_env):
+    """With ignoreerrors in the options, yt-dlp logs an extraction error and
+    returns None instead of raising; the add should report that error."""
+    dq = DownloadQueue(dq_env, AsyncMock())
+
+    def fake_extract(self, url, presets=None, overrides=None, logger=None):
+        logger.error("ERROR: [youtube] abc: Private video")
+        return None
+
+    with patch("ytdl.validate_url", return_value=None), \
+            patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://www.youtube.com/watch?v=abc", "video", "auto", "any", "best", "", "", 0,
+            auto_start=True,
+        )
+
+    assert result == {"status": "error", "msg": "ERROR: [youtube] abc: Private video"}
+
+
+@pytest.mark.asyncio
 async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
     """A URL rejected by the SSRF guard (before yt-dlp ever runs) must also
     surface as a failed entry, not just an error status returned to the caller."""
