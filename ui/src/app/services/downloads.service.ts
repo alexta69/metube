@@ -26,6 +26,7 @@ export interface AddDownloadPayload {
   ytdlOptionsOverrides: string;
   clipStart?: string;
   clipEnd?: string;
+  videoPassword?: string;
 }
 @Injectable({
   providedIn: 'root'
@@ -162,6 +163,7 @@ export class DownloadsService {
     const ce = payload.clipEnd?.trim();
     if (cs) body['clip_start'] = cs;
     if (ce) body['clip_end'] = ce;
+    if (payload.videoPassword) body['video_password'] = payload.videoPassword;
     return this.http.post<Status>('add', body).pipe(
       catchError(this.handleHTTPError)
     );

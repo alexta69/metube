@@ -573,6 +573,18 @@
                   </div>
                 </div>
                 }
+                <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text help-title" ngbPopover="For password-protected videos (e.g. Vimeo). Not saved; cleared after adding." triggers="click" autoClose="outside" container="body">Video Password</span>
+                    <input type="password"
+                      class="form-control"
+                      name="videoPassword"
+                      autocomplete="new-password"
+                      placeholder="Optional"
+                      [(ngModel)]="videoPassword"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                  </div>
+                </div>
               </div>
 
               <!-- Tools -->
