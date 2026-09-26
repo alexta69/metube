@@ -17,8 +17,10 @@ jobs:
         uses: actions/setup-node@v7
         with:
           node-version: lts/*
+      # Node 25+ no longer ships corepack, and lts/* moves to Node 26 in
+      # October 2026, so install it rather than rely on the bundled copy.
       - name: Enable pnpm
-        run: corepack enable
+        run: npm install -g corepack && corepack enable
       - name: Install frontend dependencies
         working-directory: ui
         run: pnpm install --frozen-lockfile
