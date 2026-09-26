@@ -45,6 +45,7 @@ function basePayload(): AddDownloadPayload {
     ytdlOptionsOverrides: '',
     clipStart: '',
     clipEnd: '',
+    videoPassword: '',
   };
 }
 
@@ -108,6 +109,34 @@ describe('DownloadsService', () => {
         clip_end: '2:00',
       }),
     );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() sends video_password unchanged (not trimmed) when set', () => {
+    service
+      .add({
+        ...basePayload(),
+        videoPassword: ' s3cret',
+      })
+      .subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        video_password: ' s3cret',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() omits video_password when empty or unset', () => {
+    service.add(basePayload()).subscribe();
+    let req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('video_password');
+    req.flush({ status: 'ok' });
+
+    service.add({ ...basePayload(), videoPassword: undefined }).subscribe();
+    req = httpMock.expectOne('add');
+    expect(req.request.body).not.toHaveProperty('video_password');
     req.flush({ status: 'ok' });
   });
 

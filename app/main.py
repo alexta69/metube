@@ -839,6 +839,7 @@ def parse_download_options(post: dict) -> dict:
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
     ytdl_options_overrides = post.get('ytdl_options_overrides')
+    video_password = post.get('video_password')
 
     if custom_name_prefix is None:
         custom_name_prefix = ''
@@ -865,6 +866,11 @@ def parse_download_options(post: dict) -> dict:
         ytdl_options_overrides,
         enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
     )
+    # Not stripped: passwords may legitimately contain leading/trailing spaces.
+    if video_password == '':
+        video_password = None
+    if video_password is not None and not isinstance(video_password, str):
+        raise web.HTTPBadRequest(reason='video_password must be a string')
 
     if not SUBTITLE_LANGUAGE_RE.fullmatch(subtitle_language):
         raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
@@ -967,6 +973,7 @@ def parse_download_options(post: dict) -> dict:
         'ytdl_options_overrides': ytdl_options_overrides,
         'clip_start': clip_start,
         'clip_end': clip_end,
+        'video_password': video_password,
     }
 
 
@@ -1007,6 +1014,7 @@ async def add(request):
         o['clip_end'],
         sponsorblock=o['sponsorblock'],
         audio_tags=o['audio_tags'],
+        video_password=o['video_password'],
     )
     return web.Response(text=serializer.encode(status))
 

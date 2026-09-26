@@ -520,6 +520,7 @@ class DownloadInfo:
         live_release_timestamp=None,
         sponsorblock=False,
         audio_tags='with_cover',
+        video_password=None,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -547,6 +548,7 @@ class DownloadInfo:
         self.split_by_chapters = split_by_chapters
         self.sponsorblock = sponsorblock
         self.audio_tags = audio_tags
+        self.video_password = video_password
         self.chapter_template = chapter_template
         self.subtitle_language = subtitle_language
         self.subtitle_mode = subtitle_mode
@@ -560,9 +562,11 @@ class DownloadInfo:
 
     # Fields that are useful server-side but must not be broadcast to browser
     # clients: ``entry`` is the full yt-dlp info-dict (potentially large and
-    # re-sent on every progress tick) and ``subtitle_files`` is only used
-    # internally to derive the primary caption ``filename``.
-    _PUBLIC_EXCLUDED_FIELDS = ("entry", "subtitle_files")
+    # re-sent on every progress tick), ``subtitle_files`` is only used
+    # internally to derive the primary caption ``filename``, and
+    # ``video_password`` is a secret supplied by the user that must never
+    # reach browser clients (Socket.IO broadcasts, /history, etc.).
+    _PUBLIC_EXCLUDED_FIELDS = ("entry", "subtitle_files", "video_password")
 
     def to_public_dict(self) -> dict:
         """Return the client-facing view, omitting server-only/bulky fields."""
@@ -620,6 +624,8 @@ class DownloadInfo:
             self.sponsorblock = False
         if not hasattr(self, "audio_tags"):
             self.audio_tags = "with_cover"
+        if not hasattr(self, "video_password"):
+            self.video_password = None
         if not hasattr(self, "chapter_template"):
             self.chapter_template = ""
         if not hasattr(self, "subtitle_language"):
@@ -652,6 +658,10 @@ class DownloadInfo:
             self.live_release_timestamp = None
 
 
+# "video_password" is deliberately excluded: it's a secret and must never be
+# written to disk in plaintext. It only ever lives in memory for the lifetime
+# of the process, so a pending download that survives a restart needs the
+# password re-supplied by re-adding it.
 _PERSISTED_DOWNLOAD_FIELDS = (
     "id",
     "title",
@@ -1498,6 +1508,7 @@ class DownloadQueue:
                     url,
                     getattr(info, 'ytdl_options_presets', None),
                     getattr(info, 'ytdl_options_overrides', {}) or {},
+                    video_password=getattr(info, 'video_password', None),
                 ),
             )
         except Exception as exc:
@@ -1619,22 +1630,27 @@ class DownloadQueue:
             log.debug(f'Auto-clearing completed download: {url}')
             await self.clear([url])
 
-    def _build_ytdl_options(self, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def _build_ytdl_options(self, ytdl_options_presets=None, ytdl_options_overrides=None, video_password=None):
         """Merge global options, presets (in order), and per-download overrides."""
         opts = dict(self.config.YTDL_OPTIONS)
         opts.update(merge_ytdl_option_layers(
             ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
         ))
+        if video_password:
+            # The dedicated field always wins over a "videopassword" that a
+            # preset or override might also set — it's the only place this key
+            # gets injected, so this is the sole point of precedence.
+            opts['videopassword'] = video_password
         return opts
 
-    def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None, logger=None):
+    def __extract_info(self, url, ytdl_options_presets=None, ytdl_options_overrides=None, logger=None, video_password=None):
         # NOTE: extraction runs in the main process, so the connect-time socket
         # guard (installed only in the download subprocess) does not apply here.
         # The ingress validate_url check guards the submitted URL, but redirects
         # followed during extraction are not re-validated. See url_guard's module
         # docstring for why the guard can't be installed process-wide.
         debug_logging = logging.getLogger().isEnabledFor(logging.DEBUG)
-        user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides)
+        user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides, video_password)
         params = {
             **user_opts,
             'quiet': not debug_logging,
@@ -1697,6 +1713,7 @@ class DownloadQueue:
         ytdl_options = self._build_ytdl_options(
             getattr(dl, 'ytdl_options_presets', None),
             getattr(dl, 'ytdl_options_overrides', {}) or {},
+            getattr(dl, 'video_password', None),
         )
         playlist_item_limit = getattr(dl, 'playlist_item_limit', 0)
         if playlist_item_limit > 0:
@@ -1719,7 +1736,7 @@ class DownloadQueue:
         await self.notifier.added(dl)
 
     def __write_feed_metadata_sync(self, entry, etype, download_type, folder,
-                                   ytdl_options_presets, ytdl_options_overrides):
+                                   ytdl_options_presets, ytdl_options_overrides, video_password=None):
         """Write the feed-level .info.json/description/thumbnail for a playlist
         or channel add, using the same output template its items will use.
 
@@ -1734,7 +1751,7 @@ class DownloadQueue:
         playlist-file writing without re-extracting anything or touching
         yt-dlp's private write helpers.
         """
-        user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides)
+        user_opts = self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides, video_password)
         wants = ('writeinfojson', 'writedescription', 'writethumbnail', 'write_all_thumbnails')
         if not any(user_opts.get(key) for key in wants):
             return
@@ -1780,13 +1797,13 @@ class DownloadQueue:
         yt_dlp.YoutubeDL(params=params).process_ie_result(feed, download=False)
 
     async def __write_feed_metadata(self, entry, etype, download_type, folder,
-                                    ytdl_options_presets, ytdl_options_overrides):
+                                    ytdl_options_presets, ytdl_options_overrides, video_password=None):
         try:
             await asyncio.get_running_loop().run_in_executor(
                 None,
                 partial(
                     self.__write_feed_metadata_sync, entry, etype, download_type, folder,
-                    ytdl_options_presets, ytdl_options_overrides,
+                    ytdl_options_presets, ytdl_options_overrides, video_password,
                 ),
             )
         except Exception as exc:
@@ -1817,6 +1834,7 @@ class DownloadQueue:
         retry_entry=None,
         sponsorblock=False,
         audio_tags='with_cover',
+        video_password=None,
     ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
@@ -1862,6 +1880,7 @@ class DownloadQueue:
                 retry_entry,
                 sponsorblock=sponsorblock,
                 audio_tags=audio_tags,
+                video_password=video_password,
             )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
@@ -1875,7 +1894,7 @@ class DownloadQueue:
             log.info(f'{etype} detected with {total_entries} entries')
             await self.__write_feed_metadata(
                 entry, etype, download_type, folder,
-                ytdl_options_presets, ytdl_options_overrides,
+                ytdl_options_presets, ytdl_options_overrides, video_password,
             )
             index_digits = len(str(total_entries))
             results = []
@@ -1931,6 +1950,7 @@ class DownloadQueue:
                         _add_gen,
                         sponsorblock=sponsorblock,
                         audio_tags=audio_tags,
+                        video_password=video_password,
                     )
                 )
             if any(res['status'] == 'error' for res in results):
@@ -1975,6 +1995,7 @@ class DownloadQueue:
                 live_release_timestamp=entry.get('release_timestamp'),
                 sponsorblock=sponsorblock,
                 audio_tags=audio_tags,
+                video_password=video_password,
             )
             error = await self.__add_download(dl, auto_start)
             if error is not None:
@@ -2061,6 +2082,7 @@ class DownloadQueue:
         retry_entry=None,
         sponsorblock=False,
         audio_tags='with_cover',
+        video_password=None,
     ):
         if ytdl_options_presets is None:
             ytdl_options_presets = []
@@ -2085,7 +2107,7 @@ class DownloadQueue:
         # reads `proxy` from them — a proxied fetch resolves at the proxy, so
         # the address check is skipped rather than leaking the hostname here.
         proxies = download_proxies(
-            self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides))
+            self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides, video_password))
         url_error = await asyncio.get_running_loop().run_in_executor(
             None, partial(validate_url, url,
                           allow_private=self.config.ALLOW_PRIVATE_ADDRESSES,
@@ -2104,7 +2126,7 @@ class DownloadQueue:
             entry = await asyncio.get_running_loop().run_in_executor(
                 None,
                 partial(self.__extract_info, url, ytdl_options_presets, ytdl_options_overrides,
-                        extract_logger),
+                        extract_logger, video_password=video_password),
             )
         except yt_dlp.utils.YoutubeDLError as exc:
             msg = str(exc)
@@ -2146,6 +2168,7 @@ class DownloadQueue:
             retry_entry,
             sponsorblock=sponsorblock,
             audio_tags=audio_tags,
+            video_password=video_password,
         )
 
     async def retry(self, id):
@@ -2184,6 +2207,7 @@ class DownloadQueue:
             retry_entry=info.entry,
             sponsorblock=info.sponsorblock,
             audio_tags=info.audio_tags,
+            video_password=getattr(info, 'video_password', None),
         )
 
     async def add_entry(
