@@ -207,11 +207,13 @@ describe('App', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('input[name="ytdlOptionsOverrides"]')).toBeNull();
 
-    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.col-12');
-    expect(presetWrapper?.classList.contains('col-md-6')).toBe(false);
+    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.parentElement
+      ?.parentElement;
+    expect(presetWrapper?.classList.contains('col-md-6')).toBe(true);
 
     const presetRow = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.row');
     expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
+    expect(presetRow?.querySelector('input[name="videoPassword"]')).not.toBeNull();
   });
 
   it('shows manual override input when enabled', () => {
@@ -224,11 +226,19 @@ describe('App', () => {
     const root = fixture.nativeElement as HTMLElement;
     expect(root.querySelector('input[name="ytdlOptionsOverrides"]')).not.toBeNull();
 
-    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.col-12');
+    const presetWrapper = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.parentElement
+      ?.parentElement;
     expect(presetWrapper?.classList.contains('col-md-6')).toBe(true);
+
+    // The JSON overrides get a full-width row of their own below presets + password.
+    const overridesWrapper = root.querySelector('input[name="ytdlOptionsOverrides"]')?.parentElement
+      ?.parentElement;
+    expect(overridesWrapper?.classList.contains('col-12')).toBe(true);
+    expect(overridesWrapper?.classList.contains('col-md-6')).toBe(false);
 
     const presetRow = root.querySelector('ng-select[name="ytdlOptionsPresets"]')?.closest('.row');
     expect(presetRow?.querySelector('input[name="checkIntervalMinutes"]')).toBeNull();
+    expect(presetRow?.querySelector('input[name="videoPassword"]')).not.toBeNull();
     expect(presetRow?.querySelector('input[name="ytdlOptionsOverrides"]')).not.toBeNull();
   });
 

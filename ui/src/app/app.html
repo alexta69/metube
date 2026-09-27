@@ -544,7 +544,7 @@
               <!-- yt-dlp -->
               <div class="settings-section-label">yt-dlp</div>
               <div class="row g-3">
-                <div class="col-12" [class.col-md-6]="allowYtdlOptionsOverrides()">
+                <div class="col-md-6">
                   <div class="input-group">
                     <span class="input-group-text help-title" ngbPopover="Choose one or more yt-dlp option presets configured on the server (applied in order)." triggers="click" autoClose="outside" container="body">Option Presets</span>
                     <ng-select
@@ -559,8 +559,20 @@
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading" />
                   </div>
                 </div>
-                @if (allowYtdlOptionsOverrides()) {
                 <div class="col-md-6">
+                  <div class="input-group">
+                    <span class="input-group-text help-title" ngbPopover="For password-protected videos (e.g. Vimeo). Not saved; cleared after adding. Ignored for subscriptions." triggers="click" autoClose="outside" container="body">Video Password</span>
+                    <input type="password"
+                      class="form-control"
+                      name="videoPassword"
+                      autocomplete="new-password"
+                      placeholder="Optional"
+                      [(ngModel)]="videoPassword"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                  </div>
+                </div>
+                @if (allowYtdlOptionsOverrides()) {
+                <div class="col-12">
                   <div class="input-group">
                     <span class="input-group-text help-title" ngbPopover="Optional per-download yt-dlp overrides as a JSON object." triggers="click" autoClose="outside" container="body">Custom yt-dlp Options</span>
                     <input type="text"
@@ -573,18 +585,6 @@
                   </div>
                 </div>
                 }
-                <div class="col-md-6">
-                  <div class="input-group">
-                    <span class="input-group-text help-title" ngbPopover="For password-protected videos (e.g. Vimeo). Not saved; cleared after adding." triggers="click" autoClose="outside" container="body">Video Password</span>
-                    <input type="password"
-                      class="form-control"
-                      name="videoPassword"
-                      autocomplete="new-password"
-                      placeholder="Optional"
-                      [(ngModel)]="videoPassword"
-                      [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                  </div>
-                </div>
               </div>
 
               <!-- Tools -->
