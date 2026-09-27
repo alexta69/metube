@@ -51,10 +51,6 @@ class DownloadsServiceStub {
     return of({});
   }
 
-  delByFilter() {
-    return of({});
-  }
-
   startByFilter() {
     return of({});
   }
@@ -655,6 +651,167 @@ describe('App', () => {
       expect((fixture.nativeElement as HTMLElement).textContent).toContain('Queued');
       expect(fixture.componentInstance.queuedDownloads).toBe(1);
       expect(fixture.componentInstance.activeDownloads).toBe(0);
+    });
+  });
+
+  // Issue #1012: in ask mode (DELETE_FILE_ON_TRASHCAN='ask') the server only
+  // deletes a completed download's file when told to, so the UI must ask the
+  // user whether to keep or delete it before removing the list entry.
+  describe('delete confirmation in ask mode (#1012)', () => {
+    const doneEntry = (over: Partial<Download>): Download => ({
+      id: 'vid1',
+      title: 'Test Video',
+      url: 'u1',
+      download_type: 'video',
+      quality: 'best',
+      format: 'any',
+      folder: '',
+      custom_name_prefix: '',
+      playlist_item_limit: 0,
+      status: 'finished',
+      msg: '',
+      percent: 100,
+      speed: 0,
+      eta: 0,
+      filename: 'video.mp4',
+      checked: false,
+      ...over,
+    } as Download);
+
+    it('prompts and forwards "Delete files" (true) to delById', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('done', 'u1');
+
+      expect(chooseSpy).toHaveBeenCalledTimes(1);
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], true);
+    });
+
+    it('prompts and forwards "Remove from list" (false) to delById', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      vi.spyOn(toasts, 'choose').mockResolvedValue(false);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('done', 'u1');
+
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], false);
+    });
+
+    it('does not call delById when the prompt is cancelled', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      vi.spyOn(toasts, 'choose').mockResolvedValue(null);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('done', 'u1');
+
+      expect(delSpy).not.toHaveBeenCalled();
+    });
+
+    it('does not prompt when DELETE_FILE_ON_TRASHCAN is "true"', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'true';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose');
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('done', 'u1');
+
+      expect(chooseSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], undefined);
+    });
+
+    it('does not prompt when DELETE_FILE_ON_TRASHCAN is "false"', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'false';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose');
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('done', 'u1');
+
+      expect(chooseSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], undefined);
+    });
+
+    it('does not prompt for entries with nothing on disk (e.g. clearFailedDownloads)', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({ url: 'u1', status: 'error', filename: '' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose');
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearFailedDownloads();
+
+      expect(chooseSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], false);
+    });
+
+    it('does not prompt for queue deletions', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.queue.set('u1', doneEntry({ url: 'u1', status: 'downloading' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose');
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.delDownload('queue', 'u1');
+
+      expect(chooseSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('queue', ['u1'], undefined);
+    });
+
+    it('retryDownload does not prompt even in ask mode, and sends no flag', () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose');
+      const delSpy = vi.spyOn(downloads, 'delById');
+      const download = doneEntry({ url: 'u1', status: 'error' });
+
+      app.retryDownload('u1', download);
+
+      expect(chooseSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1']);
+    });
+
+    it('prompts once with a count for multiple completed entries', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({ url: 'u1' }));
+      downloads.done.set('u2', doneEntry({ url: 'u2', title: 'Second video' }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearCompletedDownloads();
+
+      expect(chooseSpy).toHaveBeenCalledTimes(1);
+      expect(chooseSpy.mock.calls[0][0]).toContain('2 items');
+      expect(delSpy).toHaveBeenCalledTimes(1);
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1', 'u2'], true);
     });
   });
 

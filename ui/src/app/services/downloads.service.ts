@@ -187,7 +187,7 @@ export class DownloadsService {
     );
   }
 
-  public delById(where: State, ids: string[]) {
+  public delById(where: State, ids: string[], deleteFiles?: boolean) {
     const map = this[where];
     if (map) {
       for (const id of ids) {
@@ -197,7 +197,11 @@ export class DownloadsService {
         }
       }
     }
-    return this.http.post<Status>('delete', {where: where, ids: ids}).pipe(
+    const body: Record<string, unknown> = {where: where, ids: ids};
+    if (deleteFiles !== undefined) {
+      body['delete_files'] = deleteFiles;
+    }
+    return this.http.post<Status>('delete', body).pipe(
       catchError((err: HttpErrorResponse) => {
         // Request failed — the rows would otherwise stay disabled forever
         // with no way to retry, since nothing ever clears `deleting`.
@@ -221,11 +225,6 @@ export class DownloadsService {
     return this.startById(ids);
   }
 
-  public delByFilter(where: State, filter: (dl: Download) => boolean) {
-    const ids: string[] = [];
-    this[where].forEach((dl: Download) => { if (filter(dl)) ids.push(dl.url) });
-    return this.delById(where, ids);
-  }
   public cancelAdd() {
     return this.http.post<Status>('cancel-add', {}).pipe(
       catchError(this.handleHTTPError)

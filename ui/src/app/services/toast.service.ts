@@ -4,7 +4,7 @@ export type ToastLevel = 'info' | 'success' | 'error';
 
 export interface ToastAction {
   label: string;
-  value: boolean;
+  value: unknown;
   primary?: boolean;
 }
 
@@ -13,8 +13,8 @@ export interface Toast {
   level: ToastLevel;
   message: string;
   actions?: ToastAction[];
-  /** Resolver for confirm() toasts; resolved when the user picks an action or dismisses. */
-  _resolve?: (value: boolean) => void;
+  /** Resolver for choose()/confirm(); resolved when the user picks an action or dismisses. */
+  _resolve?: (value: unknown) => void;
 }
 
 /**
@@ -39,11 +39,14 @@ export class ToastService {
   }
 
   /**
-   * Show a confirmation toast with confirm/cancel actions. Resolves true when
-   * confirmed, false when cancelled or auto-dismissed.
+   * Show an info toast with custom action buttons. Resolves with the chosen
+   * action's value, or null if the toast is dismissed without a choice.
    */
-  confirm(message: string, confirmLabel = 'OK', cancelLabel = 'Cancel'): Promise<boolean> {
-    return new Promise<boolean>((resolve) => {
+  choose<T>(
+    message: string,
+    actions: { label: string; value: T; primary?: boolean }[],
+  ): Promise<T | null> {
+    return new Promise<T | null>((resolve) => {
       const id = ++this.counter;
       this.toasts.update((list) => [
         ...list,
@@ -51,17 +54,25 @@ export class ToastService {
           id,
           level: 'info',
           message,
-          actions: [
-            { label: cancelLabel, value: false },
-            { label: confirmLabel, value: true, primary: true },
-          ],
-          _resolve: resolve,
+          actions,
+          _resolve: resolve as (value: unknown) => void,
         },
       ]);
     });
   }
 
-  respond(id: number, value: boolean): void {
+  /**
+   * Show a confirmation toast with confirm/cancel actions. Resolves true when
+   * confirmed, false when cancelled or auto-dismissed.
+   */
+  confirm(message: string, confirmLabel = 'OK', cancelLabel = 'Cancel'): Promise<boolean> {
+    return this.choose(message, [
+      { label: cancelLabel, value: false },
+      { label: confirmLabel, value: true, primary: true },
+    ]).then((value) => value ?? false);
+  }
+
+  respond(id: number, value: unknown): void {
     const toast = this.toasts().find((t) => t.id === id);
     toast?._resolve?.(value);
     this.remove(id);
@@ -69,8 +80,8 @@ export class ToastService {
 
   dismiss(id: number): void {
     const toast = this.toasts().find((t) => t.id === id);
-    // A confirm toast dismissed without an explicit choice resolves to false.
-    toast?._resolve?.(false);
+    // A choose()/confirm() toast dismissed without an explicit choice resolves to null.
+    toast?._resolve?.(null);
     this.remove(id);
   }
 

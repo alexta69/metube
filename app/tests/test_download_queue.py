@@ -44,7 +44,7 @@ def dq_env():
         cfg.CUSTOM_DIRS = True
         cfg.CREATE_CUSTOM_DIRS = True
         cfg.CLEAR_COMPLETED_AFTER = "0"
-        cfg.DELETE_FILE_ON_TRASHCAN = False
+        cfg.DELETE_FILE_ON_TRASHCAN = 'false'
         cfg.OUTPUT_TEMPLATE = "%(title)s.%(ext)s"
         cfg.OUTPUT_TEMPLATE_CHAPTER = "%(title)s.%(ext)s"
         cfg.OUTPUT_TEMPLATE_PLAYLIST = ""
@@ -1986,7 +1986,7 @@ async def test_post_download_cleanup_keeps_captured_subtitles_on_error(dq_env):
 @pytest.mark.asyncio
 async def test_clear_skips_deletion_outside_download_directory(dq_env):
     notifier = AsyncMock()
-    dq_env.DELETE_FILE_ON_TRASHCAN = True
+    dq_env.DELETE_FILE_ON_TRASHCAN = 'true'
     dq = DownloadQueue(dq_env, notifier)
 
     outside_dir = tempfile.mkdtemp()
@@ -2002,4 +2002,57 @@ async def test_clear_skips_deletion_outside_download_directory(dq_env):
     await dq.clear([download.info.url])
 
     assert os.path.exists(outside_file)
+    assert not dq.done.exists(download.info.url)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize(
+    "mode, delete_files, expect_deleted",
+    [
+        ("false", False, False),
+        ("false", True, False),
+        ("true", False, True),
+        ("true", True, True),
+        ("ask", False, False),
+        ("ask", True, True),
+    ],
+)
+async def test_clear_respects_mode_and_delete_files_flag(dq_env, mode, delete_files, expect_deleted):
+    notifier = AsyncMock()
+    dq_env.DELETE_FILE_ON_TRASHCAN = mode
+    dq = DownloadQueue(dq_env, notifier)
+
+    filename = "keepme.mp4"
+    file_path = os.path.join(dq_env.DOWNLOAD_DIR, filename)
+    with open(file_path, "w") as f:
+        f.write("data")
+
+    download = _make_download(dq_env, status="finished", filename=filename)
+    await dq.done.put(download)
+
+    await dq.clear([download.info.url], delete_files=delete_files)
+
+    assert os.path.exists(file_path) != expect_deleted
+    assert not dq.done.exists(download.info.url)
+
+
+@pytest.mark.asyncio
+async def test_clear_in_ask_mode_without_delete_files_kwarg_keeps_file(dq_env):
+    """Auto-clear and retry call clear() with no kwarg; in 'ask' mode there's
+    nobody to ask, so the default must keep the file."""
+    notifier = AsyncMock()
+    dq_env.DELETE_FILE_ON_TRASHCAN = 'ask'
+    dq = DownloadQueue(dq_env, notifier)
+
+    filename = "keepme-auto.mp4"
+    file_path = os.path.join(dq_env.DOWNLOAD_DIR, filename)
+    with open(file_path, "w") as f:
+        f.write("data")
+
+    download = _make_download(dq_env, status="finished", filename=filename)
+    await dq.done.put(download)
+
+    await dq.clear([download.info.url])
+
+    assert os.path.exists(file_path)
     assert not dq.done.exists(download.info.url)
