@@ -298,6 +298,50 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                 "clip_start": "1",
             })
 
+    def test_video_password_passed_through_unchanged(self):
+        # Not stripped: leading/trailing spaces may be part of the password.
+        parsed = main.parse_download_options({
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+            "video_password": "  s3cret pw  ",
+        })
+        self.assertEqual(parsed["video_password"], "  s3cret pw  ")
+
+    def test_video_password_missing_defaults_to_none(self):
+        parsed = main.parse_download_options({
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+        })
+        self.assertIsNone(parsed["video_password"])
+
+    def test_video_password_empty_string_becomes_none(self):
+        parsed = main.parse_download_options({
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+            "video_password": "",
+        })
+        self.assertIsNone(parsed["video_password"])
+
+    def test_video_password_rejects_non_string(self):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main.parse_download_options({
+                "url": "https://example.com/watch?v=1",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "video_password": 123,
+            })
+
 
 class GetCustomDirsTests(unittest.TestCase):
     def test_works_without_a_running_event_loop(self):

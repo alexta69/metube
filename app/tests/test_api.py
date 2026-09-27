@@ -105,6 +105,41 @@ async def test_add_passes_preset_and_overrides(mock_dqueue, monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_add_passes_video_password(mock_dqueue):
+    req = _json_request(_valid_video_add_body(video_password="s3cret pw"))
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call is not None
+    assert call.kwargs["video_password"] == "s3cret pw"
+
+
+@pytest.mark.asyncio
+async def test_add_without_video_password_passes_none(mock_dqueue):
+    req = _json_request(_valid_video_add_body())
+    resp = await main.add(req)
+    assert resp.status == 200
+    call = mock_dqueue.add.await_args
+    assert call is not None
+    assert call.kwargs["video_password"] is None
+
+
+@pytest.mark.asyncio
+async def test_subscribe_does_not_forward_video_password(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request(
+        {
+            **_valid_video_add_body(video_password="s3cret pw"),
+            "check_interval_minutes": 60,
+        }
+    )
+    resp = await main.subscribe(req)
+    assert resp.status == 200
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert "video_password" not in kwargs
+
+
+@pytest.mark.asyncio
 async def test_add_legacy_string_preset_normalized(mock_dqueue, monkeypatch):
     monkeypatch.setattr(main.config, "YTDL_OPTIONS_PRESETS", {"Legacy": {}})
     body = _valid_video_add_body()

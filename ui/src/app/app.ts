@@ -94,6 +94,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   chapterTemplate: string;
   clipStart = '';
   clipEnd = '';
+  videoPassword = '';
   subtitleLanguage: string;
   subtitleMode: string;
   ytdlOptionsPresets: string[] = [];
@@ -1153,6 +1154,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         : '',
       clipStart: overrides.clipStart ?? this.clipStart,
       clipEnd: overrides.clipEnd ?? this.clipEnd,
+      videoPassword: overrides.videoPassword ?? this.videoPassword,
     };
   }
 
@@ -1180,6 +1182,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
           this.toasts.info(status.msg);
         }
         this.addUrl = '';
+        this.videoPassword = '';
       }
       this.resetAddState();
     });

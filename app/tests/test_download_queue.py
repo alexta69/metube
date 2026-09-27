@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import asyncio
 import copy
+import json
 import os
 import re
 import socket
@@ -13,7 +14,13 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import time
 
-from ytdl import Download, DownloadInfo, DownloadQueue
+from ytdl import (
+    Download,
+    DownloadInfo,
+    DownloadQueue,
+    _download_info_from_record,
+    _download_info_to_record,
+)
 
 
 @pytest.fixture
@@ -199,7 +206,7 @@ async def test_add_reports_an_error_swallowed_by_ignoreerrors(dq_env):
     returns None instead of raising; the add should report that error."""
     dq = DownloadQueue(dq_env, AsyncMock())
 
-    def fake_extract(self, url, presets=None, overrides=None, logger=None):
+    def fake_extract(self, url, presets=None, overrides=None, logger=None, video_password=None):
         logger.error("ERROR: [youtube] abc: Private video")
         return None
 
@@ -1017,6 +1024,146 @@ async def test_add_merges_global_preset_and_override_options(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_add_with_video_password_sets_ytdl_opt_and_reaches_extract_info(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    captured = {}
+
+    def fake_extract(self, extracted_url, *args, **kwargs):
+        captured["args"] = args
+        captured["kwargs"] = kwargs
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add(
+            url,
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=True,
+            video_password="s3cret pw",
+        )
+
+    assert result["status"] == "ok"
+    assert captured["kwargs"]["video_password"] == "s3cret pw"
+    queued = dq.queue.get(url)
+    assert queued.ytdl_opts["videopassword"] == "s3cret pw"
+
+
+@pytest.mark.asyncio
+async def test_add_without_video_password_omits_videopassword_opt(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add(
+            url,
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=True,
+        )
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert "videopassword" not in queued.ytdl_opts
+
+
+@pytest.mark.asyncio
+async def test_add_video_password_overrides_ytdl_options_overrides(dq_env):
+    # The dedicated field is the only place "videopassword" gets injected, so it
+    # must win over a same-named key smuggled through ytdl_options_overrides.
+    notifier = AsyncMock()
+    dq_env.ALLOW_YTDL_OPTIONS_OVERRIDES = True
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add(
+            url,
+            "video",
+            "auto",
+            "any",
+            "best",
+            "",
+            "",
+            0,
+            auto_start=True,
+            ytdl_options_overrides={"videopassword": "other"},
+            video_password="s3cret pw",
+        )
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert queued.ytdl_opts["videopassword"] == "s3cret pw"
+
+
+@pytest.mark.asyncio
+async def test_retry_carries_the_video_password(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    await dq.done.put(
+        Download(None, None, None, None, "best", "any", {}, _failed_playlist_item(url, video_password="s3cret pw"))
+    )
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    queued = dq.queue.get(url)
+    assert queued.info.video_password == "s3cret pw"
+    assert queued.ytdl_opts["videopassword"] == "s3cret pw"
+
+
+@pytest.mark.asyncio
 async def test_extract_info_preset_null_download_archive_overrides_global(dq_env):
     """Preset download_archive:null must apply during extract_info (global archive otherwise wins first)."""
     dq_env.YTDL_OPTIONS = {"download_archive": "/tmp/archive.txt"}
@@ -1387,7 +1534,7 @@ async def test_probe_scheduled_starts_when_live(dq_env):
 
     download = dq.queue.get(url)
 
-    def fake_probe_extract(self, probe_url, ytdl_options_presets=None, ytdl_options_overrides=None):
+    def fake_probe_extract(self, probe_url, ytdl_options_presets=None, ytdl_options_overrides=None, video_password=None):
         assert probe_url == url
         return {
             "_type": "video",
@@ -1407,6 +1554,58 @@ async def test_probe_scheduled_starts_when_live(dq_env):
     assert download.info.live_status == "is_live"
     assert download.info.status == "queued"
     start_mock.assert_called_once_with(download)
+
+
+@pytest.mark.asyncio
+async def test_probe_scheduled_download_passes_video_password(dq_env):
+    # A password-protected upcoming stream must keep re-authenticating on every
+    # scheduled probe, not just on the initial add. add_entry() deliberately
+    # doesn't accept video_password (subscriptions are out of scope for it), so
+    # build the DownloadInfo directly, the same way _failed_playlist_item does.
+    notifier = AsyncMock()
+    url = "https://example.com/live-upcoming-pw"
+    dq = DownloadQueue(dq_env, notifier)
+
+    info = DownloadInfo(
+        id="live1",
+        title="Live Now (Upcoming)",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        live_status="is_upcoming",
+        video_password="s3cret pw",
+    )
+    info.status = "scheduled"
+    download = Download(None, None, None, None, "best", "any", {}, info)
+
+    captured = {}
+
+    def fake_probe_extract(self, probe_url, ytdl_options_presets=None, ytdl_options_overrides=None, video_password=None):
+        captured["video_password"] = video_password
+        return {
+            "_type": "video",
+            "id": "live1",
+            "title": "Live Now",
+            "url": url,
+            "webpage_url": url,
+            "live_status": "is_live",
+            "formats": [{"format_id": "22"}],
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_probe_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq._probe_scheduled_download(download)
+
+    assert captured["video_password"] == "s3cret pw"
 
 
 @pytest.mark.asyncio
@@ -1621,6 +1820,80 @@ def test_download_info_to_public_dict_excludes_server_only_fields():
     assert public["url"] == "https://example.com/watch?v=1"
     assert public["title"] == "Test Video"
     assert public["status"] == "pending"
+
+
+def test_download_info_to_public_dict_excludes_video_password():
+    # video_password is a secret: it must never reach the browser, whether via
+    # Socket.IO broadcasts or the /history endpoint.
+    info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url="https://example.com/watch?v=1",
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        video_password="s3cret pw",
+    )
+    public = info.to_public_dict()
+    assert "video_password" not in public
+    # Catch it leaking under any other key too, not just "video_password".
+    assert "s3cret pw" not in json.dumps(public, default=str)
+
+
+def test_download_info_to_record_excludes_video_password():
+    # video_password must never be persisted to disk in plaintext.
+    info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url="https://example.com/watch?v=1",
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        video_password="s3cret pw",
+    )
+    record = _download_info_to_record(info, include_entry=True)
+    assert "video_password" not in record
+    # Catch it leaking under any other key too, not just "video_password".
+    assert "s3cret pw" not in json.dumps(record, default=str)
+
+
+def test_download_info_from_record_defaults_video_password_to_none():
+    info = DownloadInfo(
+        id="vid1",
+        title="Test Video",
+        url="https://example.com/watch?v=1",
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+        video_password="s3cret pw",
+    )
+    record = _download_info_to_record(info, include_entry=True)
+    restored = _download_info_from_record(record)
+    assert restored.video_password is None
 
 
 def _make_download(dq_env, *, download_type="video", status="downloading", filename=None):
