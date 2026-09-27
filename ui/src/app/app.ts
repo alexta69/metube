@@ -1268,7 +1268,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     ) {
       return undefined;
     }
-    const hasFiles = ids.some((id) => !!this.downloads.done.get(id)?.filename);
+    const hasFiles = ids.some((id) => {
+      const dl = this.downloads.done.get(id);
+      return !!dl?.filename || !!dl?.chapter_files?.length;
+    });
     if (!hasFiles) {
       return false;
     }

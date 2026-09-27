@@ -766,6 +766,26 @@ describe('App', () => {
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], false);
     });
 
+    it('prompts when a failed chapter-split download left chapter files behind', async () => {
+      downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
+      downloads.done.set('u1', doneEntry({
+        url: 'u1',
+        status: 'error',
+        filename: '',
+        chapter_files: [{ filename: 'ch1.mp4', size: 1 }],
+      }));
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const toasts = TestBed.inject(ToastService);
+      const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearFailedDownloads();
+
+      expect(chooseSpy).toHaveBeenCalledTimes(1);
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1'], true);
+    });
+
     it('does not prompt for queue deletions', async () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.queue.set('u1', doneEntry({ url: 'u1', status: 'downloading' }));
