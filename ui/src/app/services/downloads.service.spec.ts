@@ -199,6 +199,28 @@ describe('DownloadsService', () => {
     req.flush({});
   });
 
+  it('delById posts delete_files: true when requested', () => {
+    service.delById('done', ['u1'], true).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'], delete_files: true });
+    req.flush({});
+  });
+
+  it('delById posts delete_files: false when requested', () => {
+    service.delById('done', ['u1'], false).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'], delete_files: false });
+    req.flush({});
+  });
+
+  it('delById omits delete_files when not specified', () => {
+    service.delById('done', ['u1']).subscribe();
+    const req = httpMock.expectOne('delete');
+    expect(req.request.body).toEqual({ where: 'done', ids: ['u1'] });
+    expect(req.request.body).not.toHaveProperty('delete_files');
+    req.flush({});
+  });
+
   it('delById resets deleting flag and emits error status on HTTP failure', () => {
     const dl: Download = {
       id: '1',

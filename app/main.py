@@ -98,7 +98,7 @@ class Config:
         'YTDL_NIGHTLY_UPDATE_TIME': '',
     }
 
-    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'DELETE_FILE_ON_TRASHCAN', 'HTTPS', 'ENABLE_ACCESSLOG', 'ALLOW_YTDL_OPTIONS_OVERRIDES', 'ALLOW_PRIVATE_ADDRESSES')
+    _BOOLEAN = ('DOWNLOAD_DIRS_INDEXABLE', 'CUSTOM_DIRS', 'CREATE_CUSTOM_DIRS', 'HTTPS', 'ENABLE_ACCESSLOG', 'ALLOW_YTDL_OPTIONS_OVERRIDES', 'ALLOW_PRIVATE_ADDRESSES')
 
     def __init__(self):
         for k, v in self._DEFAULTS.items():
@@ -112,6 +112,21 @@ class Config:
                     log.error(f'Environment variable "{k}" is set to a non-boolean value "{v}"')
                     sys.exit(1)
                 setattr(self, k, v in ('true', 'True', 'on', '1'))
+
+        # DELETE_FILE_ON_TRASHCAN is a tri-state, not a plain boolean: 'ask' defers
+        # the decision to the user at delete time (see the /delete route), while
+        # 'true'/'false' keep the historical always/never behavior. Normalize the
+        # existing boolean spellings plus 'ask' to one of these three strings.
+        raw = self.DELETE_FILE_ON_TRASHCAN.strip()
+        if raw in ('true', 'True', 'on', '1'):
+            self.DELETE_FILE_ON_TRASHCAN = 'true'
+        elif raw in ('false', 'False', 'off', '0'):
+            self.DELETE_FILE_ON_TRASHCAN = 'false'
+        elif raw.lower() == 'ask':
+            self.DELETE_FILE_ON_TRASHCAN = 'ask'
+        else:
+            log.error(f'Environment variable "DELETE_FILE_ON_TRASHCAN" is set to an invalid value "{raw}", expected one of "true", "false", "ask"')
+            sys.exit(1)
 
         # aiohttp hands HOST straight to getaddrinfo, which has no notion of a
         # '*' wildcard: the lookup fails and takes the server down at startup
@@ -230,6 +245,7 @@ class Config:
         'DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT',
         'SUBSCRIPTION_DEFAULT_CHECK_INTERVAL',
         'ALLOW_YTDL_OPTIONS_OVERRIDES',
+        'DELETE_FILE_ON_TRASHCAN',
     )
 
     def frontend_safe(self) -> dict:
@@ -1171,7 +1187,10 @@ async def delete(request):
     if where not in ['queue', 'done']:
         log.error("Bad request: incorrect 'where' value")
         raise web.HTTPBadRequest()
-    status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids))
+    delete_files = post.get('delete_files', False)
+    if not isinstance(delete_files, bool):
+        raise web.HTTPBadRequest(reason="'delete_files' must be a boolean")
+    status = await (dqueue.cancel(ids) if where == 'queue' else dqueue.clear(ids, delete_files=delete_files))
     log.info(f"Download delete request processed for ids: {ids}, where: {where}")
     return web.Response(text=serializer.encode(status))
 

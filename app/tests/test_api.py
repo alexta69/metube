@@ -246,6 +246,32 @@ async def test_delete_queue_calls_cancel(mock_dqueue):
 
 
 @pytest.mark.asyncio
+async def test_delete_done_calls_clear_without_delete_files_defaults_false(mock_dqueue):
+    req = _json_request({"where": "done", "ids": ["http://x"]})
+    resp = await main.delete(req)
+    assert resp.status == 200
+    mock_dqueue.clear.assert_awaited_once_with(["http://x"], delete_files=False)
+
+
+@pytest.mark.asyncio
+async def test_delete_done_calls_clear_with_delete_files_true(mock_dqueue):
+    req = _json_request({"where": "done", "ids": ["http://x"], "delete_files": True})
+    resp = await main.delete(req)
+    assert resp.status == 200
+    mock_dqueue.clear.assert_awaited_once_with(["http://x"], delete_files=True)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad_value", ["yes", 1])
+async def test_delete_rejects_non_boolean_delete_files(mock_dqueue, bad_value):
+    req = _json_request({"where": "done", "ids": ["http://x"], "delete_files": bad_value})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.delete(req)
+    mock_dqueue.cancel.assert_not_awaited()
+    mock_dqueue.clear.assert_not_awaited()
+
+
+@pytest.mark.asyncio
 async def test_start_pending(mock_dqueue):
     req = _json_request({"ids": ["a"]})
     resp = await main.start(req)

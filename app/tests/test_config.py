@@ -279,6 +279,42 @@ class ConfigTests(unittest.TestCase):
         finally:
             os.unlink(path)
 
+    def test_delete_file_on_trashcan_default_is_false(self):
+        with patch.dict(os.environ, _base_env(), clear=False):
+            c = Config()
+        self.assertEqual(c.DELETE_FILE_ON_TRASHCAN, "false")
+
+    def test_delete_file_on_trashcan_ask_spellings_normalize(self):
+        for raw in ("ask", "Ask", "ASK"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, _base_env(DELETE_FILE_ON_TRASHCAN=raw), clear=False):
+                    c = Config()
+                self.assertEqual(c.DELETE_FILE_ON_TRASHCAN, "ask")
+
+    def test_delete_file_on_trashcan_true_spellings_normalize(self):
+        for raw in ("true", "True", "on", "1"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, _base_env(DELETE_FILE_ON_TRASHCAN=raw), clear=False):
+                    c = Config()
+                self.assertEqual(c.DELETE_FILE_ON_TRASHCAN, "true")
+
+    def test_delete_file_on_trashcan_false_spellings_normalize(self):
+        for raw in ("false", "False", "off", "0"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, _base_env(DELETE_FILE_ON_TRASHCAN=raw), clear=False):
+                    c = Config()
+                self.assertEqual(c.DELETE_FILE_ON_TRASHCAN, "false")
+
+    def test_delete_file_on_trashcan_invalid_value_exits(self):
+        with patch.dict(os.environ, _base_env(DELETE_FILE_ON_TRASHCAN="maybe"), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
+
+    def test_delete_file_on_trashcan_reaches_frontend(self):
+        with patch.dict(os.environ, _base_env(), clear=False):
+            c = Config()
+        self.assertIn("DELETE_FILE_ON_TRASHCAN", c.frontend_safe())
+
     def test_ytdl_option_presets_file_merges(self):
         with tempfile.NamedTemporaryFile("w", suffix=".json", delete=False) as f:
             json.dump({"With subtitles": {"writesubtitles": True}}, f)

@@ -1256,24 +1256,71 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       });
   }
 
-  delDownload(where: State, id: string) {
-    this.downloads.delById(where, [id]).subscribe((res) => this.handleActionResult(res, 'Delete failed'));
+  // In ask mode (DELETE_FILE_ON_TRASHCAN='ask'), completed entries may still have
+  // a file on disk, so the user is asked whether to keep or delete it before the
+  // list entry is removed. Returns undefined when no prompt is needed (send no
+  // flag), false/true for the user's choice, or null when the user cancelled.
+  private async confirmFileDeletion(where: State, ids: string[]): Promise<boolean | null | undefined> {
+    if (
+      where !== 'done' ||
+      this.downloads.configuration['DELETE_FILE_ON_TRASHCAN'] !== 'ask' ||
+      ids.length === 0
+    ) {
+      return undefined;
+    }
+    const hasFiles = ids.some((id) => {
+      const dl = this.downloads.done.get(id);
+      return !!dl?.filename || !!dl?.chapter_files?.length;
+    });
+    if (!hasFiles) {
+      return false;
+    }
+    const message = ids.length === 1
+      ? `Remove "${this.downloads.done.get(ids[0])?.title ?? ids[0]}" from the list? You can also delete its file from disk.`
+      : `Remove ${ids.length} items from the list? You can also delete their files from disk.`;
+    return await this.toasts.choose<boolean | null>(message, [
+      { label: 'Cancel', value: null },
+      { label: 'Remove from list', value: false },
+      { label: 'Delete files', value: true, primary: true },
+    ]);
+  }
+
+  // ids are collected before the prompt is shown: the user's choice applies to
+  // that snapshot, so entries that finish (or otherwise change) while the
+  // prompt is open must not get swept into the delete along with it.
+  private async removeDownloads(where: State, ids: string[], errorMsg: string) {
+    const deleteFiles = await this.confirmFileDeletion(where, ids);
+    if (deleteFiles === null) {
+      return;
+    }
+    this.downloads.delById(where, ids, deleteFiles).subscribe((res) => this.handleActionResult(res, errorMsg));
+    this.cdr.markForCheck();
+  }
+
+  async delDownload(where: State, id: string) {
+    await this.removeDownloads(where, [id], 'Delete failed');
   }
 
   startSelectedDownloads(where: State){
     this.downloads.startByFilter(where, dl => !!dl.checked).subscribe((res) => this.handleActionResult(res, 'Start download failed'));
   }
 
-  delSelectedDownloads(where: State) {
-    this.downloads.delByFilter(where, dl => !!dl.checked).subscribe((res) => this.handleActionResult(res, 'Delete failed'));
+  async delSelectedDownloads(where: State) {
+    const ids: string[] = [];
+    this.downloads[where].forEach((dl: Download, key: string) => { if (dl.checked) ids.push(key); });
+    await this.removeDownloads(where, ids, 'Delete failed');
   }
 
-  clearCompletedDownloads() {
-    this.downloads.delByFilter('done', dl => dl.status === 'finished').subscribe((res) => this.handleActionResult(res, 'Clear completed failed'));
+  async clearCompletedDownloads() {
+    const ids: string[] = [];
+    this.downloads.done.forEach((dl, key) => { if (dl.status === 'finished') ids.push(key); });
+    await this.removeDownloads('done', ids, 'Clear completed failed');
   }
 
-  clearFailedDownloads() {
-    this.downloads.delByFilter('done', dl => dl.status === 'error').subscribe((res) => this.handleActionResult(res, 'Clear failed downloads failed'));
+  async clearFailedDownloads() {
+    const ids: string[] = [];
+    this.downloads.done.forEach((dl, key) => { if (dl.status === 'error') ids.push(key); });
+    await this.removeDownloads('done', ids, 'Clear failed downloads failed');
   }
 
   retryFailedDownloads() {
