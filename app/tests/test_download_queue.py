@@ -1409,6 +1409,29 @@ async def test_feed_metadata_failure_does_not_fail_the_add(dq_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("feed, field", [(_PLAYLIST_FEED, "title"), (_CHANNEL_FEED, "channel")])
+async def test_feed_metadata_cannot_escape_the_download_directory(dq_env, feed, field):
+    """A feed title of exactly '..' survives yt-dlp's field sanitiser, and the
+    default templates put a literal '/' after it."""
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+    dq_env.OUTPUT_TEMPLATE_PLAYLIST = "%(playlist_title)s/%(title)s.%(ext)s"
+    dq_env.OUTPUT_TEMPLATE_CHANNEL = "%(channel)s/%(title)s.%(ext)s"
+    hostile = {**feed, field: ".."}
+    parent = os.path.dirname(dq_env.DOWNLOAD_DIR)
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(hostile)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.add(
+            hostile["webpage_url"], "video", "auto", "any", "best",
+            "", "", 0, auto_start=False,
+        )
+
+    assert result["status"] == "ok"
+    assert [f for f in _written_files(parent) if f.endswith(".info.json")] == []
+
+
+@pytest.mark.asyncio
 async def test_extraction_pass_never_writes_feed_metadata(dq_env):
     """The classification pass must not produce files: it runs before the add is
     known to succeed, and yt-dlp writes playlist files regardless of `download`."""

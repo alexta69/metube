@@ -1808,7 +1808,11 @@ class DownloadQueue:
         # caller still needs the real feed dict to queue the items.
         feed = {k: v for k, v in entry.items() if k != 'entries'}
         feed['entries'] = []
-        yt_dlp.YoutubeDL(params=params).process_ie_result(feed, download=False)
+        # The feed's own title/channel fill the template here unsanitised, so
+        # the same containment check as the item downloads has to apply.
+        _ConfinedYoutubeDL(
+            params=params, allowed_roots=(dldirectory, self.config.TEMP_DIR),
+        ).process_ie_result(feed, download=False)
 
     async def __write_feed_metadata(self, entry, etype, download_type, folder,
                                     ytdl_options_presets, ytdl_options_overrides, video_password=None):
