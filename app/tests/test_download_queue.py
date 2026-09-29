@@ -1432,6 +1432,58 @@ async def test_feed_metadata_cannot_escape_the_download_directory(dq_env, feed, 
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("redirect", [False, True])
+async def test_feed_thumbnail_cannot_reach_internal_hosts(dq_env, redirect):
+    """The feed-metadata pass runs in the main process and saves the thumbnail
+    it fetches where /download serves it, so the feed's thumbnail URL — or a
+    redirect from it — must not reach an internal service."""
+    import http.server
+    import threading
+
+    hits: list = []
+
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def do_GET(self):
+            hits.append(self.path)
+            if self.path == "/redirect":
+                self.send_response(302)
+                self.send_header("Location", "/secret")
+                self.end_headers()
+                return
+            body = b"internal response"
+            self.send_response(200)
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def log_message(self, *_args):
+            pass
+
+    server = http.server.ThreadingHTTPServer(("127.0.0.1", 0), Handler)
+    threading.Thread(target=server.serve_forever, daemon=True).start()
+    try:
+        base = f"http://127.0.0.1:{server.server_port}"
+        feed = {**_PLAYLIST_FEED, "thumbnail": base + ("/redirect" if redirect else "/secret")}
+        dq_env.YTDL_OPTIONS = {"writeinfojson": True, "writethumbnail": True}
+
+        dq = DownloadQueue(dq_env, AsyncMock())
+        with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(feed)), \
+             patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+            result = await dq.add(
+                feed["webpage_url"], "video", "auto", "any", "best",
+                "", "", 0, auto_start=False,
+            )
+    finally:
+        server.shutdown()
+        server.server_close()
+
+    assert result["status"] == "ok"
+    assert hits == []
+    # The refused thumbnail is a warning: the rest of the metadata still lands.
+    assert _written_files(dq_env.DOWNLOAD_DIR) == ["My Playlist.info.json"]
+
+
+@pytest.mark.asyncio
 async def test_extraction_pass_never_writes_feed_metadata(dq_env):
     """The classification pass must not produce files: it runs before the add is
     known to succeed, and yt-dlp writes playlist files regardless of `download`."""

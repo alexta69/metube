@@ -23,6 +23,10 @@ all of these:
   only by ``validate_url`` at ingress, not at connect time; a redirect from an
   allowed host to an internal one during extraction is not blocked (a lower-
   impact, blind SSRF, since the extraction response is not written to disk).
+  The one main-process pass that *does* write a fetched response to disk — the
+  playlist/channel metadata files (``__write_feed_metadata``), whose thumbnail
+  URL comes from the feed — runs under ``socket_guard_scope``, the same guard
+  applied to the calling thread only.
 * Native resolvers (curl_cffi/libcurl via ``--impersonate``) resolve outside
   Python's socket module and bypass the connect-time guard entirely.
 * When a proxy carries the fetch and resolves hostnames itself (an HTTP proxy,
@@ -35,9 +39,11 @@ all of these:
   the connect-time guard still covers everything dialled directly.
 """
 
+import contextlib
 import ipaddress
 import logging
 import socket
+import threading
 import urllib.request
 from urllib.parse import urlsplit
 
@@ -266,6 +272,10 @@ _real_getaddrinfo = socket.getaddrinfo
 # Populated by install_socket_guard; empty means no internal destination is allowed.
 _allowed_endpoints: set = set()
 
+# Set by socket_guard_scope for the thread it guards: that thread's allowed
+# endpoints. Unset means the thread is not in a scope.
+_thread_guard = threading.local()
+
 
 def _normalise_port(port):
     if isinstance(port, str):
@@ -285,9 +295,12 @@ def _is_allowed_endpoint(host, port) -> bool:
     configured host *string*, not on the resolved address, so a hostile media URL
     cannot borrow the allowance by resolving to the same address under a
     different name."""
-    if not _allowed_endpoints or host is None:
+    endpoints = getattr(_thread_guard, 'endpoints', None)
+    if endpoints is None:
+        endpoints = _allowed_endpoints
+    if not endpoints or host is None:
         return False
-    return (str(host).rstrip('.').lower(), _normalise_port(port)) in _allowed_endpoints
+    return (str(host).rstrip('.').lower(), _normalise_port(port)) in endpoints
 
 
 def _guarded_getaddrinfo(host, *args, **kwargs):
@@ -299,6 +312,17 @@ def _guarded_getaddrinfo(host, *args, **kwargs):
     if not allowed:
         raise socket.gaierror(f'Refusing to connect to non-global address for host {host!r}')
     return allowed
+
+
+def _scoped_getaddrinfo(host, *args, **kwargs):
+    if getattr(_thread_guard, 'endpoints', None) is None:
+        return _real_getaddrinfo(host, *args, **kwargs)
+    return _guarded_getaddrinfo(host, *args, **kwargs)
+
+
+def _guard_endpoints(proxy_urls, service_urls) -> tuple[set, set]:
+    proxy_endpoints = _collect_proxy_endpoints(proxy_urls)
+    return proxy_endpoints, _endpoints(service_urls) - proxy_endpoints
 
 
 def install_socket_guard(allow_private: bool = False, proxy_urls=(), service_urls=()) -> None:
@@ -331,14 +355,43 @@ def install_socket_guard(allow_private: bool = False, proxy_urls=(), service_url
     """
     if allow_private:
         return
-    proxy_endpoints = _collect_proxy_endpoints(proxy_urls)
-    service_endpoints = _endpoints(service_urls) - proxy_endpoints
+    proxy_endpoints, service_endpoints = _guard_endpoints(proxy_urls, service_urls)
     _allowed_endpoints.clear()
     _allowed_endpoints.update(proxy_endpoints | service_endpoints)
     for label, endpoints in (('proxy', proxy_endpoints), ('service', service_endpoints)):
         for host, port in sorted(endpoints, key=lambda ep: (ep[0], ep[1] or 0)):
             log.info(f'Allowing connections to configured {label} {host}:{port}')
     socket.getaddrinfo = _guarded_getaddrinfo
+
+
+@contextlib.contextmanager
+def socket_guard_scope(allow_private: bool = False, proxy_urls=(), service_urls=()):
+    """``install_socket_guard`` for the calling thread only, while the block runs.
+
+    The main process can't take the process-wide guard (it would reject the
+    server's own bind on ``HOST=0.0.0.0``), but a fetch there whose response is
+    written to disk needs it just the same: an extractor-provided URL, or a
+    redirect from one, can lead to an internal host, and the response would land
+    in the download directory where ``/download`` serves it. yt-dlp resolves on
+    the thread that makes the request, so guarding that thread covers the fetch
+    and nothing else the server is doing. Arguments are as for
+    ``install_socket_guard``.
+    """
+    if allow_private:
+        yield
+        return
+    proxy_endpoints, service_endpoints = _guard_endpoints(proxy_urls, service_urls)
+    # Installed once and left in place: outside a scope it only passes through.
+    # A process that already has the full guard keeps it; that one reads the
+    # scope's endpoints too.
+    if socket.getaddrinfo is _real_getaddrinfo:
+        socket.getaddrinfo = _scoped_getaddrinfo
+    previous = getattr(_thread_guard, 'endpoints', None)
+    _thread_guard.endpoints = proxy_endpoints | service_endpoints
+    try:
+        yield
+    finally:
+        _thread_guard.endpoints = previous
 
 
 def validate_url(url: str, allow_private: bool = False, proxies: dict | None = None) -> str | None:

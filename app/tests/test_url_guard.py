@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import socket
+import threading
 import unittest
 from unittest import mock
 
@@ -15,6 +16,7 @@ from url_guard import (
     _url_endpoint,
     download_proxies,
     install_socket_guard,
+    socket_guard_scope,
 )
 
 
@@ -489,6 +491,60 @@ class InstallSocketGuardTests(unittest.TestCase):
         install_socket_guard(proxy_urls=("http://127.0.0.1:8080",))
         install_socket_guard(proxy_urls=(None,))
         self.assertEqual(url_guard._allowed_endpoints, set())
+
+
+
+class SocketGuardScopeTests(unittest.TestCase):
+    """The main-process variant: the guard applies to the scoped thread only."""
+
+    def setUp(self):
+        original = socket.getaddrinfo
+        self.addCleanup(lambda: setattr(socket, "getaddrinfo", original))
+        patcher = mock.patch("url_guard.urllib.request.getproxies", return_value={})
+        patcher.start()
+        self.addCleanup(patcher.stop)
+
+    def _resolve(self, host="metadata", port=80, addr="169.254.169.254"):
+        with mock.patch("url_guard._real_getaddrinfo", return_value=_addrinfo(addr)):
+            return socket.getaddrinfo(host, port)
+
+    def test_internal_blocked_inside_the_scope(self):
+        with socket_guard_scope():
+            with self.assertRaises(socket.gaierror):
+                self._resolve()
+
+    def test_other_threads_are_untouched(self):
+        results = []
+        with socket_guard_scope():
+            other = threading.Thread(target=lambda: results.append(self._resolve()))
+            other.start()
+            other.join()
+        self.assertEqual([r[4][0] for r in results[0]], ["169.254.169.254"])
+
+    def test_guard_lifts_when_the_scope_ends(self):
+        with self.assertRaises(RuntimeError):
+            with socket_guard_scope():
+                raise RuntimeError
+        self.assertEqual([r[4][0] for r in self._resolve()], ["169.254.169.254"])
+
+    def test_configured_endpoints_stay_reachable(self):
+        with socket_guard_scope(proxy_urls=("socks5://127.0.0.1:9050",),
+                                service_urls=("http://127.0.0.1:4416",)):
+            for port in (9050, 4416):
+                self.assertEqual(
+                    [r[4][0] for r in self._resolve("127.0.0.1", port, "127.0.0.1")], ["127.0.0.1"])
+            with self.assertRaises(socket.gaierror):
+                self._resolve("127.0.0.1", 9999, "127.0.0.1")
+
+    def test_does_not_touch_the_process_wide_endpoints(self):
+        saved = set(url_guard._allowed_endpoints)
+        with socket_guard_scope(proxy_urls=("socks5://127.0.0.1:9050",)):
+            self.assertEqual(url_guard._allowed_endpoints, saved)
+
+    def test_nothing_installed_when_bypassed(self):
+        original = socket.getaddrinfo
+        with socket_guard_scope(allow_private=True):
+            self.assertIs(socket.getaddrinfo, original)
 
 
 if __name__ == "__main__":

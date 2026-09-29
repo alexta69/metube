@@ -27,7 +27,7 @@ from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
 from subscriptions import _entry_id
-from url_guard import validate_url, install_socket_guard, download_proxies
+from url_guard import validate_url, install_socket_guard, socket_guard_scope, download_proxies
 from urllib.parse import urlsplit
 
 log = logging.getLogger('ytdl')
@@ -1809,10 +1809,18 @@ class DownloadQueue:
         feed = {k: v for k, v in entry.items() if k != 'entries'}
         feed['entries'] = []
         # The feed's own title/channel fill the template here unsanitised, so
-        # the same containment check as the item downloads has to apply.
-        _ConfinedYoutubeDL(
-            params=params, allowed_roots=(dldirectory, self.config.TEMP_DIR),
-        ).process_ie_result(feed, download=False)
+        # the same containment check as the item downloads has to apply. And
+        # this is the main process, outside the download subprocess's socket
+        # guard, fetching a thumbnail URL the feed chose and saving the response
+        # where /download serves it — so it gets that guard, for this thread.
+        with socket_guard_scope(
+            self.config.ALLOW_PRIVATE_ADDRESSES,
+            proxy_urls=(user_opts.get('proxy'),),
+            service_urls=_pot_provider_urls(user_opts),
+        ):
+            _ConfinedYoutubeDL(
+                params=params, allowed_roots=(dldirectory, self.config.TEMP_DIR),
+            ).process_ie_result(feed, download=False)
 
     async def __write_feed_metadata(self, entry, etype, download_type, folder,
                                     ytdl_options_presets, ytdl_options_overrides, video_password=None):
