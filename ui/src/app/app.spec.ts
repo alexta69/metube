@@ -835,4 +835,110 @@ describe('App', () => {
     });
   });
 
+  // Issue #1089: OLED builds on Bootstrap's dark theme and adds a MeTube-owned
+  // attribute so the stylesheet can switch surfaces to true black.
+  describe('OLED theme (#1089)', () => {
+    const themeById = (app: App, id: string) => app.themes.find(t => t.id === id)!;
+    const root = document.documentElement;
+    let meta: HTMLMetaElement;
+
+    const mockPrefersDark = (dark: boolean) => {
+      (window.matchMedia as ReturnType<typeof vi.fn>).mockImplementation((query: string) => ({
+        matches: dark,
+        media: query,
+        onchange: null,
+        addEventListener: vi.fn(),
+        removeEventListener: vi.fn(),
+        dispatchEvent: vi.fn(),
+      }));
+    };
+
+    beforeEach(() => {
+      meta = document.createElement('meta');
+      meta.name = 'theme-color';
+      meta.content = '#212529';
+      document.head.appendChild(meta);
+    });
+
+    afterEach(() => {
+      meta.remove();
+      root.removeAttribute('data-bs-theme');
+      root.removeAttribute('data-metube-theme');
+    });
+
+    it('selecting OLED applies dark + oled attributes, theme-color, and the cookie', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.themeChanged(themeById(app, 'oled'));
+
+      expect(root.getAttribute('data-bs-theme')).toBe('dark');
+      expect(root.getAttribute('data-metube-theme')).toBe('oled');
+      expect(meta.content).toBe('#000000');
+      expect(TestBed.inject(CookieService).get('metube_theme')).toBe('oled');
+    });
+
+    it('switching OLED to Dark removes the oled attribute and restores theme-color', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.themeChanged(themeById(app, 'oled'));
+      app.themeChanged(themeById(app, 'dark'));
+
+      expect(root.getAttribute('data-bs-theme')).toBe('dark');
+      expect(root.hasAttribute('data-metube-theme')).toBe(false);
+      expect(meta.content).toBe('#212529');
+    });
+
+    it('switching OLED to Light removes the oled attribute and restores theme-color', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.themeChanged(themeById(app, 'oled'));
+      app.themeChanged(themeById(app, 'light'));
+
+      expect(root.getAttribute('data-bs-theme')).toBe('light');
+      expect(root.hasAttribute('data-metube-theme')).toBe(false);
+      expect(meta.content).toBe('#212529');
+    });
+
+    it('restores an oled cookie on init', () => {
+      TestBed.inject(CookieService).set('metube_theme', 'oled');
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+
+      expect(fixture.componentInstance.activeTheme?.id).toBe('oled');
+      expect(root.getAttribute('data-bs-theme')).toBe('dark');
+      expect(root.getAttribute('data-metube-theme')).toBe('oled');
+      expect(meta.content).toBe('#000000');
+    });
+
+    it('Auto follows a dark system preference without ever becoming OLED', () => {
+      mockPrefersDark(true);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      app.themeChanged(themeById(app, 'oled'));
+      app.themeChanged(themeById(app, 'auto'));
+
+      expect(root.getAttribute('data-bs-theme')).toBe('dark');
+      expect(root.hasAttribute('data-metube-theme')).toBe(false);
+      expect(meta.content).toBe('#212529');
+    });
+
+    it('does not throw when the theme-color meta tag is absent', () => {
+      meta.remove();
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const app = fixture.componentInstance;
+
+      expect(() => app.setTheme(themeById(app, 'oled'))).not.toThrow();
+      expect(root.getAttribute('data-metube-theme')).toBe('oled');
+    });
+  });
+
 });

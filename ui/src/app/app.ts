@@ -853,11 +853,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   setTheme(theme: Theme) {
     this.activeTheme = theme;
-    if (theme.id === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches) {
-      document.documentElement.setAttribute('data-bs-theme', 'dark');
+    const root = document.documentElement;
+    const isOled = theme.id === 'oled';
+    // Bootstrap only knows light/dark: OLED builds on dark, and Auto never maps to OLED.
+    if (isOled || (theme.id === 'auto' && window.matchMedia('(prefers-color-scheme: dark)').matches)) {
+      root.setAttribute('data-bs-theme', 'dark');
     } else {
-      document.documentElement.setAttribute('data-bs-theme', theme.id);
+      root.setAttribute('data-bs-theme', theme.id);
     }
+    if (isOled) {
+      root.setAttribute('data-metube-theme', 'oled');
+    } else {
+      root.removeAttribute('data-metube-theme');
+    }
+    document
+      .querySelector('meta[name="theme-color"]')
+      ?.setAttribute('content', isOled ? '#000000' : '#212529');
   }
 
   formatChanged() {

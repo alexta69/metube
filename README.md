@@ -48,7 +48,7 @@ MeTube is configured with environment variables: `-e NAME=value` on the `docker 
 | `CHOWN_DIRS` | `true` | Make `PUID:PGID` the owner of the download, state and temp directories at startup. With `false`, MeTube's user must already have access. |
 | `LOGLEVEL` | `INFO` | `DEBUG`, `INFO`, `WARNING`, `ERROR`, `CRITICAL` or `NONE`. |
 | `ENABLE_ACCESSLOG` | `false` | Log every HTTP request. |
-| `DEFAULT_THEME` | `auto` | UI theme: `light`, `dark`, or `auto` to follow the system. |
+| `DEFAULT_THEME` | `auto` | UI theme: `light`, `dark`, `oled` (true black), or `auto` to follow the system. |
 
 ### Downloads
 

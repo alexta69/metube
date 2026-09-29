@@ -6,6 +6,93 @@
     [data-bs-theme="dark"] &
         background-color: var(--bs-dark-bg-subtle) !important
 
+    html[data-bs-theme="dark"][data-metube-theme="oled"] &
+        background-color: #000 !important
+        border-bottom: 1px solid #1a2540
+
+// OLED theme: layered on top of Bootstrap dark mode (theme.ts sets both attributes on <html>)
+html[data-bs-theme="dark"][data-metube-theme="oled"]
+    --bs-body-bg: #000
+    --bs-body-bg-rgb: 0, 0, 0
+    --bs-body-color: #e5e7eb
+    --bs-body-color-rgb: 229, 231, 235
+    --bs-secondary-bg: #0a0f1a
+    --bs-secondary-bg-rgb: 10, 15, 26
+    --bs-tertiary-bg: #0a0f1a
+    --bs-tertiary-bg-rgb: 10, 15, 26
+    --bs-border-color: #1a2540
+    --bs-border-color-translucent: #1a2540
+    --bs-primary: #1e40af
+    --bs-primary-rgb: 30, 64, 175
+    --bs-primary-text-emphasis: #60a5fa
+    --bs-primary-bg-subtle: #0a1330
+    --bs-primary-border-subtle: #1e3a8a
+    --bs-link-color: #60a5fa
+    --bs-link-color-rgb: 96, 165, 250
+    --bs-link-hover-color: #93c5fd
+    --bs-link-hover-color-rgb: 147, 197, 253
+    --bs-focus-ring-color: rgba(96, 165, 250, 0.25)
+
+    // Bootstrap compiles these component colors to the default-blue hex instead of var(--bs-primary), so they need explicit overrides
+    .btn-primary
+        --bs-btn-bg: #1e40af
+        --bs-btn-border-color: #1e40af
+        --bs-btn-hover-bg: #2a4dcc
+        --bs-btn-hover-border-color: #2a4dcc
+        --bs-btn-active-bg: #1e3a8a
+        --bs-btn-active-border-color: #1e3a8a
+        --bs-btn-disabled-bg: #1e40af
+        --bs-btn-disabled-border-color: #1e40af
+
+    .btn-primary,
+    .btn-link
+        --bs-btn-focus-shadow-rgb: 96, 165, 250
+
+    .btn-close
+        --bs-btn-close-focus-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color)
+
+    .dropdown-menu
+        --bs-dropdown-bg: #0a0f1a
+        --bs-dropdown-link-active-bg: #1e40af
+
+    .modal
+        --bs-modal-bg: #0a0f1a
+
+    // .table resolves its own background from --bs-body-bg
+    .table
+        --bs-table-bg: #0a0f1a
+
+    .progress
+        --bs-progress-bar-bg: #1e40af
+        --bs-progress-bg: #1a2540
+
+    .form-check-input:checked
+        background-color: #1e40af
+        border-color: #1e40af
+
+    .form-control:focus,
+    .form-select:focus,
+    .form-check-input:focus
+        border-color: #60a5fa
+        box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color)
+
+    .nav-link:focus-visible
+        box-shadow: 0 0 0 0.25rem var(--bs-focus-ring-color)
+
+    // The focused switch knob is an inline SVG with the default blue baked in
+    .form-switch .form-check-input:focus
+        --bs-form-switch-bg: url("data:image/svg+xml,%3csvg xmlns='http://www.w3.org/2000/svg' viewBox='-4 -4 8 8'%3e%3ccircle r='3' fill='%2360a5fa'/%3e%3c/svg%3e")
+
+    // #1e40af is too dark for text on black, so primary-colored text uses the accent
+    .text-primary
+        color: rgba(var(--bs-link-color-rgb), var(--bs-text-opacity)) !important
+
+// .bg-dark is !important, so this must be too
+footer.footer
+    html[data-bs-theme="dark"][data-metube-theme="oled"] &
+        background-color: #000 !important
+        border-top: 1px solid #1a2540
+
 .ng-select
     flex: 1
 
