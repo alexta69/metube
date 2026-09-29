@@ -5,7 +5,7 @@ import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, 
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
-import { NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
+import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
@@ -36,7 +36,12 @@ import {
   State,
 } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
-import { SelectAllCheckboxComponent, ItemCheckboxComponent, ToastContainerComponent } from './components/';
+import {
+  SelectAllCheckboxComponent,
+  ItemCheckboxComponent,
+  ToastContainerComponent,
+  PlaylistBrowserComponent,
+} from './components/';
 
 @Component({
   selector: 'app-root',
@@ -69,6 +74,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private http = inject(HttpClient);
   private cdr = inject(ChangeDetectorRef);
   private destroyRef = inject(DestroyRef);
+  private modal = inject(NgbModal);
 
   addUrl!: string;
   downloadTypes: Option[] = DOWNLOAD_TYPES;
@@ -1160,13 +1166,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   addDownload(overrides: Partial<AddDownloadPayload> = {}) {
     const payload = this.buildAddPayload(overrides);
-
-    // Validate chapter template if chapter splitting is enabled
-    if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
-      this.toasts.error('Chapter template must include %(section_number)');
-      return;
-    }
-    if (!this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides)) {
+    if (!this.validateAddSettings(payload)) {
       return;
     }
 
@@ -1186,6 +1186,74 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       }
       this.resetAddState();
     });
+  }
+
+  // Settings checks shared by every path that queues downloads from the form.
+  private validateAddSettings(payload: AddDownloadPayload): boolean {
+    // Validate chapter template if chapter splitting is enabled
+    if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
+      this.toasts.error('Chapter template must include %(section_number)');
+      return false;
+    }
+    return this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides);
+  }
+
+  // Probe a playlist or channel URL and let the user pick which entries to
+  // queue. The picked entries are added as single downloads with the form's
+  // current settings.
+  browsePlaylist() {
+    const url = (this.addUrl ?? '').trim();
+    if (!url) {
+      return;
+    }
+    const template = this.buildAddPayload({ url });
+    if (!this.validateAddSettings(template)) {
+      return;
+    }
+    const ref = this.modal.open(PlaylistBrowserComponent, { size: 'lg', scrollable: true });
+    ref.componentInstance.payload = {
+      url,
+      playlistItemLimit: template.playlistItemLimit,
+      ytdlOptionsPresets: template.ytdlOptionsPresets,
+      ytdlOptionsOverrides: template.ytdlOptionsOverrides,
+    };
+    ref.result.then(
+      (urls: string[]) => this.queueBrowsedEntries(urls),
+      () => { /* dismissed */ },
+    );
+  }
+
+  private queueBrowsedEntries(urls: string[]) {
+    if (!urls?.length) {
+      return;
+    }
+    let queued = 0;
+    let failed = 0;
+    let firstError = '';
+    from(urls).pipe(
+      mergeMap(
+        url => this.downloads.add(this.buildAddPayload({ url })).pipe(
+          tap((status: Status) => {
+            if (status.status === 'error') {
+              failed++;
+              firstError ||= status.msg || 'Unknown error';
+            } else {
+              queued++;
+            }
+          }),
+        ),
+        App.BATCH_IMPORT_CONCURRENCY,
+      ),
+      takeUntilDestroyed(this.destroyRef),
+      finalize(() => {
+        if (failed > 0) {
+          this.toasts.error(`Queued ${queued} of ${urls.length}; ${failed} failed: ${firstError}`);
+        } else if (queued > 0) {
+          this.toasts.info(`Queued ${queued} ${queued === 1 ? 'item' : 'items'}`);
+        }
+        this.cdr.markForCheck();
+      }),
+    ).subscribe();
   }
 
   cancelAdding() {

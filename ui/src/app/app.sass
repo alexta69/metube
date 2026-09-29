@@ -84,6 +84,27 @@ td
   .spinner-border
     margin-right: 0.5rem
 
+// Download + dropdown toggle fused into one split button. Bootstrap's radius
+// rules only look at direct children of .input-group / .btn-group, so where the
+// pair sits as a middle child of the input group both buttons are squared off
+// by hand: flat against the URL field on the left and Subscribe on the right,
+// and flat between each other. (Not :first-child / :last-child: the last child
+// of the idle group is the dropdown menu, not the toggle.) Inside the narrow
+// layout's btn-group Bootstrap does this itself.
+.input-group > .download-split > .btn
+  border-radius: 0
+
+// In the narrow layout's full-width btn-group the pair stretches like the
+// other buttons; the toggle keeps its own (narrow) width.
+.btn-group > .download-split
+  flex: 1 1 auto
+
+  > .btn:first-child
+    flex: 1 1 auto
+
+  > .dropdown-toggle-split
+    flex: 0 0 auto
+
 .add-progress-btn
   min-width: 9.5rem
   cursor: default

@@ -2,7 +2,8 @@ import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Subject, of } from 'rxjs';
 import { App } from './app';
-import { DownloadsService } from './services/downloads.service';
+import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
+import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { CookieService } from 'ngx-cookie-service';
@@ -30,8 +31,13 @@ class DownloadsServiceStub {
     return of({ presets: ['Preset A'] });
   }
 
-  add() {
+  add(payload?: unknown) {
+    void payload;
     return of({ status: 'ok' as const });
+  }
+
+  browse() {
+    return of({ status: 'ok' as const, title: '', entries: [] });
   }
 
   retry(id: string) {
@@ -247,6 +253,130 @@ describe('App', () => {
     const payload = app['buildAddPayload']();
 
     expect(payload.ytdlOptionsOverrides).toBe('');
+  });
+
+  describe('browse a playlist and queue picked entries (#1030)', () => {
+    const setup = (result: Promise<string[]>) => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      // App's imports bring their own NgbModal instance, so spy on the one it uses.
+      const modal = app['modal'] as NgbModal;
+      const componentInstance: { payload?: unknown } = {};
+      const openSpy = vi
+        .spyOn(modal, 'open')
+        .mockReturnValue({ componentInstance, result } as unknown as NgbModalRef);
+      const toasts = TestBed.inject(ToastService);
+      const infoSpy = vi.spyOn(toasts, 'info');
+      const errorSpy = vi.spyOn(toasts, 'error');
+      const addSpy = vi.spyOn(downloads, 'add');
+      app.addUrl = ' https://example.com/playlist ';
+      return { app, openSpy, componentInstance, infoSpy, errorSpy, addSpy };
+    };
+
+    it('does nothing when the URL box is empty', () => {
+      const { app, openSpy } = setup(Promise.resolve([]));
+      app.addUrl = '   ';
+      app.browsePlaylist();
+      expect(openSpy).not.toHaveBeenCalled();
+    });
+
+    it('opens the browser with the payload built from the form', () => {
+      downloads.configuration['ALLOW_YTDL_OPTIONS_OVERRIDES'] = true;
+      const { app, openSpy, componentInstance } = setup(new Promise(() => undefined));
+      app.playlistItemLimit = 7;
+      app.ytdlOptionsPresets = ['Preset A'];
+      app.ytdlOptionsOverrides = '{"a":1}';
+      app.browsePlaylist();
+      expect(openSpy).toHaveBeenCalledTimes(1);
+      expect(componentInstance.payload).toEqual({
+        url: 'https://example.com/playlist',
+        playlistItemLimit: 7,
+        ytdlOptionsPresets: ['Preset A'],
+        ytdlOptionsOverrides: '{"a":1}',
+      });
+    });
+
+    it('does not send manual overrides when they are not allowed', () => {
+      const { app, componentInstance } = setup(new Promise(() => undefined));
+      app.ytdlOptionsOverrides = '{"exec":"echo hi"}';
+      app.browsePlaylist();
+      const sent = componentInstance.payload as { ytdlOptionsOverrides: string };
+      expect(sent.ytdlOptionsOverrides).toBe('');
+    });
+
+    it('refuses to open with invalid manual overrides', () => {
+      downloads.configuration['ALLOW_YTDL_OPTIONS_OVERRIDES'] = true;
+      const { app, openSpy, errorSpy } = setup(Promise.resolve([]));
+      app.ytdlOptionsOverrides = '{nope';
+      app.browsePlaylist();
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith('Custom yt-dlp options must be valid JSON');
+    });
+
+    it('refuses to open when chapter splitting lacks a section number', () => {
+      const { app, openSpy, errorSpy } = setup(Promise.resolve([]));
+      app.splitByChapters = true;
+      app.chapterTemplate = '%(title)s.%(ext)s';
+      app.browsePlaylist();
+      expect(openSpy).not.toHaveBeenCalled();
+      expect(errorSpy).toHaveBeenCalledWith('Chapter template must include %(section_number)');
+    });
+
+    it('queues each picked url with the form settings and reports once', async () => {
+      const { app, addSpy, infoSpy, errorSpy } = setup(
+        Promise.resolve(['https://example.com/a', 'https://example.com/b']),
+      );
+      app.quality = '720';
+      app.browsePlaylist();
+      await vi.waitFor(() => expect(infoSpy).toHaveBeenCalled());
+      expect(addSpy).toHaveBeenCalledTimes(2);
+      expect(addSpy.mock.calls.map(([p]) => (p as AddDownloadPayload).url)).toEqual([
+        'https://example.com/a',
+        'https://example.com/b',
+      ]);
+      expect((addSpy.mock.calls[0][0] as AddDownloadPayload).quality).toBe('720');
+      expect(infoSpy).toHaveBeenCalledTimes(1);
+      expect(infoSpy).toHaveBeenCalledWith('Queued 2 items');
+      expect(errorSpy).not.toHaveBeenCalled();
+      // The URL box is left alone so the user can browse again.
+      expect(app.addUrl).toBe(' https://example.com/playlist ');
+    });
+
+    it('uses the singular for one item', async () => {
+      const { app, infoSpy } = setup(Promise.resolve(['https://example.com/a']));
+      app.browsePlaylist();
+      await vi.waitFor(() => expect(infoSpy).toHaveBeenCalledWith('Queued 1 item'));
+    });
+
+    it('reports partial failures with counts and the first error', async () => {
+      const { app, addSpy, infoSpy, errorSpy } = setup(
+        Promise.resolve([
+          'https://example.com/a',
+          'https://example.com/b',
+          'https://example.com/c',
+        ]),
+      );
+      addSpy.mockImplementation(((payload: AddDownloadPayload) =>
+        of(
+          payload.url.endsWith('/a')
+            ? { status: 'ok' }
+            : { status: 'error', msg: `bad ${payload.url.slice(-1)}` },
+        )) as unknown as typeof downloads.add);
+      app.browsePlaylist();
+      await vi.waitFor(() => expect(errorSpy).toHaveBeenCalled());
+      expect(errorSpy).toHaveBeenCalledTimes(1);
+      expect(errorSpy).toHaveBeenCalledWith('Queued 1 of 3; 2 failed: bad b');
+      expect(infoSpy).not.toHaveBeenCalled();
+    });
+
+    it('adds nothing when the modal is dismissed', async () => {
+      const { app, addSpy, infoSpy, errorSpy } = setup(Promise.reject('dismissed'));
+      app.browsePlaylist();
+      await new Promise((resolve) => setTimeout(resolve));
+      expect(addSpy).not.toHaveBeenCalled();
+      expect(infoSpy).not.toHaveBeenCalled();
+      expect(errorSpy).not.toHaveBeenCalled();
+    });
   });
 
   it('shows waiting badge for scheduled live stream', () => {

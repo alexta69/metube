@@ -9,7 +9,7 @@ import tempfile
 import time
 import types
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 fake_yt_dlp = types.ModuleType("yt_dlp")
 fake_networking = types.ModuleType("yt_dlp.networking")
@@ -30,10 +30,14 @@ sys.modules.setdefault("yt_dlp", fake_yt_dlp)
 sys.modules.setdefault("yt_dlp.networking", fake_networking)
 sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
 
+import subscriptions
 from subscriptions import (
+    NO_ENTRIES_MSG,
+    VIDEO_ONLY_MSG,
     SubscriptionInfo,
     SubscriptionManager,
     _is_subscriber_only_entry,
+    browse_playlist,
     coerce_optional_bool,
     extract_flat_playlist,
 )
@@ -1559,6 +1563,164 @@ class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertTrue(check_captured)
         self.assertEqual(check_captured[0].get("cookiefile"), "preset.txt")
+
+
+class BrowsePlaylistTests(unittest.IsolatedAsyncioTestCase):
+    """browse_playlist is a read-only flat probe backing the Browse dialog."""
+
+    URL = "https://example.com/playlist"
+
+    def _config(self):
+        cfg = _Config("unused")
+        cfg.ALLOW_PRIVATE_ADDRESSES = False
+        return cfg
+
+    async def _browse(self, extract, *, cfg=None, limit=0, presets=None, overrides=None, url_error=None):
+        validate = MagicMock(return_value=url_error)
+        with patch("subscriptions.validate_url", validate), patch(
+            "subscriptions.extract_flat_playlist", extract
+        ):
+            result = await browse_playlist(
+                cfg or self._config(), self.URL, limit, presets, overrides
+            )
+        return result, validate
+
+    async def test_maps_entries_to_minimal_shape(self):
+        info = {"_type": "playlist", "title": "My List", "id": "PL1"}
+        entries = [
+            {"id": "a", "webpage_url": "https://example.com/a", "url": "https://x/ignored",
+             "title": "A", "duration": 61, "thumbnail": "https://example.com/a.jpg"},
+            {"id": "b", "url": "https://example.com/b", "duration": 12.5},
+            {"id": "c", "url": "https://example.com/c", "title": "C", "duration": "1:02"},
+            {"id": "d", "url": "https://example.com/d", "title": "D", "duration": True},
+        ]
+        extract = MagicMock(return_value=(info, entries))
+        result, _ = await self._browse(extract)
+
+        self.assertEqual(
+            result,
+            {
+                "status": "ok",
+                "title": "My List",
+                "entries": [
+                    {"url": "https://example.com/a", "title": "A", "duration": 61},
+                    {"url": "https://example.com/b", "title": "https://example.com/b", "duration": 12.5},
+                    {"url": "https://example.com/c", "title": "C", "duration": None},
+                    {"url": "https://example.com/d", "title": "D", "duration": None},
+                ],
+            },
+        )
+
+    async def test_title_falls_back_to_url(self):
+        extract = MagicMock(
+            return_value=({"_type": "channel"}, [{"url": "https://example.com/a"}])
+        )
+        result, _ = await self._browse(extract)
+        self.assertEqual(result["title"], self.URL)
+
+    async def test_skips_non_dict_and_urlless_entries(self):
+        extract = MagicMock(
+            return_value=(
+                {"_type": "playlist", "title": "L"},
+                ["junk", None, {"title": "no url"}, {"url": "https://example.com/ok", "title": "Ok"}],
+            )
+        )
+        result, _ = await self._browse(extract)
+        self.assertEqual(result["status"], "ok")
+        self.assertEqual([e["url"] for e in result["entries"]], ["https://example.com/ok"])
+
+    async def test_single_video_is_rejected(self):
+        extract = MagicMock(return_value=({"_type": "video", "title": "V"}, []))
+        result, _ = await self._browse(extract)
+        self.assertEqual(result, {"status": "error", "msg": VIDEO_ONLY_MSG})
+
+    async def test_empty_playlist_is_rejected(self):
+        extract = MagicMock(return_value=({"_type": "playlist", "title": "L"}, []))
+        result, _ = await self._browse(extract)
+        self.assertEqual(result, {"status": "error", "msg": NO_ENTRIES_MSG})
+        self.assertNotEqual(NO_ENTRIES_MSG, VIDEO_ONLY_MSG)
+
+    async def test_playlist_with_only_unusable_entries_is_rejected(self):
+        extract = MagicMock(
+            return_value=({"_type": "channel", "title": "L"}, ["junk", None, {"title": "no url"}])
+        )
+        result, _ = await self._browse(extract)
+        self.assertEqual(result, {"status": "error", "msg": NO_ENTRIES_MSG})
+
+    async def test_blocked_url_never_reaches_the_extractor(self):
+        extract = MagicMock()
+        result, validate = await self._browse(extract, url_error="Blocked address")
+        self.assertEqual(result, {"status": "error", "msg": "Blocked address"})
+        extract.assert_not_called()
+        validate.assert_called_once()
+        self.assertEqual(validate.call_args.args[0], self.URL)
+        self.assertFalse(validate.call_args.kwargs["allow_private"])
+
+    async def test_guard_honours_allow_private_and_scan_proxy(self):
+        cfg = self._config()
+        cfg.ALLOW_PRIVATE_ADDRESSES = True
+        cfg.YTDL_OPTIONS_PRESETS = {"px": {"proxy": "http://proxy.local:3128"}}
+        extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
+        _, validate = await self._browse(extract, cfg=cfg, presets=["px"])
+        self.assertTrue(validate.call_args.kwargs["allow_private"])
+        self.assertTrue(validate.call_args.kwargs["proxies"])
+
+    async def test_extractor_error_becomes_error_status(self):
+        extract = MagicMock(
+            side_effect=subscriptions.yt_dlp.utils.YoutubeDLError("boom")
+        )
+        result, _ = await self._browse(extract)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("boom", result["msg"])
+
+    async def test_unresolvable_url(self):
+        extract = MagicMock(return_value=(None, []))
+        result, _ = await self._browse(extract)
+        self.assertEqual(result, {"status": "error", "msg": "Could not resolve URL"})
+
+    async def test_limit_zero_means_no_playlistend(self):
+        extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
+        await self._browse(extract, limit=0)
+        self.assertIsNone(extract.call_args.args[2])
+
+    async def test_negative_limit_means_no_playlistend(self):
+        extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
+        await self._browse(extract, limit=-3)
+        self.assertIsNone(extract.call_args.args[2])
+
+    async def test_positive_limit_is_passed_as_playlistend(self):
+        extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
+        await self._browse(extract, limit=5)
+        self.assertEqual(extract.call_args.args[2], 5)
+        self.assertEqual(extract.call_args.args[1], self.URL)
+
+    async def test_presets_and_overrides_are_merged_into_extra_opts(self):
+        cfg = self._config()
+        cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"cookiefile": "preset.txt", "a": 1}}
+        extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
+        await self._browse(
+            extract, cfg=cfg, presets=["mypreset"], overrides={"a": 2, "extra": "override"}
+        )
+        self.assertEqual(
+            extract.call_args.kwargs["extra_opts"],
+            {"cookiefile": "preset.txt", "a": 2, "extra": "override"},
+        )
+
+    async def test_probe_suppresses_playlist_sidecar_files(self):
+        """Through the real extractor: no playlist-level files are written."""
+        captured_params: list = []
+        fake_ydl = _make_scan_capturing_fake_ydl(
+            captured_params, [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}]
+        )
+        cfg = self._config()
+        cfg.YTDL_OPTIONS = {"writeinfojson": True}
+        with patch("subscriptions.validate_url", return_value=None), patch(
+            "subscriptions.yt_dlp.YoutubeDL", fake_ydl, create=True
+        ):
+            result = await browse_playlist(cfg, self.URL, 0, None, None)
+        self.assertEqual(result["status"], "ok")
+        self.assertFalse(captured_params[0]["allow_playlist_files"])
+        self.assertNotIn("playlistend", captured_params[0])
 
 
 class SubscriptionEventLoopTests(unittest.IsolatedAsyncioTestCase):
