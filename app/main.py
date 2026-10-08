@@ -6,7 +6,7 @@ import sys
 import asyncio
 from datetime import datetime, timedelta
 from pathlib import Path
-from aiohttp import web
+from aiohttp import web, ClientSession, ClientTimeout
 from aiohttp.web import GracefulExit
 from aiohttp.log import access_logger
 import ssl
@@ -77,6 +77,7 @@ class Config:
         'SUBSCRIPTION_SCAN_PLAYLIST_END': '50',
         'SUBSCRIPTION_MAX_SEEN_IDS': '50000',
         'CLEAR_COMPLETED_AFTER': '0',
+        'DOWNLOAD_WEBHOOK_URL': '',
         'YTDL_OPTIONS': '{}',
         'YTDL_OPTIONS_FILE': '',
         'YTDL_OPTIONS_PRESETS': '{}',
@@ -691,6 +692,23 @@ class Notifier(DownloadQueueNotifier):
     async def completed(self, dl):
         log.info(f"Notifier: Download completed - {dl.title}")
         await sio.emit('completed', serializer.encode(dl))
+        if dl.status == 'finished' and config.DOWNLOAD_WEBHOOK_URL:
+            bg_tasks.create_task(self._send_download_webhook(dl), name="download_webhook")
+
+    async def _send_download_webhook(self, dl):
+        payload = {
+            'event': 'download.completed',
+            'download': dl.to_public_dict(),
+        }
+        try:
+            timeout = ClientTimeout(total=10)
+            async with ClientSession(timeout=timeout) as session:
+                async with session.post(config.DOWNLOAD_WEBHOOK_URL, json=payload) as response:
+                    response.raise_for_status()
+            log.info("Download webhook delivered for %s", dl.title)
+        except Exception:
+            # Webhook delivery is supplemental and must not change download status.
+            log.warning("Download webhook delivery failed for %s", dl.title, exc_info=True)
 
     async def canceled(self, id):
         log.info(f"Notifier: Download canceled - {id}")
