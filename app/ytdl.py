@@ -994,6 +994,7 @@ class Download:
                     None,
                     [(start, end)],
                 )
+                ytdl_params.setdefault('force_keyframes_at_cuts', True)
 
             ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
             if ret == 0:

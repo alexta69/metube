@@ -65,6 +65,7 @@ fake_postprocessor_common.PostProcessor = _PostProcessor
 # ``_resolve_outtmpl_fields`` reads via ``match.group('key')``.
 fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>(?P<key>{}))\)(?P<format>[-0-9.]*{})"
 fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
+fake_utils.download_range_func = lambda chapters, ranges: ranges
 fake_yt_dlp.networking = fake_networking
 fake_yt_dlp.postprocessor = fake_postprocessor
 fake_yt_dlp.utils = fake_utils
@@ -745,6 +746,69 @@ class SponsorBlockPostprocessorTests(unittest.TestCase):
         keys = [pp['key'] for pp in params['postprocessors']]
         self.assertEqual(keys, ['SponsorBlock', 'ModifyChapters', 'FFmpegSplitChapters'])
         self.assertEqual(params['outtmpl']['chapter'], '%(section_number)s.%(ext)s')
+
+
+class ClipKeyframesParamsTests(unittest.TestCase):
+    """Clipping must force keyframes at cut points so the video track is not blank."""
+
+    def test_clip_range_sets_force_keyframes_at_cuts(self):
+        download = _make_test_download()
+        download.info.clip_start = 10.0
+        download.info.clip_end = 30.0
+
+        params = _capture_ytdl_params(download)
+
+        self.assertIn('download_ranges', params)
+        self.assertTrue(params.get('force_keyframes_at_cuts'))
+
+    def test_clip_start_only_sets_force_keyframes_at_cuts(self):
+        download = _make_test_download()
+        download.info.clip_start = 5.0
+        download.info.clip_end = None
+
+        params = _capture_ytdl_params(download)
+
+        self.assertIn('download_ranges', params)
+        self.assertTrue(params.get('force_keyframes_at_cuts'))
+
+    def test_explicit_user_false_is_respected(self):
+        info = DownloadInfo(
+            id="id1",
+            title="t",
+            url="http://example.com/v",
+            quality="best",
+            download_type="video",
+            codec="auto",
+            format="any",
+            folder="",
+            custom_name_prefix="",
+            error=None,
+            entry=None,
+            playlist_item_limit=0,
+            split_by_chapters=False,
+            chapter_template="",
+        )
+        info.clip_start = 10.0
+        info.clip_end = 30.0
+        # Simulate a user-supplied YTDL_OPTIONS override that opts out.
+        download = Download(
+            "/tmp", "/tmp", "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", "any",
+            {'force_keyframes_at_cuts': False}, info,
+        )
+
+        params = _capture_ytdl_params(download)
+
+        # setdefault must not overwrite the user-supplied False.
+        self.assertIs(params.get('force_keyframes_at_cuts'), False)
+
+    def test_non_clip_download_does_not_get_force_keyframes(self):
+        download = _make_test_download()
+        # No clip_start / clip_end set at all.
+
+        params = _capture_ytdl_params(download)
+
+        self.assertNotIn('download_ranges', params)
+        self.assertNotIn('force_keyframes_at_cuts', params)
 
 
 class AudioTagsParamsTests(unittest.TestCase):
