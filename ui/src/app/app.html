@@ -159,12 +159,12 @@
         </div>
       </div>
 
-      <!-- Options Row -->
-      <!-- Four fields per row are too tight at ~768px for the longer values, so
-           every four-field type goes 2×2 from md to lg and one row from lg up. -->
+      <!-- Options Row: built from the server's catalog. Each type shows the
+           fields it carries, in the order Type, Codec, Format, Quality, Tags,
+           Language, Subtitle Source. -->
+      @if (catalog) {
       <div class="row mb-3 g-3">
-        @if (downloadType === 'video') {
-          <div class="col-12 col-md-6 col-lg-3">
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text">Type</span>
               <select class="form-select"
@@ -178,7 +178,8 @@
               </select>
             </div>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          @if (codecOptions.length) {
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text">Codec</span>
               <select class="form-select"
@@ -186,127 +187,65 @@
                 [(ngModel)]="codec"
                 (change)="codecChanged()"
                 [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (vc of videoCodecs; track vc.id) {
+                @for (vc of codecOptions; track vc.id) {
                   <option [ngValue]="vc.id">{{ vc.text }}</option>
                 }
               </select>
             </div>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          }
+          <div [class]="optionColumnClass()">
             <div class="input-group">
-              <span class="input-group-text">Format</span>
+              @if (hasSubtitleSettings()) {
+                <span class="input-group-text help-title" ngbPopover="Subtitle output format for captions mode." triggers="click" autoClose="outside" container="body">Format</span>
+              } @else {
+                <span class="input-group-text">Format</span>
+              }
               <select class="form-select"
                 name="format"
                 [(ngModel)]="format"
                 (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading || !hasFormatChoice()">
                 @for (f of formatOptions; track f.id) {
                   <option [ngValue]="f.id">{{ f.text }}</option>
                 }
               </select>
             </div>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          @if (qualities.length) {
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text">Quality</span>
               <select class="form-select"
                 name="quality"
                 [(ngModel)]="quality"
                 (change)="qualityChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading || !showQualitySelector()">
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading || !hasQualityChoice()">
                 @for (q of qualities; track q.id) {
                   <option [ngValue]="q.id">{{ q.text }}</option>
                 }
               </select>
             </div>
           </div>
-        } @else if (downloadType === 'audio') {
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <select class="form-select"
-                name="format"
-                [(ngModel)]="format"
-                (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (f of formatOptions; track f.id) {
-                  <option [ngValue]="f.id">{{ f.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Quality</span>
-              <select class="form-select"
-                name="quality"
-                [(ngModel)]="quality"
-                (change)="qualityChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (q of qualities; track q.id) {
-                  <option [ngValue]="q.id">{{ q.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          }
+          @if (currentType()?.audio_tags) {
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text help-title" ngbPopover="Tags and cover art written into the file. Format Auto with Tags None saves the audio exactly as the site serves it." triggers="click" autoClose="outside" container="body">Tags</span>
               <select class="form-select"
                 name="audioTags"
                 [ngModel]="displayedAudioTags()"
                 (ngModelChange)="audioTagsChanged($event)"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading || format === 'wav'">
+                [disabled]="addInProgress || subscribeInProgress || downloads.loading || !tagsSupported()">
                 @for (t of audioTagsOptions; track t.id) {
                   <option [ngValue]="t.id">{{ t.text }}</option>
                 }
               </select>
             </div>
           </div>
-        } @else if (downloadType === 'captions') {
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-3">
-            <div class="input-group">
-              <span class="input-group-text help-title" ngbPopover="Subtitle output format for captions mode." triggers="click" autoClose="outside" container="body">Format</span>
-              <select class="form-select"
-                name="format"
-                [(ngModel)]="format"
-                (change)="formatChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (f of formatOptions; track f.id) {
-                  <option [ngValue]="f.id">{{ f.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          }
+          @if (currentType()?.subtitle_language) {
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text help-title" ngbPopover="Subtitle language (you can type any language code)." triggers="click" autoClose="outside" container="body">Language</span>
               <input class="form-control"
@@ -324,7 +263,9 @@
               </datalist>
             </div>
           </div>
-          <div class="col-12 col-md-6 col-lg-3">
+          }
+          @if (currentType()?.subtitle_mode) {
+          <div [class]="optionColumnClass()">
             <div class="input-group">
               <span class="input-group-text help-title" ngbPopover="Choose manual, auto, or fallback preference for captions mode." triggers="click" autoClose="outside" container="body">Subtitle Source</span>
               <select class="form-select"
@@ -338,29 +279,9 @@
               </select>
             </div>
           </div>
-        } @else {
-          <div class="col-md-6">
-            <div class="input-group">
-              <span class="input-group-text">Type</span>
-              <select class="form-select"
-                name="downloadType"
-                [(ngModel)]="downloadType"
-                (change)="downloadTypeChanged()"
-                [disabled]="addInProgress || subscribeInProgress || downloads.loading">
-                @for (type of downloadTypes; track type.id) {
-                  <option [ngValue]="type.id">{{ type.text }}</option>
-                }
-              </select>
-            </div>
-          </div>
-          <div class="col-md-6">
-            <div class="input-group">
-              <span class="input-group-text">Format</span>
-              <input class="form-control" value="JPG" disabled>
-            </div>
-          </div>
-        }
+          }
       </div>
+      }
 
       <div class="row mb-3 g-3">
         <div class="col-12 text-start">

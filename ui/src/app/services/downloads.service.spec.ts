@@ -140,6 +140,18 @@ describe('DownloadsService', () => {
     req.flush({ status: 'ok' });
   });
 
+  it('keeps the format catalog the server sends on connect', () => {
+    const seen: unknown[] = [];
+    service.formatsChanged.subscribe(c => seen.push(c));
+    expect(service.formats).toBeNull();
+
+    const catalog = { download_type: { default: 'video', options: [] } };
+    socket.emit('formats', JSON.stringify(catalog));
+
+    expect(service.formats).toEqual(catalog);
+    expect(seen).toEqual([catalog]);
+  });
+
   it('getPresets() fetches configured preset names', () => {
     service.getPresets().subscribe((result) => {
       expect(result).toEqual({ presets: ['Preset A'] });

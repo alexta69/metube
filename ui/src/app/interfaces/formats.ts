@@ -1,88 +1,35 @@
-import { Quality } from "./quality";
+// The download options the server offers. The catalog is defined in
+// app/format_catalog.py and sent to every client on connect; nothing here
+// lists options of its own.
 
 export interface Option {
   id: string;
   text: string;
 }
 
-export interface AudioFormatOption extends Option {
-  qualities: Quality[];
+// One list of options for an /add field, with the value to preselect.
+export interface Choice<T extends Option = Option> {
+  default: string;
+  options: T[];
 }
 
-export const DOWNLOAD_TYPES: Option[] = [
-  { id: "video", text: "Video" },
-  { id: "audio", text: "Audio" },
-  { id: "captions", text: "Captions" },
-  { id: "thumbnail", text: "Thumbnail" },
-];
+export interface FormatOption extends Option {
+  // Absent when the format has no quality to pick.
+  quality?: Choice;
+  // Audio only: whether tags and a cover can be written into the format.
+  tags?: boolean;
+}
 
-export const VIDEO_CODECS: Option[] = [
-  { id: "auto", text: "Auto" },
-  { id: "h264", text: "H.264" },
-  { id: "h265", text: "H.265 (HEVC)" },
-  { id: "av1", text: "AV1" },
-  { id: "vp9", text: "VP9" },
-];
+// Each type carries the fields that apply to it.
+export interface DownloadTypeOption extends Option {
+  format: Choice<FormatOption>;
+  codec?: Choice;
+  audio_tags?: Choice;
+  subtitle_mode?: Choice;
+  // Suggestions; any language tag is accepted.
+  subtitle_language?: Choice;
+}
 
-export const VIDEO_FORMATS: Option[] = [
-  { id: "any", text: "Auto" },
-  { id: "mp4", text: "MP4" },
-  { id: "ios", text: "iOS Compatible" },
-];
-
-export const VIDEO_QUALITIES: Quality[] = [
-  { id: "best", text: "Best" },
-  { id: "2160", text: "2160p" },
-  { id: "1440", text: "1440p" },
-  { id: "1080", text: "1080p" },
-  { id: "720", text: "720p" },
-  { id: "480", text: "480p" },
-  { id: "360", text: "360p" },
-  { id: "240", text: "240p" },
-  { id: "worst", text: "Worst" },
-];
-
-export const AUDIO_FORMATS: AudioFormatOption[] = [
-  { id: "auto", text: "Auto", qualities: [{ id: "best", text: "Best" }] },
-  {
-    id: "m4a",
-    text: "M4A",
-    qualities: [
-      { id: "best", text: "Best" },
-      { id: "192", text: "192 kbps" },
-      { id: "128", text: "128 kbps" },
-    ],
-  },
-  {
-    id: "mp3",
-    text: "MP3",
-    qualities: [
-      { id: "best", text: "Best" },
-      { id: "320", text: "320 kbps" },
-      { id: "192", text: "192 kbps" },
-      { id: "128", text: "128 kbps" },
-    ],
-  },
-  { id: "opus", text: "OPUS", qualities: [{ id: "best", text: "Best" }] },
-  { id: "wav", text: "WAV", qualities: [{ id: "best", text: "Best" }] },
-  { id: "flac", text: "FLAC", qualities: [{ id: "best", text: "Best" }] },
-];
-
-// Selected when switching to Audio; Auto is listed first to match Video, but
-// the default stays what it was before Auto existed.
-export const DEFAULT_AUDIO_FORMAT = "m4a";
-
-export const AUDIO_TAGS: Option[] = [
-  { id: "with_cover", text: "With cover" },
-  { id: "no_cover", text: "No cover" },
-  { id: "none", text: "None" },
-];
-
-export const CAPTION_FORMATS: Option[] = [
-  { id: "srt", text: "SRT" },
-  { id: "txt", text: "TXT (Text only)" },
-  { id: "vtt", text: "VTT" },
-  { id: "ttml", text: "TTML" },
-];
-
-export const THUMBNAIL_FORMATS: Option[] = [{ id: "jpg", text: "JPG" }];
+export interface FormatCatalog {
+  download_type: Choice<DownloadTypeOption>;
+}

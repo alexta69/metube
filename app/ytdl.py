@@ -22,7 +22,8 @@ import yt_dlp.networking.impersonate
 from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
-from dl_formats import get_format, get_opts, AUDIO_FORMATS, merge_ytdl_option_layers
+from dl_formats import get_format, get_opts, merge_ytdl_option_layers
+import format_catalog
 from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
@@ -585,7 +586,7 @@ class DownloadInfo:
             old_quality = state.get('quality', 'best')
             old_subtitle_format = state.get('subtitle_format', 'srt')
 
-            if old_format in AUDIO_FORMATS:
+            if old_format in format_catalog.format_ids('audio'):
                 self.download_type = 'audio'
                 self.codec = 'auto'
             elif old_format == 'thumbnail':

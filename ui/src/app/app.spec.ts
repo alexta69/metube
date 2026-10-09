@@ -6,7 +6,66 @@ import { DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { CookieService } from 'ngx-cookie-service';
-import { Download } from './interfaces';
+import { Download, FormatCatalog } from './interfaces';
+
+const choice = (def: string, ...pairs: [string, string][]) => ({
+  default: def,
+  options: pairs.map(([id, text]) => ({ id, text })),
+});
+
+// Shaped like the catalog app/format_catalog.py sends; the tests rely on its
+// shape and a few of its entries, not on it matching the real one.
+function testCatalog(): FormatCatalog {
+  const videoQuality = choice('best', ['best', 'Best'], ['1080', '1080p'], ['720', '720p'], ['worst', 'Worst']);
+  const bestOnly = choice('best', ['best', 'Best']);
+  return {
+    download_type: {
+      default: 'video',
+      options: [
+        {
+          id: 'video',
+          text: 'Video',
+          codec: choice('auto', ['auto', 'Auto'], ['h264', 'H.264'], ['h265', 'H.265 (HEVC)']),
+          format: {
+            default: 'any',
+            options: [
+              { id: 'any', text: 'Auto', quality: videoQuality },
+              { id: 'mp4', text: 'MP4', quality: videoQuality },
+              { id: 'ios', text: 'iOS Compatible', quality: videoQuality },
+            ],
+          },
+        },
+        {
+          id: 'audio',
+          text: 'Audio',
+          format: {
+            default: 'm4a',
+            options: [
+              { id: 'auto', text: 'Auto', quality: bestOnly, tags: true },
+              { id: 'm4a', text: 'M4A', quality: choice('best', ['best', 'Best'], ['192', '192 kbps']), tags: true },
+              { id: 'mp3', text: 'MP3', quality: choice('best', ['best', 'Best'], ['320', '320 kbps']), tags: true },
+              { id: 'wav', text: 'WAV', quality: bestOnly, tags: false },
+              { id: 'flac', text: 'FLAC', quality: bestOnly, tags: true },
+            ],
+          },
+          audio_tags: choice('with_cover', ['with_cover', 'With cover'], ['no_cover', 'No cover'], ['none', 'None']),
+        },
+        {
+          id: 'captions',
+          text: 'Captions',
+          format: choice('srt', ['srt', 'SRT'], ['vtt', 'VTT'], ['dfxp', 'DFXP']),
+          subtitle_mode: choice('prefer_manual', ['prefer_manual', 'Prefer Manual'], ['auto_only', 'Auto Only']),
+          subtitle_language: choice('en', ['en', 'English'], ['de', 'German']),
+        },
+        {
+          id: 'thumbnail',
+          text: 'Thumbnail',
+          format: choice('jpg', ['jpg', 'JPG']),
+        },
+      ],
+    },
+  };
+}
 
 class DownloadsServiceStub {
   loading = false;
@@ -17,6 +76,8 @@ class DownloadsServiceStub {
   queueChanged = new Subject<void>();
   doneChanged = new Subject<void>();
   configurationChanged = new Subject<Record<string, unknown>>();
+  formats: FormatCatalog | null = testCatalog();
+  formatsChanged = new Subject<FormatCatalog>();
   customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
@@ -320,14 +381,176 @@ describe('App', () => {
     expect(app.formatLabel(base)).toBe('-');
   });
 
+  describe('download options come from the server catalog', () => {
+    const fieldNames = (fixture: { nativeElement: HTMLElement }) =>
+      Array.from(
+        fixture.nativeElement.querySelectorAll<HTMLElement>(
+          '[name=downloadType],[name=codec],[name=format],[name=quality],[name=audioTags],[name=subtitleLanguage],[name=subtitleMode]',
+        ),
+      ).map(el => el.getAttribute('name'));
+
+    const select = (fixture: { nativeElement: HTMLElement }, name: string) =>
+      fixture.nativeElement.querySelector<HTMLSelectElement>(`select[name=${name}]`);
+
+    // ngModel writes values and disabled state in a microtask.
+    const render = async (fixture: { detectChanges: () => void }) => {
+      fixture.detectChanges();
+      await Promise.resolve();
+      fixture.detectChanges();
+    };
+
+    it('shows no options until the catalog arrives, then restores the remembered choices', async () => {
+      downloads.formats = null;
+      const cookies = TestBed.inject(CookieService);
+      cookies.set('metube_download_type', 'audio');
+      cookies.set('metube_format', 'mp3');
+      cookies.set('metube_quality', '320');
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      await render(fixture);
+      expect(fieldNames(fixture)).toEqual([]);
+
+      downloads.formatsChanged.next(testCatalog());
+      await render(fixture);
+
+      expect(fieldNames(fixture)).toEqual(['downloadType', 'format', 'quality', 'audioTags']);
+      expect([app.downloadType, app.format, app.quality]).toEqual(['audio', 'mp3', '320']);
+      expect(select(fixture, 'format')?.selectedOptions[0]?.textContent?.trim()).toBe('MP3');
+    });
+
+    it('replaces remembered choices the catalog does not offer with its defaults', () => {
+      const cookies = TestBed.inject(CookieService);
+      cookies.set('metube_download_type', 'audio');
+      cookies.set('metube_format', 'ogg');
+      cookies.set('metube_quality', '999');
+      cookies.set('metube_audio_tags', 'everything');
+      cookies.set('metube_subtitle_mode', 'bogus');
+      const app = TestBed.createComponent(App).componentInstance;
+
+      expect([app.format, app.quality, app.audioTags, app.subtitleMode])
+        .toEqual(['m4a', 'best', 'with_cover', 'prefer_manual']);
+      expect(app.subtitleLanguage).toBe('en');
+
+      TestBed.inject(CookieService).set('metube_download_type', 'gif');
+      expect(TestBed.createComponent(App).componentInstance.downloadType).toBe('video');
+    });
+
+    it('keeps a free-form subtitle language the suggestions do not list', () => {
+      TestBed.inject(CookieService).set('metube_subtitle_language', 'fil');
+      const app = TestBed.createComponent(App).componentInstance;
+      expect(app.subtitleLanguage).toBe('fil');
+    });
+
+    it('leaves the form alone when the same catalog is resent, and re-checks it when the catalog changes', () => {
+      const app = TestBed.createComponent(App).componentInstance;
+      // Mid-edit, not yet saved: a reconnect resending the same catalog must
+      // not re-apply the remembered choices over it.
+      app.quality = '720';
+
+      downloads.formatsChanged.next(testCatalog());
+      expect(app.quality).toBe('720');
+
+      const changed = testCatalog();
+      const video = changed.download_type.options[0];
+      video.format.options = video.format.options.map(f => ({
+        ...f,
+        quality: { default: 'best', options: [{ id: 'best', text: 'Best' }, { id: '1080', text: '1080p' }] },
+      }));
+      downloads.formatsChanged.next(changed);
+      expect(app.quality).toBe('best');
+      expect(app.qualities.map(q => q.id)).toEqual(['best', '1080']);
+    });
+
+    it('shows the fields each type carries, in a fixed order', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      const expected: Record<string, string[]> = {
+        video: ['downloadType', 'codec', 'format', 'quality'],
+        audio: ['downloadType', 'format', 'quality', 'audioTags'],
+        captions: ['downloadType', 'format', 'subtitleLanguage', 'subtitleMode'],
+        thumbnail: ['downloadType', 'format'],
+      };
+      await render(fixture);
+      for (const [type, names] of Object.entries(expected)) {
+        // Picked in the Type dropdown, as a user would.
+        const typeSelect = select(fixture, 'downloadType')!;
+        typeSelect.selectedIndex = Array.from(typeSelect.options).findIndex(o => o.textContent?.trim().toLowerCase() === type);
+        typeSelect.dispatchEvent(new Event('change'));
+        await render(fixture);
+        expect(app.downloadType).toBe(type);
+        expect(fieldNames(fixture), type).toEqual(names);
+      }
+      expect(app.optionColumnClass()).toBe('col-md-6');
+    });
+
+    it('disables a list that has nothing to pick', async () => {
+      const fixture = TestBed.createComponent(App);
+      const app = fixture.componentInstance;
+      app.downloadType = 'audio';
+      app.downloadTypeChanged();
+      app.format = 'flac';
+      app.formatChanged();
+      await render(fixture);
+      expect(select(fixture, 'quality')?.disabled).toBe(true);
+
+      app.format = 'mp3';
+      app.formatChanged();
+      await render(fixture);
+      expect(select(fixture, 'quality')?.disabled).toBe(false);
+
+      app.downloadType = 'thumbnail';
+      app.downloadTypeChanged();
+      await render(fixture);
+      expect(select(fixture, 'format')?.disabled).toBe(true);
+      expect(select(fixture, 'format')?.selectedOptions[0]?.textContent?.trim()).toBe('JPG');
+    });
+
+    it('offers an option added to the catalog without any other change', () => {
+      const catalog = testCatalog();
+      catalog.download_type.options[1].format.options.push({
+        id: 'aac',
+        text: 'AAC',
+        quality: { default: 'best', options: [{ id: 'best', text: 'Best' }, { id: '256', text: '256 kbps' }] },
+        tags: true,
+      });
+      downloads.formats = catalog;
+      const app = TestBed.createComponent(App).componentInstance;
+      app.downloadType = 'audio';
+      app.downloadTypeChanged();
+      app.format = 'aac';
+      app.formatChanged();
+      app.quality = '256';
+      app.qualityChanged();
+
+      expect(app.formatOptions.map(f => f.text)).toContain('AAC');
+      expect(app.qualities.map(q => q.text)).toEqual(['Best', '256 kbps']);
+      const payload = app['buildAddPayload']();
+      expect([payload.downloadType, payload.format, payload.quality]).toEqual(['audio', 'aac', '256']);
+    });
+
+    it('labels queued downloads from the catalog, under their own type', () => {
+      const app = TestBed.createComponent(App).componentInstance;
+      const dl = (fields: Partial<Download>) => ({ format: '', quality: '', ...fields }) as Download;
+
+      expect(app.formatQualityLabel(dl({ download_type: 'video', format: 'any', quality: '1080' }))).toBe('1080p');
+      expect(app.formatQualityLabel(dl({ download_type: 'audio', format: 'mp3', quality: '320' }))).toBe('320 kbps');
+      expect(app.formatQualityLabel(dl({ download_type: 'captions', format: 'srt', quality: 'best' }))).toBe('-');
+      expect(app.formatCodecLabel(dl({ download_type: 'video', codec: 'h265' }))).toBe('H.265 (HEVC)');
+      expect(app.formatCodecLabel(dl({ download_type: 'audio', format: 'flac' }))).toBe('FLAC');
+      expect(app.downloadTypeLabel(dl({ download_type: 'captions' }))).toBe('Captions');
+      expect(app.formatLabel(dl({ download_type: 'audio', format: 'auto' }))).toBe('Auto');
+      expect(app.formatLabel(dl({ download_type: 'captions', format: 'dfxp' }))).toBe('DFXP');
+    });
+  });
+
   describe('audio Auto format and Tags dropdown', () => {
     it('lists Auto first but still defaults a switch to Audio to M4A', () => {
       const app = TestBed.createComponent(App).componentInstance;
-      expect(app.audioFormats[0].id).toBe('auto');
 
       app.downloadType = 'audio';
       app.downloadTypeChanged();
 
+      expect(app.formatOptions[0].id).toBe('auto');
       expect(app.format).toBe('m4a');
     });
 

@@ -1,8 +1,8 @@
+"""Maps the options in format_catalog onto yt-dlp format selectors and options."""
+
 import copy
 
-AUDIO_FORMATS = ("auto", "m4a", "mp3", "opus", "wav", "flac")
-AUDIO_TAGS_MODES = ("with_cover", "no_cover", "none")
-CAPTION_MODES = ("auto_only", "manual_only", "prefer_manual", "prefer_auto")
+import format_catalog
 
 # FFmpegExtractAudio targets for the "auto" audio format, in yt-dlp's
 # --audio-format rule syntax ("SOURCE>TARGET/.../FALLBACK", matched on the
@@ -37,6 +37,7 @@ def merge_ytdl_option_layers(presets, overrides, presets_config) -> dict:
     merged.update(overrides or {})
     return merged
 
+# Every codec in the catalog other than "auto" needs an entry here.
 CODEC_FILTER_MAP = {
     'h264': "[vcodec~='^(h264|avc)']",
     'h265': "[vcodec~='^(h265|hevc)']",
@@ -47,12 +48,14 @@ CODEC_FILTER_MAP = {
 
 def _normalize_caption_mode(mode: str) -> str:
     mode = (mode or "").strip()
-    return mode if mode in CAPTION_MODES else "prefer_manual"
+    if mode in format_catalog.choice_ids("captions", "subtitle_mode"):
+        return mode
+    return format_catalog.choice_default("captions", "subtitle_mode")
 
 
 def _normalize_subtitle_language(language: str) -> str:
     language = (language or "").strip()
-    return language or "en"
+    return language or format_catalog.choice_default("captions", "subtitle_language")
 
 
 def get_format(download_type: str, codec: str, format: str, quality: str) -> str:
@@ -90,14 +93,14 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
         return "bestaudio/best"
 
     if download_type == "audio":
-        if format not in AUDIO_FORMATS:
+        if format not in format_catalog.format_ids("audio"):
             raise ValueError(f"Unknown audio format {format}")
         if format == "auto":
             return "bestaudio/best"
         return f"bestaudio[ext={format}]/bestaudio/best"
 
     if download_type == "video":
-        if format not in ("any", "mp4", "ios"):
+        if format not in format_catalog.format_ids("video"):
             raise ValueError(f"Unknown video format {format}")
         vfmt, afmt = ("[ext=mp4]", "[ext=m4a]") if format in ("mp4", "ios") else ("", "")
         vres = f"[height<={quality}]" if quality not in ("best", "worst") else ""
@@ -146,8 +149,8 @@ def get_opts(
     postprocessors = []
 
     if download_type == "audio":
-        if audio_tags not in AUDIO_TAGS_MODES:
-            audio_tags = "with_cover"
+        if audio_tags not in format_catalog.choice_ids("audio", "audio_tags"):
+            audio_tags = format_catalog.choice_default("audio", "audio_tags")
 
         if format == "auto":
             preferredcodec = _AUTO_AUDIO_AS_SERVED if audio_tags == "none" else _AUTO_AUDIO_TAGGABLE
@@ -163,7 +166,8 @@ def get_opts(
 
         # A writethumbnail key in the user's options means they manage
         # thumbnails themselves, so the whole tagging chain stays off.
-        if format != "wav" and audio_tags != "none" and "writethumbnail" not in opts:
+        tags_possible = format_catalog.format_supports_tags("audio", format)
+        if tags_possible and audio_tags != "none" and "writethumbnail" not in opts:
             if audio_tags == "with_cover":
                 opts["writethumbnail"] = True
                 postprocessors.append(

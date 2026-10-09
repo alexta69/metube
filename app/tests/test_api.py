@@ -909,3 +909,72 @@ async def test_socketio_accepts_own_ui_when_origins_are_named(monkeypatch):
     # bookmarklet's site locked MeTube's own UI out of its socket.
     headers = {"Origin": "https://metube.example", "Sec-Fetch-Site": "same-origin"}
     assert await _socketio_handshake_status(monkeypatch, ["https://www.youtube.com"], headers) == 200
+
+
+@pytest.mark.asyncio
+async def test_formats_endpoint_returns_the_catalog(mock_dqueue):
+    import format_catalog
+
+    resp = await main.formats(MagicMock(spec=web.Request))
+    assert resp.status == 200
+    assert resp.content_type == 'application/json'
+    assert json.loads(resp.text) == format_catalog.CATALOG
+
+
+def test_formats_endpoint_is_routed_as_a_get():
+    # A GET, so the cross-origin guard lets browser extensions read it
+    # (test_cross_site_get_is_not_blocked) and no CORS preflight is needed.
+    routes = {(r.method, r.resource.canonical) for r in main.app.router.routes()}
+    assert ("GET", main.config.URL_PREFIX + "formats") in routes
+
+
+@pytest.mark.asyncio
+async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, monkeypatch):
+    import format_catalog
+
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+    await main.connect('sid-1', {})
+
+    events = [e for e, _ in emitted]
+    assert 'formats' in events and 'configuration' in events
+    assert events.index('formats') < events.index('configuration')
+    assert json.loads(dict(emitted)['formats']) == format_catalog.CATALOG
+
+
+@pytest.mark.asyncio
+async def test_add_passes_an_ios_height_through(mock_dqueue):
+    resp = await main.add(_json_request(_valid_video_add_body(format="ios", quality="720")))
+    assert resp.status == 200
+    assert mock_dqueue.add.await_args.args[1:5] == ("video", "auto", "ios", "720")
+
+
+@pytest.mark.asyncio
+async def test_add_ignores_a_codec_on_a_type_that_has_none(mock_dqueue):
+    resp = await main.add(_json_request(
+        _valid_video_add_body(download_type="audio", codec="bogus", format="mp3", quality="320")
+    ))
+    assert resp.status == 200
+    assert mock_dqueue.add.await_args.args[1:5] == ("audio", "auto", "mp3", "320")
+
+
+@pytest.mark.asyncio
+async def test_add_rejects_a_value_the_catalog_does_not_offer(mock_dqueue):
+    with pytest.raises(web.HTTPBadRequest, match="quality must be one of"):
+        await main.add(_json_request(_valid_video_add_body(download_type="audio", format="flac", quality="320")))
+    mock_dqueue.add.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_add_with_only_a_url_downloads_the_best_video(mock_dqueue):
+    # Documented for integration authors on the wiki's "Sending links" page.
+    resp = await main.add(_json_request({"url": "https://example.com/v"}))
+    assert resp.status == 200
+    assert mock_dqueue.add.await_args.args[1:5] == ("video", "auto", "any", "best")

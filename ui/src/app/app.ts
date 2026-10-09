@@ -21,18 +21,11 @@ import {
   Download,
   Status,
   Theme,
-  Quality,
   Option,
-  AudioFormatOption,
-  DOWNLOAD_TYPES,
-  VIDEO_CODECS,
-  VIDEO_FORMATS,
-  VIDEO_QUALITIES,
-  AUDIO_FORMATS,
-  AUDIO_TAGS,
-  DEFAULT_AUDIO_FORMAT,
-  CAPTION_FORMATS,
-  THUMBNAIL_FORMATS,
+  Choice,
+  DownloadTypeOption,
+  FormatCatalog,
+  FormatOption,
   State,
 } from './interfaces';
 import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
@@ -71,15 +64,17 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private destroyRef = inject(DestroyRef);
 
   addUrl!: string;
-  downloadTypes: Option[] = DOWNLOAD_TYPES;
-  videoCodecs: Option[] = VIDEO_CODECS;
-  videoFormats: Option[] = VIDEO_FORMATS;
-  audioFormats: AudioFormatOption[] = AUDIO_FORMATS;
-  audioTagsOptions: Option[] = AUDIO_TAGS;
-  captionFormats: Option[] = CAPTION_FORMATS;
-  thumbnailFormats: Option[] = THUMBNAIL_FORMATS;
-  formatOptions: Option[] = [];
-  qualities!: Quality[];
+  // The server's catalog of download options (app/format_catalog.py); the
+  // form is not shown until it arrives. The lists below are the parts of it
+  // the form is currently showing.
+  catalog: FormatCatalog | null = null;
+  downloadTypes: DownloadTypeOption[] = [];
+  codecOptions: Option[] = [];
+  formatOptions: FormatOption[] = [];
+  qualities: Option[] = [];
+  audioTagsOptions: Option[] = [];
+  subtitleLanguages: Option[] = [];
+  subtitleModes: Option[] = [];
   downloadType: string;
   codec: string;
   quality: string;
@@ -150,7 +145,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   // the user is looking at rather than the map's insertion order.
   cachedSortedDoneIds: string[] = [];
   lastCopiedErrorId: string | null = null;
-  private previousDownloadType = 'video';
+  private previousDownloadType = '';
   private addRequestSub?: Subscription;
   private liveCountdownTimer?: ReturnType<typeof setInterval>;
   private selectionsByType: Record<string, {
@@ -210,96 +205,31 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faPause = faPause;
   faPlay = faPlay;
   faShareNodes = faShareNodes;
-  subtitleLanguages = [
-    { id: 'en', text: 'English' },
-    { id: 'ar', text: 'Arabic' },
-    { id: 'bn', text: 'Bengali' },
-    { id: 'bg', text: 'Bulgarian' },
-    { id: 'ca', text: 'Catalan' },
-    { id: 'cs', text: 'Czech' },
-    { id: 'da', text: 'Danish' },
-    { id: 'nl', text: 'Dutch' },
-    { id: 'es', text: 'Spanish' },
-    { id: 'et', text: 'Estonian' },
-    { id: 'fi', text: 'Finnish' },
-    { id: 'fr', text: 'French' },
-    { id: 'de', text: 'German' },
-    { id: 'el', text: 'Greek' },
-    { id: 'he', text: 'Hebrew' },
-    { id: 'hi', text: 'Hindi' },
-    { id: 'hu', text: 'Hungarian' },
-    { id: 'id', text: 'Indonesian' },
-    { id: 'it', text: 'Italian' },
-    { id: 'lt', text: 'Lithuanian' },
-    { id: 'lv', text: 'Latvian' },
-    { id: 'ms', text: 'Malay' },
-    { id: 'no', text: 'Norwegian' },
-    { id: 'pl', text: 'Polish' },
-    { id: 'pt', text: 'Portuguese' },
-    { id: 'pt-BR', text: 'Portuguese (Brazil)' },
-    { id: 'ro', text: 'Romanian' },
-    { id: 'ru', text: 'Russian' },
-    { id: 'sk', text: 'Slovak' },
-    { id: 'sl', text: 'Slovenian' },
-    { id: 'sr', text: 'Serbian' },
-    { id: 'sv', text: 'Swedish' },
-    { id: 'ta', text: 'Tamil' },
-    { id: 'te', text: 'Telugu' },
-    { id: 'th', text: 'Thai' },
-    { id: 'tr', text: 'Turkish' },
-    { id: 'uk', text: 'Ukrainian' },
-    { id: 'ur', text: 'Urdu' },
-    { id: 'vi', text: 'Vietnamese' },
-    { id: 'ja', text: 'Japanese' },
-    { id: 'ko', text: 'Korean' },
-    { id: 'zh-Hans', text: 'Chinese (Simplified)' },
-    { id: 'zh-Hant', text: 'Chinese (Traditional)' },
-  ];
-  subtitleModes = [
-    { id: 'prefer_manual', text: 'Prefer Manual' },
-    { id: 'prefer_auto', text: 'Prefer Auto' },
-    { id: 'manual_only', text: 'Manual Only' },
-    { id: 'auto_only', text: 'Auto Only' },
-  ];
   constructor() {
-    this.downloadType = this.cookieService.get('metube_download_type') || 'video';
-    this.codec = this.cookieService.get('metube_codec') || 'auto';
-    this.format = this.cookieService.get('metube_format') || 'any';
-    this.quality = this.cookieService.get('metube_quality') || 'best';
+    // Remembered choices are checked against the catalog when it arrives.
+    this.downloadType = this.cookieService.get('metube_download_type');
+    this.codec = this.cookieService.get('metube_codec');
+    this.format = this.cookieService.get('metube_format');
+    this.quality = this.cookieService.get('metube_quality');
     this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
     this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
     this.sponsorblock = this.cookieService.get('metube_sponsorblock') === 'true';
-    this.audioTags = this.cookieService.get('metube_audio_tags') || 'with_cover';
+    this.audioTags = this.cookieService.get('metube_audio_tags');
     // Will be set from backend configuration, use empty string as placeholder
     this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
     this.clipStart = this.cookieService.get('metube_clip_start') || '';
     this.clipEnd = this.cookieService.get('metube_clip_end') || '';
-    this.subtitleLanguage = this.cookieService.get('metube_subtitle_language') || 'en';
-    this.subtitleMode = this.cookieService.get('metube_subtitle_mode') || 'prefer_manual';
+    this.subtitleLanguage = this.cookieService.get('metube_subtitle_language');
+    this.subtitleMode = this.cookieService.get('metube_subtitle_mode');
     this.ytdlOptionsPresets = this.loadYtdlOptionsPresetsFromCookie();
     this.ytdlOptionsOverrides = this.cookieService.get('metube_ytdl_options_overrides') || '';
-    const allowedDownloadTypes = new Set(this.downloadTypes.map(t => t.id));
-    const allowedVideoCodecs = new Set(this.videoCodecs.map(c => c.id));
-    if (!allowedDownloadTypes.has(this.downloadType)) {
-      this.downloadType = 'video';
+    if (this.downloads.formats) {
+      this.applyCatalog(this.downloads.formats);
     }
-    if (!allowedVideoCodecs.has(this.codec)) {
-      this.codec = 'auto';
-    }
-    if (!this.audioTagsOptions.some(o => o.id === this.audioTags)) {
-      this.audioTags = 'with_cover';
-    }
-    const allowedSubtitleModes = new Set(this.subtitleModes.map(mode => mode.id));
-    if (!allowedSubtitleModes.has(this.subtitleMode)) {
-      this.subtitleMode = 'prefer_manual';
-    }
-    this.loadSavedSelections();
-    this.restoreSelection(this.downloadType);
-    this.normalizeSelectionsForType();
-    this.setQualities();
-    this.refreshFormatOptions();
-    this.previousDownloadType = this.downloadType;
-    this.saveSelection(this.downloadType);
+    this.downloads.formatsChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe((catalog) => {
+      this.applyCatalog(catalog);
+      this.cdr.markForCheck();
+    });
     this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
     this.downloadingCollapsed = this.cookieService.get('metube_downloading_collapsed') === 'true';
     this.completedCollapsed = this.cookieService.get('metube_completed_collapsed') === 'true';
@@ -391,7 +321,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.saveSelection(this.previousDownloadType);
     this.restoreSelection(this.downloadType);
     this.cookieService.set('metube_download_type', this.downloadType, { expires: this.settingsCookieExpiryDays });
-    this.normalizeSelectionsForType(false);
+    this.normalizeSelectionsForType();
     this.setQualities();
     this.refreshFormatOptions();
     this.saveSelection(this.downloadType);
@@ -877,10 +807,15 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.cookieService.set('metube_audio_tags', this.audioTags, { expires: this.settingsCookieExpiryDays });
   }
 
-  // WAV cannot carry tags in the audio chain, so the dropdown shows None there
-  // (disabled) without overwriting the saved choice for other formats.
+  // Whether the selected audio format can carry tags (the catalog's flag).
+  tagsSupported(): boolean {
+    return this.selectedFormat()?.tags !== false;
+  }
+
+  // A format that cannot carry tags shows None (disabled) without overwriting
+  // the saved choice for the other formats.
   displayedAudioTags(): string {
-    return this.format === 'wav' ? 'none' : this.audioTags;
+    return this.tagsSupported() ? this.audioTags : 'none';
   }
 
   sponsorblockChanged() {
@@ -934,46 +869,45 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return this.downloadType === 'video';
   }
 
+  // The labels below describe a queued or finished download the way the form
+  // labels it, looked up in the catalog under the download's own type.
   formatQualityLabel(download: Download): string {
-    if (download.download_type === 'captions' || download.download_type === 'thumbnail') {
+    const q = download.quality;
+    const type = this.typeEntry(download.download_type || '');
+    const format = type?.format.options.find(f => f.id === download.format);
+    if (type && format && !format.quality) {
       return '-';
     }
-    const q = download.quality;
     if (!q) return '';
-    if (/^\d+$/.test(q) && download.download_type === 'audio') return `${q} kbps`;
-    if (/^\d+$/.test(q)) return `${q}p`;
-    return q.charAt(0).toUpperCase() + q.slice(1);
+    const label = format?.quality?.options.find(o => o.id === q)?.text;
+    return label ?? q.charAt(0).toUpperCase() + q.slice(1);
   }
 
   downloadTypeLabel(download: Download): string {
-    const type = download.download_type || 'video';
-    return type.charAt(0).toUpperCase() + type.slice(1);
+    const type = download.download_type || '';
+    return this.typeEntry(type)?.text ?? type.charAt(0).toUpperCase() + type.slice(1);
   }
 
-  // The format the download was queued with, labelled the way the form labels
-  // it, so a queued item can be told apart while it is still downloading.
   formatLabel(download: Download): string {
     const format = (download.format || '').trim();
     if (!format) {
       return '-';
     }
-    const options: Option[] = [
-      ...this.videoFormats,
-      ...this.audioFormats,
-      ...this.captionFormats,
-      ...this.thumbnailFormats,
-    ];
+    // Records without a type still find their label under any type.
+    const options = this.typeEntry(download.download_type || '')?.format.options
+      ?? this.downloadTypes.flatMap(t => t.format.options);
     return options.find(o => o.id === format)?.text ?? format.toUpperCase();
   }
 
   formatCodecLabel(download: Download): string {
-    if (download.download_type !== 'video') {
+    const type = this.typeEntry(download.download_type || '');
+    if (type && !type.codec) {
       const format = (download.format || '').toUpperCase();
       return format || '-';
     }
     const codec = download.codec;
-    if (!codec || codec === 'auto') return 'Auto';
-    return this.videoCodecs.find(c => c.id === codec)?.text ?? codec;
+    if (!codec) return '-';
+    return type?.codec?.options.find(c => c.id === codec)?.text ?? codec;
   }
 
   queueSelectionChanged(checked: number) {
@@ -1006,76 +940,121 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.hasFailedDone = failed > 0;
   }
 
+  // Each choice list is the catalog's: the selected type's formats and codecs,
+  // and the selected format's qualities (empty when it has none to pick).
   setQualities() {
-    if (this.downloadType === 'video') {
-      this.qualities = this.format === 'ios'
-        ? [{ id: 'best', text: 'Best' }]
-        : VIDEO_QUALITIES;
-    } else if (this.downloadType === 'audio') {
-      const selectedFormat = this.audioFormats.find(el => el.id === this.format);
-      this.qualities = selectedFormat ? selectedFormat.qualities : [{ id: 'best', text: 'Best' }];
-    } else {
-      this.qualities = [{ id: 'best', text: 'Best' }];
+    const choice = this.selectedFormat()?.quality;
+    this.qualities = choice?.options ?? [];
+    if (choice) {
+      this.quality = this.pick(choice, this.quality);
     }
-    const exists = this.qualities.find(el => el.id === this.quality);
-    this.quality = exists ? this.quality : 'best';
   }
 
   refreshFormatOptions() {
-    if (this.downloadType === 'video') {
-      this.formatOptions = this.videoFormats;
+    const type = this.typeEntry(this.downloadType);
+    this.formatOptions = type?.format.options ?? [];
+    this.codecOptions = type?.codec?.options ?? [];
+  }
+
+  currentType(): DownloadTypeOption | undefined {
+    return this.typeEntry(this.downloadType);
+  }
+
+  hasSubtitleSettings(): boolean {
+    const type = this.currentType();
+    return !!(type?.subtitle_mode || type?.subtitle_language);
+  }
+
+  // Four fields per row are too tight at ~768px for the longer values, so a
+  // four-field type goes 2×2 from md to lg and one row from lg up.
+  optionColumnClass(): string {
+    const type = this.currentType();
+    if (!type) {
+      return 'col-md-6';
+    }
+    const fields = 2
+      + (type.codec ? 1 : 0)
+      + (this.qualities.length ? 1 : 0)
+      + (type.audio_tags ? 1 : 0)
+      + (type.subtitle_language ? 1 : 0)
+      + (type.subtitle_mode ? 1 : 0);
+    if (fields >= 4) {
+      return 'col-12 col-md-6 col-lg-3';
+    }
+    return fields === 3 ? 'col-12 col-md-4' : 'col-md-6';
+  }
+
+  // A list with a single entry is shown, but there is nothing to pick.
+  hasQualityChoice(): boolean {
+    return this.qualities.length > 1;
+  }
+
+  hasFormatChoice(): boolean {
+    return this.formatOptions.length > 1;
+  }
+
+  private typeEntry(type: string): DownloadTypeOption | undefined {
+    return this.downloadTypes.find(t => t.id === type);
+  }
+
+  private selectedFormat(): FormatOption | undefined {
+    return this.typeEntry(this.downloadType)?.format.options.find(f => f.id === this.format);
+  }
+
+  // The remembered value if the choice still offers it, else the default.
+  private pick(choice: Choice, value: string): string {
+    return choice.options.some(o => o.id === value) ? value : choice.default;
+  }
+
+  // Runs whenever the server sends its catalog (on every connect). A changed
+  // catalog, e.g. after a server upgrade, re-checks every remembered choice.
+  private applyCatalog(catalog: FormatCatalog) {
+    if (this.catalog && JSON.stringify(this.catalog) === JSON.stringify(catalog)) {
       return;
     }
-    if (this.downloadType === 'audio') {
-      this.formatOptions = this.audioFormats;
+    this.catalog = catalog;
+    this.downloadTypes = catalog.download_type.options;
+    const audio = this.downloadTypes.find(t => t.audio_tags);
+    const captions = this.downloadTypes.find(t => t.subtitle_mode || t.subtitle_language);
+    this.audioTagsOptions = audio?.audio_tags?.options ?? [];
+    this.subtitleLanguages = captions?.subtitle_language?.options ?? [];
+    this.subtitleModes = captions?.subtitle_mode?.options ?? [];
+
+    this.downloadType = this.pick(catalog.download_type, this.downloadType);
+    this.loadSavedSelections();
+    this.restoreSelection(this.downloadType);
+    this.normalizeSelectionsForType();
+    this.setQualities();
+    this.refreshFormatOptions();
+    this.previousDownloadType = this.downloadType;
+    this.saveSelection(this.downloadType);
+  }
+
+  // Brings the form's values in line with what the catalog offers for the
+  // selected type. Fields a type doesn't have are left as they are; the
+  // server ignores them for that type.
+  private normalizeSelectionsForType() {
+    const type = this.typeEntry(this.downloadType);
+    if (!type) {
       return;
     }
-    if (this.downloadType === 'captions') {
-      this.formatOptions = this.captionFormats;
-      return;
+    this.format = this.pick(type.format, this.format);
+    if (type.codec) {
+      this.codec = this.pick(type.codec, this.codec);
     }
-    this.formatOptions = this.thumbnailFormats;
-  }
-
-  showCodecSelector() {
-    return this.downloadType === 'video';
-  }
-
-  showFormatSelector() {
-    return this.downloadType !== 'thumbnail';
-  }
-
-  showQualitySelector() {
-    if (this.downloadType === 'video') {
-      return this.format !== 'ios';
+    // Audio tags and the subtitle settings are kept across types, so they are
+    // checked against the types that define them.
+    const audio = this.downloadTypes.find(t => t.audio_tags);
+    if (audio?.audio_tags) {
+      this.audioTags = this.pick(audio.audio_tags, this.audioTags);
     }
-    return this.downloadType === 'audio';
-  }
-
-  private normalizeSelectionsForType(resetForTypeChange = false) {
-    if (this.downloadType === 'video') {
-      const allowedFormats = new Set(this.videoFormats.map(f => f.id));
-      if (resetForTypeChange || !allowedFormats.has(this.format)) {
-        this.format = 'any';
-      }
-      const allowedCodecs = new Set(this.videoCodecs.map(c => c.id));
-      if (resetForTypeChange || !allowedCodecs.has(this.codec)) {
-        this.codec = 'auto';
-      }
-    } else if (this.downloadType === 'audio') {
-      const allowedFormats = new Set(this.audioFormats.map(f => f.id));
-      if (resetForTypeChange || !allowedFormats.has(this.format)) {
-        this.format = DEFAULT_AUDIO_FORMAT;
-      }
-    } else if (this.downloadType === 'captions') {
-      const allowedFormats = new Set(this.captionFormats.map(f => f.id));
-      if (resetForTypeChange || !allowedFormats.has(this.format)) {
-        this.format = 'srt';
-      }
-      this.quality = 'best';
-    } else {
-      this.format = 'jpg';
-      this.quality = 'best';
+    const captions = this.downloadTypes.find(t => t.subtitle_mode || t.subtitle_language);
+    if (captions?.subtitle_mode) {
+      this.subtitleMode = this.pick(captions.subtitle_mode, this.subtitleMode);
+    }
+    if (captions?.subtitle_language && !this.subtitleLanguage?.trim()) {
+      // Any language tag is accepted; only an empty one takes the default.
+      this.subtitleLanguage = captions.subtitle_language.default;
     }
     this.cookieService.set('metube_format', this.format, { expires: this.settingsCookieExpiryDays });
     this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
@@ -1117,11 +1096,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
           this.selectionsByType[type] = {
-            codec: String(parsed.codec ?? 'auto'),
+            codec: String(parsed.codec ?? ''),
             format: String(parsed.format ?? ''),
-            quality: String(parsed.quality ?? 'best'),
-            subtitleLanguage: String(parsed.subtitleLanguage ?? 'en'),
-            subtitleMode: String(parsed.subtitleMode ?? 'prefer_manual'),
+            quality: String(parsed.quality ?? ''),
+            subtitleLanguage: String(parsed.subtitleLanguage ?? ''),
+            subtitleMode: String(parsed.subtitleMode ?? ''),
           };
         }
       } catch {

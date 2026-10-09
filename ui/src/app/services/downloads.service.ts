@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket.service';
-import { Download, Status, State } from '../interfaces';
+import { Download, FormatCatalog, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 export interface AddDownloadPayload {
@@ -42,9 +42,12 @@ export class DownloadsService {
   customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   configurationChanged = new Subject<Record<string, unknown>>();
+  formatsChanged = new Subject<FormatCatalog>();
   updated = new Subject<void>();
 
   configuration: Record<string, unknown> = {};
+  // The download options the server offers; null until it sends them.
+  formats: FormatCatalog | null = null;
   customDirs: Record<string, string[]> = {};
 
   constructor() {
@@ -105,6 +108,13 @@ export class DownloadsService {
       const data: string = JSON.parse(strdata);
       this.done.delete(data);
       this.doneChanged.next();
+    });
+    this.socket.fromEvent('formats')
+    .pipe(takeUntilDestroyed())
+    .subscribe((strdata: string) => {
+      const data: FormatCatalog = JSON.parse(strdata);
+      this.formats = data;
+      this.formatsChanged.next(data);
     });
     this.socket.fromEvent('configuration')
     .pipe(takeUntilDestroyed())

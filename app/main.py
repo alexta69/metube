@@ -21,6 +21,7 @@ from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
 import bg_tasks
+import format_catalog
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
@@ -460,15 +461,6 @@ if '*' in _cors_origins and len(_cors_origins) > 1:
 sio = socketio.AsyncServer(cors_allowed_origins=_socketio_origin_allowed)
 sio.attach(app, socketio_path=config.URL_PREFIX + 'socket.io')
 routes = web.RouteTableDef()
-VALID_SUBTITLE_FORMATS = {'srt', 'txt', 'vtt', 'ttml', 'sbv', 'scc', 'dfxp'}
-VALID_SUBTITLE_MODES = {'auto_only', 'manual_only', 'prefer_manual', 'prefer_auto'}
-SUBTITLE_LANGUAGE_RE = re.compile(r'^[A-Za-z0-9][A-Za-z0-9-]{0,34}$')
-VALID_DOWNLOAD_TYPES = {'video', 'audio', 'captions', 'thumbnail'}
-VALID_VIDEO_CODECS = {'auto', 'h264', 'h265', 'av1', 'vp9'}
-VALID_VIDEO_FORMATS = {'any', 'mp4', 'ios'}
-VALID_AUDIO_FORMATS = {'auto', 'm4a', 'mp3', 'opus', 'wav', 'flac'}
-VALID_AUDIO_TAGS = {'with_cover', 'no_cover', 'none'}
-VALID_THUMBNAIL_FORMATS = {'jpg'}
 def _parse_ytdl_options_overrides(value, *, enabled: bool) -> dict:
     if value is None or value == '':
         return {}
@@ -646,7 +638,7 @@ def _migrate_legacy_request(post: dict) -> dict:
     old_video_codec = str(post.get("video_codec") or "auto").strip().lower()
 
     # 'auto' postdates the legacy API, where it never named an audio format.
-    if old_format in VALID_AUDIO_FORMATS - {'auto'}:
+    if old_format in format_catalog.format_ids('audio') and old_format != 'auto':
         post["download_type"] = "audio"
         post["codec"] = "auto"
         post["format"] = old_format
@@ -850,7 +842,7 @@ def parse_download_options(post: dict) -> dict:
     auto_start = post.get('auto_start')
     split_by_chapters = post.get('split_by_chapters')
     sponsorblock = bool(post.get('sponsorblock'))
-    audio_tags = str(post.get('audio_tags') or 'with_cover').strip().lower()
+    audio_tags = str(post.get('audio_tags') or format_catalog.choice_default('audio', 'audio_tags')).strip().lower()
     chapter_template = post.get('chapter_template')
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
@@ -868,11 +860,11 @@ def parse_download_options(post: dict) -> dict:
     if chapter_template is None:
         chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
     if subtitle_language is None:
-        subtitle_language = 'en'
+        subtitle_language = format_catalog.choice_default('captions', 'subtitle_language')
     if subtitle_mode is None:
-        subtitle_mode = 'prefer_manual'
+        subtitle_mode = format_catalog.choice_default('captions', 'subtitle_mode')
     download_type = str(download_type).strip().lower()
-    codec = str(codec or 'auto').strip().lower()
+    codec = str(codec or format_catalog.choice_default('video', 'codec')).strip().lower()
     format = str(format or '').strip().lower()
     quality = str(quality).strip().lower()
     subtitle_language = str(subtitle_language).strip()
@@ -888,48 +880,17 @@ def parse_download_options(post: dict) -> dict:
     if video_password is not None and not isinstance(video_password, str):
         raise web.HTTPBadRequest(reason='video_password must be a string')
 
-    if not SUBTITLE_LANGUAGE_RE.fullmatch(subtitle_language):
-        raise web.HTTPBadRequest(reason='subtitle_language must match pattern [A-Za-z0-9-] and be at most 35 characters')
-    if subtitle_mode not in VALID_SUBTITLE_MODES:
-        raise web.HTTPBadRequest(reason=f'subtitle_mode must be one of {sorted(VALID_SUBTITLE_MODES)}')
     for preset_name in ytdl_options_presets:
         if preset_name not in config.YTDL_OPTIONS_PRESETS:
             raise web.HTTPBadRequest(reason='ytdl_options_presets must only contain configured preset names')
 
-    if audio_tags not in VALID_AUDIO_TAGS:
-        raise web.HTTPBadRequest(reason=f'audio_tags must be one of {sorted(VALID_AUDIO_TAGS)}')
-
-    if download_type not in VALID_DOWNLOAD_TYPES:
-        raise web.HTTPBadRequest(reason=f'download_type must be one of {sorted(VALID_DOWNLOAD_TYPES)}')
-    if codec not in VALID_VIDEO_CODECS:
-        raise web.HTTPBadRequest(reason=f'codec must be one of {sorted(VALID_VIDEO_CODECS)}')
-
-    if download_type == 'video':
-        if format not in VALID_VIDEO_FORMATS:
-            raise web.HTTPBadRequest(reason=f'format must be one of {sorted(VALID_VIDEO_FORMATS)} for video')
-        if quality not in {'best', 'worst', '2160', '1440', '1080', '720', '480', '360', '240'}:
-            raise web.HTTPBadRequest(reason="quality must be one of ['best', '2160', '1440', '1080', '720', '480', '360', '240', 'worst'] for video")
-    elif download_type == 'audio':
-        if format not in VALID_AUDIO_FORMATS:
-            raise web.HTTPBadRequest(reason=f'format must be one of {sorted(VALID_AUDIO_FORMATS)} for audio')
-        allowed_audio_qualities = {'best'}
-        if format == 'mp3':
-            allowed_audio_qualities |= {'320', '192', '128'}
-        elif format == 'm4a':
-            allowed_audio_qualities |= {'192', '128'}
-        if quality not in allowed_audio_qualities:
-            raise web.HTTPBadRequest(reason=f'quality must be one of {sorted(allowed_audio_qualities)} for format {format}')
-        codec = 'auto'
-    elif download_type == 'captions':
-        if format not in VALID_SUBTITLE_FORMATS:
-            raise web.HTTPBadRequest(reason=f'format must be one of {sorted(VALID_SUBTITLE_FORMATS)} for captions')
-        quality = 'best'
-        codec = 'auto'
-    elif download_type == 'thumbnail':
-        if format not in VALID_THUMBNAIL_FORMATS:
-            raise web.HTTPBadRequest(reason=f'format must be one of {sorted(VALID_THUMBNAIL_FORMATS)} for thumbnail')
-        quality = 'best'
-        codec = 'auto'
+    try:
+        format_catalog.check_subtitle_language(subtitle_language)
+        format_catalog.check_subtitle_mode(subtitle_mode)
+        format_catalog.check_audio_tags(audio_tags)
+        codec, format, quality = format_catalog.resolve_selection(download_type, codec, format, quality)
+    except format_catalog.InvalidOption as exc:
+        raise web.HTTPBadRequest(reason=str(exc)) from exc
 
     try:
         playlist_item_limit = int(playlist_item_limit)
@@ -1034,6 +995,14 @@ async def add(request):
     )
     return web.Response(text=serializer.encode(status))
 
+
+@routes.get(config.URL_PREFIX + 'formats')
+async def formats(request):
+    """The download options /add accepts, with labels; see format_catalog."""
+    return web.Response(
+        text=serializer.encode(format_catalog.public_catalog()),
+        content_type='application/json',
+    )
 
 @routes.get(config.URL_PREFIX + 'presets')
 async def presets(request):
@@ -1320,6 +1289,7 @@ async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
+    await sio.emit('formats', serializer.encode(format_catalog.public_catalog()), to=sid)
     await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
     if config.CUSTOM_DIRS:
         # get_custom_dirs() can walk the whole download tree on a cache miss;

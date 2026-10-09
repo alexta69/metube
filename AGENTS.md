@@ -143,7 +143,8 @@ app/main.py          — HTTP server, Socket.IO events, REST API routes, Config 
 app/ytdl.py          — Download queue logic, yt-dlp integration
 app/subscriptions.py — Channel/playlist subscription manager
 app/state_store.py   — JSON-based persistent storage with atomic writes
-app/dl_formats.py    — Video/audio codec/quality mapping
+app/format_catalog.py — The download options (types, codecs, formats, qualities, labels, defaults)
+app/dl_formats.py    — Maps those options onto yt-dlp format selectors and options
 app/tests/           — pytest tests (asyncio_mode=auto)
 ui/src/app/          — Angular standalone components (no NgModules)
 ```
@@ -151,6 +152,7 @@ ui/src/app/          — Angular standalone components (no NgModules)
 ## Key conventions
 
 - Backend configuration lives in the `Config` class in `app/main.py` with env-var defaults in `_DEFAULTS`. New env vars go there.
+- Download options are defined only in `app/format_catalog.py`. Request validation, `dl_formats`, the UI's form (sent over Socket.IO on connect) and `GET /formats` all read it; never hardcode an option list or id elsewhere. A new codec, format or quality also needs its yt-dlp mapping in `dl_formats`, which `test_format_catalog.py` enforces.
 - Real-time communication uses Socket.IO events, not REST polling.
 - Frontend uses standalone Angular components with `inject()` for DI, RxJS Subjects for state, and `takeUntilDestroyed()` for cleanup.
 - Frontend components use OnPush change detection: subscribe callbacks must call `cdr.markForCheck()`.
