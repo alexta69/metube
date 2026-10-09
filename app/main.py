@@ -393,16 +393,19 @@ def _origin_is_trusted(origin, sec_fetch_site, hosts) -> bool:
     if origin and ('*' in _cors_origins or origin in _cors_origins):
         return True
     if sec_fetch_site:
-        # Sent by every current browser. It answers the question directly and,
-        # unlike comparing Origin with Host, survives a reverse proxy that
-        # rewrites Host. 'none' is a user-initiated request, such as one typed
-        # into the address bar.
+        # It answers the question directly and, unlike comparing Origin with
+        # Host, survives a reverse proxy that rewrites Host. But browsers send
+        # it only to secure origins (HTTPS or localhost), so a plain-HTTP
+        # instance on a LAN address never gets it. 'none' is a user-initiated
+        # request, such as one typed into the address bar.
         return sec_fetch_site in ('same-origin', 'none')
     if not origin:
         return True
-    # An older browser: fall back to comparing Origin with the host the request
+    # Plain HTTP or an older browser: compare Origin with the host the request
     # was addressed to. X-Forwarded-Host is safe to accept here, since a page
-    # cannot set it on a cross-origin request without a preflight.
+    # cannot set it on a cross-origin request without a preflight. A proxy that
+    # rewrites Host and sends no X-Forwarded-Host (nginx's `Host $host` drops
+    # the port) makes MeTube's own UI look cross-origin; see _log_refusal.
     try:
         netloc = urlparse(origin).netloc.lower()
     except ValueError:
@@ -413,15 +416,31 @@ def _origin_is_trusted(origin, sec_fetch_site, hosts) -> bool:
 _SAFE_METHODS = ('GET', 'HEAD', 'OPTIONS')
 
 
+def _log_refusal(what, origin, sec_fetch_site, hosts):
+    if sec_fetch_site:
+        # The browser itself said the request came from another site.
+        log.warning(
+            'Refused cross-origin %s from %s. If this is a bookmarklet or extension you use, '
+            'add its origin to CORS_ALLOWED_ORIGINS.', what, origin)
+        return
+    host, forwarded_host = hosts
+    log.warning(
+        'Refused cross-origin %s from %s: it was addressed to Host %s%s. If %s is where you '
+        'open MeTube, a reverse proxy in front of it is rewriting the Host header; have it '
+        'pass the original one (in nginx: proxy_set_header Host $http_host), or add that '
+        'address to CORS_ALLOWED_ORIGINS. If it is a bookmarklet or extension you use, add '
+        'its origin to CORS_ALLOWED_ORIGINS.',
+        what, origin, host, f' (X-Forwarded-Host {forwarded_host})' if forwarded_host else '', origin)
+
+
 @web.middleware
 async def cross_origin_guard(request, handler):
     if request.method not in _SAFE_METHODS:
         origin = request.headers.get('Origin')
         hosts = (request.headers.get('Host'), request.headers.get('X-Forwarded-Host'))
-        if not _origin_is_trusted(origin, request.headers.get('Sec-Fetch-Site'), hosts):
-            log.warning(
-                'Refused cross-origin %s %s from %s. If this is a bookmarklet or extension you '
-                'use, add its origin to CORS_ALLOWED_ORIGINS.', request.method, request.path, origin)
+        sec_fetch_site = request.headers.get('Sec-Fetch-Site')
+        if not _origin_is_trusted(origin, sec_fetch_site, hosts):
+            _log_refusal(f'{request.method} {request.path}', origin, sec_fetch_site, hosts)
             # Make the refusal itself readable to the page that sent it. A
             # bookmarklet whose site is not listed would otherwise see only a
             # network error, indistinguishable from MeTube being down, and
@@ -447,7 +466,14 @@ def _socketio_origin_allowed(origin, environ):
     # page on another site from connecting and reading the queue, history and
     # configuration the connect handler sends.
     hosts = (environ.get('HTTP_HOST'), environ.get('HTTP_X_FORWARDED_HOST'))
-    return _origin_is_trusted(origin, environ.get('HTTP_SEC_FETCH_SITE'), hosts)
+    sec_fetch_site = environ.get('HTTP_SEC_FETCH_SITE')
+    if _origin_is_trusted(origin, sec_fetch_site, hosts):
+        return True
+    # engine.io asks again while building the refusal response; log once.
+    if not environ.get('metube.origin_refusal_logged'):
+        environ['metube.origin_refusal_logged'] = True
+        _log_refusal('Socket.IO connection', origin, sec_fetch_site, hosts)
+    return False
 
 
 app = web.Application(middlewares=[cross_origin_guard, state_dir_guard])

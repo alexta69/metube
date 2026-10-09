@@ -911,6 +911,57 @@ async def test_socketio_accepts_own_ui_when_origins_are_named(monkeypatch):
     assert await _socketio_handshake_status(monkeypatch, ["https://www.youtube.com"], headers) == 200
 
 
+# Issue #1085: browsers send Sec-Fetch-Site only to HTTPS or localhost, so a
+# plain-HTTP LAN instance is judged by Origin vs Host alone, and a proxy that
+# rewrites Host (nginx `Host $host` drops the port) makes the UI's own
+# requests look cross-origin. The check stays strict; the log says why.
+_PROXIED_PLAIN_HTTP_UI = {"Origin": "http://192.168.1.100:6510", "Host": "192.168.1.100"}
+
+
+def _refusal_logs(caplog):
+    return [r.getMessage() for r in caplog.records if "Refused cross-origin" in r.getMessage()]
+
+
+@pytest.mark.asyncio
+async def test_host_rewriting_proxy_refusal_explains_the_proxy(monkeypatch, caplog):
+    caplog.set_level("WARNING", logger="main")
+    assert await _guarded_status(monkeypatch, [], _PROXIED_PLAIN_HTTP_UI) == 403
+    [msg] = _refusal_logs(caplog)
+    assert "POST /add from http://192.168.1.100:6510" in msg
+    assert "addressed to Host 192.168.1.100." in msg
+    assert "proxy_set_header Host $http_host" in msg
+
+
+@pytest.mark.asyncio
+async def test_host_rewriting_proxy_passes_with_forwarded_host(monkeypatch):
+    headers = {**_PROXIED_PLAIN_HTTP_UI, "X-Forwarded-Host": "192.168.1.100:6510"}
+    assert await _guarded_status(monkeypatch, [], headers) == 200
+
+
+@pytest.mark.asyncio
+async def test_listing_the_ui_address_admits_it(monkeypatch):
+    # What the reporter did, and what the log suggests as the alternative.
+    assert await _guarded_status(monkeypatch, ["http://192.168.1.100:6510"], _PROXIED_PLAIN_HTTP_UI) == 200
+
+
+@pytest.mark.asyncio
+async def test_cross_site_refusal_keeps_the_bookmarklet_hint(monkeypatch, caplog):
+    caplog.set_level("WARNING", logger="main")
+    assert await _guarded_status(monkeypatch, [], _CROSS_SITE) == 403
+    [msg] = _refusal_logs(caplog)
+    assert "If this is a bookmarklet or extension you use" in msg
+    assert "proxy" not in msg
+
+
+@pytest.mark.asyncio
+async def test_socketio_refusal_is_logged_once_with_the_hint(monkeypatch, caplog):
+    caplog.set_level("WARNING", logger="main")
+    assert await _socketio_handshake_status(monkeypatch, [], _PROXIED_PLAIN_HTTP_UI) == 400
+    [msg] = _refusal_logs(caplog)
+    assert "Socket.IO connection from http://192.168.1.100:6510" in msg
+    assert "proxy_set_header Host $http_host" in msg
+
+
 @pytest.mark.asyncio
 async def test_formats_endpoint_returns_the_catalog(mock_dqueue):
     import format_catalog
