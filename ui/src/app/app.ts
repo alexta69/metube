@@ -1239,6 +1239,15 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   // a file on disk, so the user is asked whether to keep or delete it before the
   // list entry is removed. Returns undefined when no prompt is needed (send no
   // flag), false/true for the user's choice, or null when the user cancelled.
+  private asksBeforeDeletingFiles(where: State, ids: string[]): boolean {
+    return where === 'done' &&
+      this.downloads.configuration['DELETE_FILE_ON_TRASHCAN'] === 'ask' &&
+      ids.some((id) => {
+        const dl = this.downloads.done.get(id);
+        return !!dl?.filename || !!dl?.chapter_files?.length;
+      });
+  }
+
   private async confirmFileDeletion(where: State, ids: string[]): Promise<boolean | null | undefined> {
     if (
       where !== 'done' ||
@@ -1247,11 +1256,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     ) {
       return undefined;
     }
-    const hasFiles = ids.some((id) => {
-      const dl = this.downloads.done.get(id);
-      return !!dl?.filename || !!dl?.chapter_files?.length;
-    });
-    if (!hasFiles) {
+    if (!this.asksBeforeDeletingFiles(where, ids)) {
       return false;
     }
     const message = ids.length === 1
@@ -1296,9 +1301,27 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     await this.removeDownloads('done', ids, 'Clear completed failed');
   }
 
+  // A failed row holds the only copy of its URL, and Clear failed sits next to
+  // Retry failed, so it asks first (#1094). When ask mode is about to prompt
+  // for leftover files anyway, that prompt (which has Cancel) is the question.
   async clearFailedDownloads() {
     const ids: string[] = [];
     this.downloads.done.forEach((dl, key) => { if (dl.status === 'error') ids.push(key); });
+    if (ids.length === 0) {
+      return;
+    }
+    if (!this.asksBeforeDeletingFiles('done', ids)) {
+      const count = ids.length === 1 ? 'the failed download' : `${ids.length} failed downloads`;
+      const confirmed = await this.toasts.confirm(
+        `Clear ${count}? ${ids.length === 1 ? 'Its URL is' : 'Their URLs are'} not kept anywhere else, ` +
+        'so retrying later means finding them again.',
+        'Clear',
+        'Cancel',
+      );
+      if (!confirmed) {
+        return;
+      }
+    }
     await this.removeDownloads('done', ids, 'Clear failed downloads failed');
   }
 

@@ -880,6 +880,74 @@ describe('App', () => {
   // Issue #1012: in ask mode (DELETE_FILE_ON_TRASHCAN='ask') the server only
   // deletes a completed download's file when told to, so the UI must ask the
   // user whether to keep or delete it before removing the list entry.
+  describe('Clear failed asks first (#1094)', () => {
+    const failed = (url: string) => ({
+      id: url, title: url, url, quality: 'best', format: 'any', folder: '', custom_name_prefix: '',
+      playlist_item_limit: 0, status: 'error', msg: 'boom', percent: 0, speed: 0, eta: 0,
+      filename: '', checked: false,
+    }) as Download;
+
+    it('clears nothing when cancelled', async () => {
+      downloads.done.set('u1', failed('u1'));
+      const app = TestBed.createComponent(App).componentInstance;
+      vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(false);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearFailedDownloads();
+
+      expect(delSpy).not.toHaveBeenCalled();
+    });
+
+    it('clears every failed row, and only those, when confirmed', async () => {
+      downloads.done.set('u1', failed('u1'));
+      downloads.done.set('u2', failed('u2'));
+      downloads.done.set('ok', { ...failed('ok'), status: 'finished' });
+      const app = TestBed.createComponent(App).componentInstance;
+      const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(true);
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearFailedDownloads();
+
+      expect(confirmSpy).toHaveBeenCalledWith(
+        'Clear 2 failed downloads? Their URLs are not kept anywhere else, so retrying later means finding them again.',
+        'Clear',
+        'Cancel',
+      );
+      expect(delSpy).toHaveBeenCalledWith('done', ['u1', 'u2'], undefined);
+    });
+
+    it('words the question for a single row', async () => {
+      downloads.done.set('u1', failed('u1'));
+      const app = TestBed.createComponent(App).componentInstance;
+      const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(false);
+
+      await app.clearFailedDownloads();
+
+      expect(confirmSpy.mock.calls[0][0]).toMatch(/^Clear the failed download\? Its URL is not kept/);
+    });
+
+    it('asks nothing when there is nothing to clear', async () => {
+      const app = TestBed.createComponent(App).componentInstance;
+      const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm');
+
+      await app.clearFailedDownloads();
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+    });
+
+    it('leaves Clear completed unprompted', async () => {
+      downloads.done.set('ok', { ...failed('ok'), status: 'finished' });
+      const app = TestBed.createComponent(App).componentInstance;
+      const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm');
+      const delSpy = vi.spyOn(downloads, 'delById');
+
+      await app.clearCompletedDownloads();
+
+      expect(confirmSpy).not.toHaveBeenCalled();
+      expect(delSpy).toHaveBeenCalledWith('done', ['ok'], undefined);
+    });
+  });
+
   describe('delete confirmation in ask mode (#1012)', () => {
     const doneEntry = (over: Partial<Download>): Download => ({
       id: 'vid1',
@@ -980,11 +1048,14 @@ describe('App', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance;
       const toasts = TestBed.inject(ToastService);
+      // Clear failed's own confirmation (#1094), answered yes.
+      const confirmSpy = vi.spyOn(toasts, 'confirm').mockResolvedValue(true);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
 
       await app.clearFailedDownloads();
 
+      expect(confirmSpy).toHaveBeenCalledTimes(1);
       expect(chooseSpy).not.toHaveBeenCalled();
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], false);
     });
@@ -1000,11 +1071,14 @@ describe('App', () => {
       const fixture = TestBed.createComponent(App);
       const app = fixture.componentInstance;
       const toasts = TestBed.inject(ToastService);
+      const confirmSpy = vi.spyOn(toasts, 'confirm');
       const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
       const delSpy = vi.spyOn(downloads, 'delById');
 
       await app.clearFailedDownloads();
 
+      // The file prompt has Cancel, so it is the only question asked.
+      expect(confirmSpy).not.toHaveBeenCalled();
       expect(chooseSpy).toHaveBeenCalledTimes(1);
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], true);
     });
