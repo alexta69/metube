@@ -23,7 +23,7 @@ from watchfiles import DefaultFilter, Change, awatch
 import bg_tasks
 import format_catalog
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
-from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, coerce_optional_bool
+from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, browse_playlist, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
 
 log = logging.getLogger('main')
@@ -640,6 +640,12 @@ def _parse_ytdl_options_presets(post: dict) -> list[str]:
     )
 
 
+def _require_configured_presets(names: list[str]) -> None:
+    for preset_name in names:
+        if preset_name not in config.YTDL_OPTIONS_PRESETS:
+            raise web.HTTPBadRequest(reason='ytdl_options_presets must only contain configured preset names')
+
+
 def _migrate_legacy_request(post: dict) -> dict:
     """
     BACKWARD COMPATIBILITY: Translate old API request schema into the new one.
@@ -906,9 +912,7 @@ def parse_download_options(post: dict) -> dict:
     if video_password is not None and not isinstance(video_password, str):
         raise web.HTTPBadRequest(reason='video_password must be a string')
 
-    for preset_name in ytdl_options_presets:
-        if preset_name not in config.YTDL_OPTIONS_PRESETS:
-            raise web.HTTPBadRequest(reason='ytdl_options_presets must only contain configured preset names')
+    _require_configured_presets(ytdl_options_presets)
 
     try:
         format_catalog.check_subtitle_language(subtitle_language)
@@ -1029,6 +1033,33 @@ async def formats(request):
         text=serializer.encode(format_catalog.public_catalog()),
         content_type='application/json',
     )
+
+@routes.post(config.URL_PREFIX + 'browse')
+async def browse(request):
+    """Flat-probe a playlist/channel URL and list its entries; queues nothing."""
+    post = await _read_json_request(request)
+    url = str(post.get('url') or '').strip()
+    if not url:
+        raise web.HTTPBadRequest(reason="missing 'url'")
+    ytdl_options_presets = _parse_ytdl_options_presets(post)
+    _require_configured_presets(ytdl_options_presets)
+    ytdl_options_overrides = _parse_ytdl_options_overrides(
+        post.get('ytdl_options_overrides'),
+        enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
+    )
+    playlist_item_limit = post.get('playlist_item_limit')
+    if playlist_item_limit is None:
+        playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
+    try:
+        playlist_item_limit = int(playlist_item_limit)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
+    log.info("Received request to browse playlist (item limit %s)", playlist_item_limit)
+    status = await browse_playlist(
+        config, url, playlist_item_limit, ytdl_options_presets, ytdl_options_overrides
+    )
+    return web.Response(text=serializer.encode(status))
+
 
 @routes.get(config.URL_PREFIX + 'presets')
 async def presets(request):
@@ -1437,6 +1468,7 @@ async def add_cors(request):
     return web.Response(text=serializer.encode({"status": "ok"}))
 
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'add', add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + 'browse', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'cancel-add', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'retry', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscribe', add_cors)

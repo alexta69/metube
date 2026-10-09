@@ -879,6 +879,95 @@ async def test_legacy_browser_origin_falls_back_to_host(monkeypatch, headers, ex
     assert await _guarded_status(monkeypatch, [], headers) == expected
 
 
+@pytest.fixture
+def mock_browse(monkeypatch):
+    m = AsyncMock(return_value={"status": "ok", "title": "L", "entries": []})
+    monkeypatch.setattr(main, "browse_playlist", m)
+    return m
+
+
+@pytest.mark.asyncio
+async def test_browse_returns_helper_result_and_passes_args(mock_browse, monkeypatch):
+    monkeypatch.setattr(main.config, "YTDL_OPTIONS_PRESETS", {"Preset A": {}})
+    monkeypatch.setattr(main.config, "ALLOW_YTDL_OPTIONS_OVERRIDES", True)
+    expected = {
+        "status": "ok",
+        "title": "L",
+        "entries": [{"url": "https://example.com/a", "title": "A", "duration": 3}],
+    }
+    mock_browse.return_value = expected
+    req = _json_request(
+        {
+            "url": "  https://example.com/pl  ",
+            "playlist_item_limit": "7",
+            "ytdl_options_presets": ["Preset A"],
+            "ytdl_options_overrides": '{"a": 1}',
+        }
+    )
+    resp = await main.browse(req)
+    assert resp.status == 200
+    assert json.loads(resp.text) == expected
+    mock_browse.assert_awaited_once_with(
+        main.config, "https://example.com/pl", 7, ["Preset A"], {"a": 1}
+    )
+
+
+@pytest.mark.asyncio
+async def test_browse_defaults_limit_from_config(mock_browse, monkeypatch):
+    monkeypatch.setattr(main.config, "DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT", "25")
+    resp = await main.browse(_json_request({"url": "https://example.com/pl"}))
+    assert resp.status == 200
+    call = mock_browse.await_args
+    assert call.args[1:] == ("https://example.com/pl", 25, [], {})
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("body", [{}, {"url": ""}, {"url": "   "}, {"url": None}])
+async def test_browse_requires_url(mock_browse, body):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(_json_request(body))
+    mock_browse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browse_rejects_unknown_preset(mock_browse):
+    req = _json_request({"url": "https://example.com/pl", "ytdl_options_presets": ["Missing"]})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(req)
+    mock_browse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browse_rejects_overrides_when_disabled(mock_browse, monkeypatch):
+    monkeypatch.setattr(main.config, "ALLOW_YTDL_OPTIONS_OVERRIDES", False)
+    req = _json_request(
+        {"url": "https://example.com/pl", "ytdl_options_overrides": '{"exec": "echo hi"}'}
+    )
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(req)
+    mock_browse.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("bad", ["abc", [], {}])
+async def test_browse_rejects_bad_playlist_item_limit(mock_browse, bad):
+    req = _json_request({"url": "https://example.com/pl", "playlist_item_limit": bad})
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(req)
+    mock_browse.assert_not_awaited()
+
+
+def test_browse_route_is_registered_on_the_real_app():
+    registered = {
+        (r.method, r.resource.canonical)
+        for r in main.app.router.routes()
+        if r.resource is not None
+    }
+    path = main.config.URL_PREFIX + "browse"
+    assert ("POST", path) in registered
+    assert ("OPTIONS", path) in registered
+
+
 def test_guard_is_installed_on_the_real_app():
     assert main.cross_origin_guard in main.app.middlewares
     assert main.sio.eio.cors_allowed_origins is main._socketio_origin_allowed

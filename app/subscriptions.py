@@ -31,6 +31,7 @@ _MAX_CONCURRENT_CHECKS = 4
 VIDEO_ONLY_MSG = (
     "This URL points to a single video, not a channel or playlist. Use Download instead."
 )
+NO_ENTRIES_MSG = "No entries found at this URL."
 _MEDIA_HINT_FIELDS = (
     "duration",
     "timestamp",
@@ -95,7 +96,7 @@ def _is_media_entry(entry: Any) -> bool:
 
 
 def extract_flat_playlist(
-    config, url: str, playlistend: int, *, extra_opts: Optional[dict[str, Any]] = None, _depth: int = 0
+    config, url: str, playlistend: Optional[int], *, extra_opts: Optional[dict[str, Any]] = None, _depth: int = 0
 ):
     """Return (info_dict, entries_list) for playlist/channel URLs."""
     params = _build_ydl_params(config, playlistend=playlistend, extra_opts=extra_opts)
@@ -147,6 +148,76 @@ def extract_flat_playlist(
 
 def _entry_video_url(entry: dict) -> Optional[str]:
     return entry.get("webpage_url") or entry.get("url")
+
+
+async def browse_playlist(
+    config,
+    url: str,
+    playlist_item_limit: int,
+    ytdl_options_presets: Optional[list[str]],
+    ytdl_options_overrides: Optional[dict[str, Any]],
+) -> dict:
+    """Flat-probe a playlist/channel URL and return its entries for the Browse dialog.
+
+    Read-only: nothing is downloaded, queued or persisted. A limit <= 0 means
+    no limit.
+    """
+    extra = merge_ytdl_option_layers(
+        ytdl_options_presets, ytdl_options_overrides, config.YTDL_OPTIONS_PRESETS
+    )
+    loop = asyncio.get_running_loop()
+    # SSRF guard, same as add_subscription: block non-http(s) schemes and
+    # internal/metadata hosts before yt-dlp fetches anything.
+    proxies = download_proxies({**config.YTDL_OPTIONS, **extra})
+    url_error = await loop.run_in_executor(
+        None,
+        partial(
+            validate_url,
+            url,
+            allow_private=getattr(config, "ALLOW_PRIVATE_ADDRESSES", False),
+            proxies=proxies,
+        ),
+    )
+    if url_error is not None:
+        log.warning('Rejected browse URL "%s": %s', url, url_error)
+        return {"status": "error", "msg": url_error}
+    try:
+        info, entries = await loop.run_in_executor(
+            None,
+            partial(
+                extract_flat_playlist,
+                config,
+                url,
+                playlist_item_limit if playlist_item_limit > 0 else None,
+                extra_opts=extra,
+            ),
+        )
+    except yt_dlp.utils.YoutubeDLError as exc:
+        return {"status": "error", "msg": str(exc)}
+
+    if not info:
+        return {"status": "error", "msg": "Could not resolve URL"}
+    if (info.get("_type") or "video") not in ("playlist", "channel"):
+        return {"status": "error", "msg": VIDEO_ONLY_MSG}
+
+    items: list[dict] = []
+    for entry in entries:
+        if not isinstance(entry, dict):
+            continue
+        entry_url = _entry_video_url(entry)
+        if not entry_url:
+            continue
+        duration = entry.get("duration")
+        if isinstance(duration, bool) or not isinstance(duration, (int, float)):
+            duration = None
+        items.append({
+            "url": entry_url,
+            "title": entry.get("title") or entry_url,
+            "duration": duration,
+        })
+    if not items:
+        return {"status": "error", "msg": NO_ENTRIES_MSG}
+    return {"status": "ok", "title": info.get("title") or url, "entries": items}
 
 
 def _entry_id(entry: dict) -> Optional[str]:

@@ -108,19 +108,39 @@
                 <fa-icon [icon]="faTimesCircle" class="me-1" /> Cancel
               </button>
             } @else if (subscribeInProgress) {
-              <button class="btn btn-primary btn-lg px-4" type="button" disabled>
-                Download
-              </button>
+              <div class="btn-group download-split">
+                <button class="btn btn-primary btn-lg px-4" type="button" disabled>
+                  Download
+                </button>
+                <button class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split" type="button" disabled>
+                  <span class="visually-hidden">More download actions</span>
+                </button>
+              </div>
               <button class="btn btn-outline-secondary btn-lg px-3" type="button" disabled>
                 <span class="spinner-border spinner-border-sm me-2" role="status"></span>
                 Subscribing...
               </button>
             } @else {
-              <button class="btn btn-primary btn-lg px-4" type="submit"
-                (click)="addDownload()"
-                [disabled]="downloads.loading">
-                Download
-              </button>
+              <!-- Download stays first in the DOM so Enter in the URL box submits it. -->
+              <div class="btn-group download-split" ngbDropdown placement="bottom-end" container="body">
+                <button class="btn btn-primary btn-lg px-4" type="submit"
+                  (click)="addDownload()"
+                  [disabled]="downloads.loading">
+                  Download
+                </button>
+                <button class="btn btn-primary btn-lg dropdown-toggle dropdown-toggle-split" type="button"
+                  ngbDropdownToggle
+                  [disabled]="downloads.loading">
+                  <span class="visually-hidden">More download actions</span>
+                </button>
+                <div ngbDropdownMenu>
+                  <button type="button" ngbDropdownItem
+                    (click)="browsePlaylist()"
+                    [disabled]="!addUrl || !addUrl.trim()">
+                    Browse&hellip;
+                  </button>
+                </div>
+              </div>
               <button class="btn btn-outline-secondary btn-lg px-3" type="button"
                 (click)="addSubscription()"
                 [disabled]="downloads.loading">

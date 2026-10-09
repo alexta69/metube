@@ -2,7 +2,7 @@ import { TestBed } from '@angular/core/testing';
 import { provideHttpClient, HttpErrorResponse } from '@angular/common/http';
 import { provideHttpClientTesting, HttpTestingController } from '@angular/common/http/testing';
 import { Subject } from 'rxjs';
-import { DownloadsService, AddDownloadPayload } from './downloads.service';
+import { DownloadsService, AddDownloadPayload, BrowsePayload } from './downloads.service';
 import { MeTubeSocket } from './metube-socket.service';
 import { Download } from '../interfaces';
 
@@ -167,6 +167,39 @@ describe('DownloadsService', () => {
     expect(req.request.method).toBe('POST');
     expect(req.request.body).toEqual({ id: 'https://example.com/v' });
     req.flush({ status: 'ok' });
+  });
+
+  it('browse() posts snake_case fields matching backend', () => {
+    const payload: BrowsePayload = {
+      url: 'https://example.com/playlist',
+      playlistItemLimit: 25,
+      ytdlOptionsPresets: ['Preset A'],
+      ytdlOptionsOverrides: '{"a":1}',
+    };
+    const entries = [{ url: 'https://example.com/v1', title: 'One', duration: 61 }];
+    let result: unknown;
+    service.browse(payload).subscribe((r) => (result = r));
+    const req = httpMock.expectOne('browse');
+    expect(req.request.method).toBe('POST');
+    expect(req.request.body).toEqual({
+      url: 'https://example.com/playlist',
+      playlist_item_limit: 25,
+      ytdl_options_presets: ['Preset A'],
+      ytdl_options_overrides: '{"a":1}',
+    });
+    req.flush({ status: 'ok', title: 'List', entries });
+    expect(result).toEqual({ status: 'ok', title: 'List', entries });
+  });
+
+  it('browse() surfaces HTTP errors as a status object', () => {
+    let result: unknown;
+    service
+      .browse({ url: 'u', playlistItemLimit: 0, ytdlOptionsPresets: [], ytdlOptionsOverrides: '' })
+      .subscribe((r) => (result = r));
+    httpMock
+      .expectOne('browse')
+      .flush({ status: 'error', msg: 'nope' }, { status: 400, statusText: 'Bad Request' });
+    expect(result).toEqual({ status: 'error', msg: 'nope' });
   });
 
   it('cancelAdd posts to cancel-add', () => {
