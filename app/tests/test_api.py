@@ -1090,6 +1090,69 @@ async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, mon
 
 
 @pytest.mark.asyncio
+async def test_connect_offloads_payload_build_to_the_executor(mock_dqueue, monkeypatch):
+    """The connect handler must not run the blocking gather+serialize inline on
+    the event loop. It routes ``_build_connect_payload`` through
+    ``run_in_executor`` so a client's connect cannot stall the loop."""
+    import asyncio as aio
+
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+
+    loop = aio.get_running_loop()
+    offloaded = []
+    original_run_in_executor = loop.run_in_executor
+
+    async def spy_run_in_executor(executor, func, *args):
+        offloaded.append(func)
+        return await original_run_in_executor(executor, func, *args)
+
+    monkeypatch.setattr(loop, 'run_in_executor', spy_run_in_executor)
+
+    await main.connect('sid-1', {})
+
+    # The blocking payload builder was dispatched to the executor, not called
+    # inline on the loop.
+    assert main._build_connect_payload in offloaded
+    # ...and the connect still delivered its catalog to the client.
+    assert 'configuration' in [e for e, _ in emitted]
+
+
+@pytest.mark.asyncio
+async def test_connect_emits_all_first_and_preserves_the_two_tuple_payload(mock_dqueue, monkeypatch):
+    """The UI's ``'all'`` handler indexes ``data[0]`` (in-flight) and
+    ``data[1]`` (history); the 2-tuple shape is load-bearing. ``'all'`` also
+    has to lead, so the client's state is populated before any event that
+    depends on it."""
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    # One in-flight and one finished entry so the 2-tuple is observable.
+    mock_dqueue.get = MagicMock(return_value=([{"id": "q"}], [{"id": "d"}]))
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+
+    await main.connect('sid-1', {})
+
+    events = [e for e, _ in emitted]
+    assert events[0] == 'all'
+    all_payload = json.loads(dict(emitted)['all'])
+    # [[in-flight], [history]] -- exactly the historical shape.
+    assert list(all_payload) == [[{"id": "q"}], [{"id": "d"}]]
+
+
+@pytest.mark.asyncio
 async def test_add_passes_an_ios_height_through(mock_dqueue):
     resp = await main.add(_json_request(_valid_video_add_body(format="ios", quality="720")))
     assert resp.status == 200

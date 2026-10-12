@@ -1341,13 +1341,40 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
+def _build_connect_payload():
+    """Gather and serialize the socket.io connect-handshake payloads.
+
+    Runs off the event loop (via ``run_in_executor``) so a client's connect
+    does not stall the loop while the download queue, subscription list, and
+    options are read and serialized. A large library makes ``dqueue.get()``
+    and the ``serializer.encode`` calls do real work; doing that inline on
+    the loop froze every other client while a single one connected.
+
+    The ``'all'`` payload keeps its exact historical shape -- a 2-tuple of
+    ``[queue + pending, done]`` -- because the UI's ``'all'`` handler indexes
+    ``data[0]`` (in-flight) and ``data[1]`` (history) and depends on that
+    order.
+    """
+    return {
+        'all': serializer.encode(dqueue.get()),
+        'subscriptions_all': serializer.encode([s.to_public_dict() for s in submgr.list_all()]),
+        'formats': serializer.encode(format_catalog.public_catalog()),
+        'configuration': serializer.encode(config.frontend_safe()),
+    }
+
+
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
-    await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
-    await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
-    await sio.emit('formats', serializer.encode(format_catalog.public_catalog()), to=sid)
-    await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
+    # Offload the blocking gather+serialize to the default executor so the
+    # connect handshake never stalls the event loop (see _build_connect_payload).
+    payload = await asyncio.get_running_loop().run_in_executor(None, _build_connect_payload)
+    # 'all' must go out first: the UI populates its state from it before the
+    # finer-grained events that may follow.
+    await sio.emit('all', payload['all'], to=sid)
+    await sio.emit('subscriptions_all', payload['subscriptions_all'], to=sid)
+    await sio.emit('formats', payload['formats'], to=sid)
+    await sio.emit('configuration', payload['configuration'], to=sid)
     if config.CUSTOM_DIRS:
         # get_custom_dirs() can walk the whole download tree on a cache miss;
         # keep that off the event loop so a large library doesn't stall every
@@ -1355,7 +1382,9 @@ async def connect(sid, environ):
         dirs = await asyncio.get_running_loop().run_in_executor(None, get_custom_dirs)
         await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
     if config.YTDL_OPTIONS_FILE:
-        await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
+        # os.path.exists/getmtime are blocking syscalls; off-loop.
+        options_update = await asyncio.get_running_loop().run_in_executor(None, get_options_update_time)
+        await sio.emit('ytdl_options_changed', serializer.encode(options_update), to=sid)
 
 def get_custom_dirs():
     cache_ttl_seconds = 5

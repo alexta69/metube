@@ -2131,3 +2131,125 @@ async def test_clear_in_ask_mode_without_delete_files_kwarg_keeps_file(dq_env):
 
     assert os.path.exists(file_path)
     assert not dq.done.exists(download.info.url)
+
+
+def _make_download_info(dq_env, url, *, status="queued"):
+    """A ``DownloadInfo`` the way the startup import re-hydrates saved items."""
+    info = DownloadInfo(
+        id=url.rsplit("/", 1)[-1],
+        title="t",
+        url=url,
+        quality="best",
+        download_type="video",
+        codec="auto",
+        format="any",
+        folder="",
+        custom_name_prefix="",
+        error=None,
+        entry=None,
+        playlist_item_limit=0,
+        split_by_chapters=False,
+        chapter_template="",
+    )
+    info.status = status
+    return info
+
+
+def _make_download_by_url(dq_env, url, *, status="queued"):
+    """A ``Download`` wrapping a re-hydrated info, for the ``bulk_put`` tests."""
+    info = _make_download_info(dq_env, url, status=status)
+    return Download(
+        dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s", "%(title)s.%(ext)s", "best", "any", {}, info
+    )
+
+
+@pytest.mark.asyncio
+async def test_bulk_put_persists_the_batch_once(dq_env):
+    """bulk_put must insert the whole batch and serialize the dict ONCE, not
+    once per item -- the O(n^2) per-item save is what stalled the event loop
+    for 15-45s at startup (issue #359)."""
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    save = AsyncMock(wraps=dq.queue._save_dict_async)
+    dq.queue._save_dict_async = save
+
+    batch = [_make_download_by_url(dq_env, f"https://example.com/v{i}") for i in range(5)]
+    await dq.queue.bulk_put(batch)
+
+    for i in range(5):
+        assert dq.queue.exists(f"https://example.com/v{i}")
+    # Five items, one save -- not five.
+    assert save.await_count == 1
+
+
+@pytest.mark.asyncio
+async def test_bulk_put_empty_batch_is_a_noop(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    save = AsyncMock(wraps=dq.queue._save_dict_async)
+    dq.queue._save_dict_async = save
+
+    await dq.queue.bulk_put([])
+
+    save.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_bulk_put_rolls_back_when_the_save_fails(dq_env):
+    """A failed write must roll the batch back to its prior state, matching
+    put()'s mutate-write-rollback contract."""
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+
+    # Pre-existing entry that the batch overwrites, plus a fresh one.
+    existing = _make_download_by_url(dq_env, "https://example.com/old", status="queued")
+    await dq.queue.put(existing)
+
+    async def boom():
+        raise OSError("disk full")
+
+    dq.queue._save_dict_async = boom
+    batch = [
+        _make_download_by_url(dq_env, "https://example.com/old", status="pending"),  # overwrites
+        _make_download_by_url(dq_env, "https://example.com/new"),
+    ]
+
+    with pytest.raises(OSError):
+        await dq.queue.bulk_put(batch)
+
+    # Both keys restored to their pre-batch values.
+    assert dq.queue.get("https://example.com/old").info.status == "queued"
+    assert not dq.queue.exists("https://example.com/new")
+
+
+@pytest.mark.asyncio
+async def test_import_batch_preserves_add_download_side_effects(dq_env):
+    """The reworked startup import batches persistence through bulk_put (one
+    save per sub-list, not per item) while preserving the original
+    __add_download semantics: queued items auto-start, notifier.added fires for
+    every restored item, and the queue persists once for the whole batch."""
+    notifier = AsyncMock()
+    start_mock = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    save = AsyncMock(wraps=dq.queue._save_dict_async)
+    dq.queue._save_dict_async = save
+    urls = [f"https://example.com/batch{i}" for i in range(6)]
+
+    # bg_tasks.create_task would spawn real start tasks; patch it so we can
+    # count deterministically what __import_batch schedules.
+    with patch("bg_tasks.create_task") as create_task, \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
+        await dq._DownloadQueue__import_batch(
+            [_make_download_info(dq_env, u) for u in urls], True
+        )
+
+    for u in urls:
+        assert dq.queue.exists(u)
+    # One save for the whole queued sub-list (not six).
+    assert save.await_count == 1
+    # Every restored item notifies exactly once.
+    assert notifier.added.await_count == len(urls)
+    # Auto-start queued items: each is scheduled through create_task.
+    start_args = [c.args[0] for c in create_task.call_args_list
+                  if c.kwargs.get("name") == "start_download"]
+    assert len(start_args) == len(urls)
