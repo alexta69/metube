@@ -1363,6 +1363,26 @@ def _build_connect_payload():
     }
 
 
+async def _emit_connect_finish(sid):
+    """Slow connect-finish events, dispatched off the connect-ACK path.
+
+    The socket.io connect ACK is sent only after the ``connect`` handler
+    returns, so any work awaited there delays the handshake. ``get_custom_dirs()``
+    runs ``path.glob('**/')`` over the whole download tree (over 100s on a
+    large library) and ``get_options_update_time()`` touches the filesystem;
+    emitting them inline kept the client stuck on "Connecting..." long past the
+    engine.io ping window. Both are therefore dispatched as a background task
+    after the handler has returned, so the ACK is immediate and the client
+    connects instantly, receiving the directory list a moment later.
+    """
+    loop = asyncio.get_running_loop()
+    if config.CUSTOM_DIRS:
+        dirs = await loop.run_in_executor(None, get_custom_dirs)
+        await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
+    if config.YTDL_OPTIONS_FILE:
+        options_update = await loop.run_in_executor(None, get_options_update_time)
+        await sio.emit('ytdl_options_changed', serializer.encode(options_update), to=sid)
+
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
@@ -1375,16 +1395,12 @@ async def connect(sid, environ):
     await sio.emit('subscriptions_all', payload['subscriptions_all'], to=sid)
     await sio.emit('formats', payload['formats'], to=sid)
     await sio.emit('configuration', payload['configuration'], to=sid)
-    if config.CUSTOM_DIRS:
-        # get_custom_dirs() can walk the whole download tree on a cache miss;
-        # keep that off the event loop so a large library doesn't stall every
-        # client's connect handshake.
-        dirs = await asyncio.get_running_loop().run_in_executor(None, get_custom_dirs)
-        await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
-    if config.YTDL_OPTIONS_FILE:
-        # os.path.exists/getmtime are blocking syscalls; off-loop.
-        options_update = await asyncio.get_running_loop().run_in_executor(None, get_options_update_time)
-        await sio.emit('ytdl_options_changed', serializer.encode(options_update), to=sid)
+    # The slow directory / ytdl-options emits must NOT be awaited here: the
+    # connect ACK is sent only when this handler returns, so awaiting them
+    # would delay the handshake past the engine.io ping window. Dispatch them
+    # as a background task (strong-referenced, failures logged) so the ACK
+    # goes out immediately.
+    bg_tasks.create_task(_emit_connect_finish(sid), name=f"connect_finish_{sid}")
 
 def get_custom_dirs():
     cache_ttl_seconds = 5
