@@ -18,6 +18,7 @@ import yt_dlp
 import yt_dlp.networking.impersonate
 import bg_tasks
 from dl_formats import merge_ytdl_option_layers
+from download_options import DownloadOptions
 from state_store import AtomicJsonStore, read_legacy_shelf
 from url_guard import validate_url, download_proxies
 
@@ -282,6 +283,29 @@ class SubscriptionInfo:
 
     def seen_set(self) -> set[str]:
         return set(self.seen_ids)
+
+    def download_options(self) -> DownloadOptions:
+        """The options every video this subscription queues is downloaded with."""
+        return DownloadOptions(
+            download_type=self.download_type,
+            codec=self.codec,
+            format=self.format,
+            quality=self.quality,
+            folder=self.folder or None,
+            custom_name_prefix=self.custom_name_prefix,
+            playlist_item_limit=self.playlist_item_limit,
+            auto_start=self.auto_start,
+            split_by_chapters=self.split_by_chapters,
+            chapter_template=self.chapter_template or None,
+            subtitle_language=self.subtitle_language,
+            subtitle_mode=self.subtitle_mode,
+            ytdl_options_presets=self.ytdl_options_presets,
+            ytdl_options_overrides=self.ytdl_options_overrides,
+            clip_start=self.clip_start,
+            clip_end=self.clip_end,
+            sponsorblock=self.sponsorblock,
+            audio_tags=self.audio_tags,
+        )
 
     def to_public_dict(self) -> dict:
         return {
@@ -551,31 +575,10 @@ class SubscriptionManager:
         )
 
     async def _queue_subscription_entries(
-        self,
-        entries: list[dict],
-        *,
-        download_type: str,
-        codec: str,
-        format: str,
-        quality: str,
-        folder: str,
-        custom_name_prefix: str,
-        playlist_item_limit: int,
-        auto_start: bool,
-        split_by_chapters: bool,
-        chapter_template: str,
-        subtitle_language: str,
-        subtitle_mode: str,
-        ytdl_options_presets: Optional[list[str]] = None,
-        ytdl_options_overrides: Optional[dict[str, Any]] = None,
-        clip_start: Optional[float] = None,
-        clip_end: Optional[float] = None,
-        sponsorblock: bool = False,
-        audio_tags: str = "with_cover",
+        self, entries: list[dict], options: DownloadOptions,
     ) -> tuple[list[str], list[str]]:
         queued_ids: list[str] = []
         queue_errors: list[str] = []
-        presets = list(ytdl_options_presets or [])
         for ent in entries:
             eid = _entry_id(ent)
             vurl = _entry_video_url(ent)
@@ -586,27 +589,7 @@ class SubscriptionManager:
                 queue_entry["id"] = eid
             queue_entry["_type"] = "video"
             queue_entry["webpage_url"] = vurl
-            result = await self.dqueue.add_entry(
-                queue_entry,
-                download_type,
-                codec,
-                format,
-                quality,
-                folder or None,
-                custom_name_prefix,
-                playlist_item_limit,
-                auto_start,
-                split_by_chapters,
-                chapter_template or None,
-                subtitle_language,
-                subtitle_mode,
-                presets,
-                ytdl_options_overrides,
-                clip_start,
-                clip_end,
-                sponsorblock=sponsorblock,
-                audio_tags=audio_tags,
-            )
+            result = await self.dqueue.add_entry(queue_entry, options)
             if isinstance(result, dict) and result.get("status") == "error":
                 msg = str(result.get("msg") or f"Queueing failed for {vurl}")
                 queue_errors.append(msg)
@@ -1032,26 +1015,11 @@ class SubscriptionManager:
                 return
             seen = cur.seen_set()
             seen_ids_snapshot = list(cur.seen_ids)
-            dl_type = cur.download_type
-            dl_codec = cur.codec
-            dl_format = cur.format
-            dl_quality = cur.quality
-            dl_folder = cur.folder
-            dl_prefix = cur.custom_name_prefix
-            dl_plimit = cur.playlist_item_limit
-            dl_autostart = cur.auto_start
-            dl_split = cur.split_by_chapters
-            dl_sponsorblock = cur.sponsorblock
-            dl_audio_tags = cur.audio_tags
-            dl_chapter = cur.chapter_template
-            dl_sublang = cur.subtitle_language
-            dl_submode = cur.subtitle_mode
-            dl_ytdl_presets = list(cur.ytdl_options_presets)
-            dl_ytdl_overrides = dict(cur.ytdl_options_overrides)
+            # A snapshot: the queueing below runs without the lock, and an
+            # edit made meanwhile applies from the next check on.
+            options = cur.download_options()
             dl_title_regex = cur.title_regex or ""
             dl_skip_subscriber_only = bool(cur.skip_subscriber_only)
-            dl_clip_start = cur.clip_start
-            dl_clip_end = cur.clip_end
 
         new_entries: list[dict] = []
         for ent in entries:
@@ -1100,27 +1068,7 @@ class SubscriptionManager:
                 kept_entries.append(ent)
             queue_entries = kept_entries
 
-        queued_ids, queue_errors = await self._queue_subscription_entries(
-            queue_entries,
-            download_type=dl_type,
-            codec=dl_codec,
-            format=dl_format,
-            quality=dl_quality,
-            folder=dl_folder,
-            custom_name_prefix=dl_prefix,
-            playlist_item_limit=dl_plimit,
-            auto_start=dl_autostart,
-            split_by_chapters=dl_split,
-            sponsorblock=dl_sponsorblock,
-            audio_tags=dl_audio_tags,
-            chapter_template=dl_chapter or "",
-            subtitle_language=dl_sublang,
-            subtitle_mode=dl_submode,
-            ytdl_options_presets=dl_ytdl_presets,
-            ytdl_options_overrides=dl_ytdl_overrides,
-            clip_start=dl_clip_start,
-            clip_end=dl_clip_end,
-        )
+        queued_ids, queue_errors = await self._queue_subscription_entries(queue_entries, options)
         log.info(
             "Subscription check finished for %s: %d new, %d filtered, %d subscriber_skipped, %d queued, %d failed",
             sub.name,

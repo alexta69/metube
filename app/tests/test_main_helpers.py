@@ -138,7 +138,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
     _BODY = {"url": "https://example.com/v", "download_type": "video", "format": "any", "quality": "best"}
 
     def _parse(self, **fields):
-        return main.parse_download_options({**self._BODY, **fields})
+        return main.parse_download_options({**self._BODY, **fields})[1]
 
     def _rejects(self, **fields):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -152,18 +152,18 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                               (1, True), (0, False), (True, True), (False, False)):
             with self.subTest(raw=raw):
                 parsed = self._parse(auto_start=raw, split_by_chapters=raw, sponsorblock=raw)
-                self.assertIs(parsed["auto_start"], expected)
-                self.assertIs(parsed["split_by_chapters"], expected)
-                self.assertIs(parsed["sponsorblock"], expected)
+                self.assertIs(parsed.auto_start, expected)
+                self.assertIs(parsed.split_by_chapters, expected)
+                self.assertIs(parsed.sponsorblock, expected)
 
     def test_boolean_defaults(self):
         parsed = self._parse()
-        self.assertIs(parsed["auto_start"], True)
-        self.assertIs(parsed["split_by_chapters"], False)
-        self.assertIs(parsed["sponsorblock"], False)
+        self.assertIs(parsed.auto_start, True)
+        self.assertIs(parsed.split_by_chapters, False)
+        self.assertIs(parsed.sponsorblock, False)
         parsed = self._parse(auto_start="", split_by_chapters=None)
-        self.assertIs(parsed["auto_start"], True)
-        self.assertIs(parsed["split_by_chapters"], False)
+        self.assertIs(parsed.auto_start, True)
+        self.assertIs(parsed.split_by_chapters, False)
 
     def test_unrecognised_booleans_are_refused(self):
         for field in ("auto_start", "split_by_chapters", "sponsorblock"):
@@ -172,8 +172,8 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                     self._rejects(**{field: raw})
 
     def test_playlist_item_limit(self):
-        self.assertEqual(self._parse(playlist_item_limit="5")["playlist_item_limit"], 5)
-        self.assertEqual(self._parse(playlist_item_limit=0)["playlist_item_limit"], 0)
+        self.assertEqual(self._parse(playlist_item_limit="5").playlist_item_limit, 5)
+        self.assertEqual(self._parse(playlist_item_limit=0).playlist_item_limit, 0)
         for raw in (-1, "-5", "abc", True, [1]):
             with self.subTest(raw=raw):
                 self._rejects(playlist_item_limit=raw)
@@ -185,9 +185,9 @@ class ParseDownloadOptionsTests(unittest.TestCase):
                 with self.subTest(field=field, raw=raw):
                     self._rejects(**{field: raw})
         parsed = self._parse(folder=None, custom_name_prefix=None, chapter_template=None)
-        self.assertIsNone(parsed["folder"])
-        self.assertEqual(parsed["custom_name_prefix"], "")
-        self.assertEqual(parsed["chapter_template"], main.config.OUTPUT_TEMPLATE_CHAPTER)
+        self.assertIsNone(parsed.folder)
+        self.assertEqual(parsed.custom_name_prefix, "")
+        self.assertEqual(parsed.chapter_template, main.config.OUTPUT_TEMPLATE_CHAPTER)
 
     def test_accepts_known_preset_and_overrides(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
@@ -195,7 +195,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
         main.config.YTDL_OPTIONS_PRESETS = {"With subtitles": {"writesubtitles": True}}
         main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = True
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -207,8 +207,8 @@ class ParseDownloadOptionsTests(unittest.TestCase):
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
             main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = previous_allow
-        self.assertEqual(parsed["ytdl_options_presets"], ["With subtitles"])
-        self.assertEqual(parsed["ytdl_options_overrides"], {"writesubtitles": True})
+        self.assertEqual(parsed.ytdl_options_presets, ("With subtitles",))
+        self.assertEqual(parsed.ytdl_options_overrides, {"writesubtitles": True})
 
     def test_accepts_multiple_presets_in_order(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
@@ -217,7 +217,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "B": {"writesubtitles": False},
         }
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -227,13 +227,13 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
-        self.assertEqual(parsed["ytdl_options_presets"], ["A", "B"])
+        self.assertEqual(parsed.ytdl_options_presets, ("A", "B"))
 
     def test_legacy_singular_preset_string_normalized_to_list(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
         main.config.YTDL_OPTIONS_PRESETS = {"Solo": {}}
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -243,7 +243,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
-        self.assertEqual(parsed["ytdl_options_presets"], ["Solo"])
+        self.assertEqual(parsed.ytdl_options_presets, ("Solo",))
 
     def test_rejects_unknown_preset(self):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -273,7 +273,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             main.config.YTDL_OPTIONS_PRESETS = previous
 
     def test_clip_start_end_seconds_and_clock(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -282,23 +282,23 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "clip_start": "2:26",
             "clip_end": "3:24",
         })
-        self.assertEqual(parsed["clip_start"], 146.0)
-        self.assertEqual(parsed["clip_end"], 204.0)
+        self.assertEqual(parsed.clip_start, 146.0)
+        self.assertEqual(parsed.clip_end, 204.0)
 
     def test_clip_url_t_param_strips_query_and_sets_start(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=855s",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 855.0)
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 855.0)
+        self.assertIsNone(parsed.clip_end)
 
     def test_clip_explicit_start_wins_over_url_t(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=100",
             "download_type": "video",
             "codec": "auto",
@@ -306,12 +306,12 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "clip_start": "50",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 50.0)
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 50.0)
+        self.assertIsNone(parsed.clip_end)
 
     def test_clip_end_only_sets_start_zero_and_strips_url_t(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=999",
             "download_type": "video",
             "codec": "auto",
@@ -319,23 +319,23 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "clip_end": "60",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 0.0)
-        self.assertEqual(parsed["clip_end"], 60.0)
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 0.0)
+        self.assertEqual(parsed.clip_end, 60.0)
 
     def test_clip_url_t_param_ignored_on_non_youtube_host(self):
         # 't' is a generic query param name; only rewrite it on YouTube hosts
         # so an unrelated site's URL isn't silently mutated with a bogus clip.
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1&t=855s",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertEqual(parsed["url"], "https://example.com/watch?v=1&t=855s")
-        self.assertIsNone(parsed["clip_start"])
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://example.com/watch?v=1&t=855s")
+        self.assertIsNone(parsed.clip_start)
+        self.assertIsNone(parsed.clip_end)
 
     def test_extract_t_query_youtu_be_short_host(self):
         cleaned, start = main._extract_t_query_from_url("https://youtu.be/abc123?t=90")
@@ -367,7 +367,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
 
     def test_video_password_passed_through_unchanged(self):
         # Not stripped: leading/trailing spaces may be part of the password.
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -375,20 +375,20 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "video_password": "  s3cret pw  ",
         })
-        self.assertEqual(parsed["video_password"], "  s3cret pw  ")
+        self.assertEqual(parsed.video_password, "  s3cret pw  ")
 
     def test_video_password_missing_defaults_to_none(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertIsNone(parsed["video_password"])
+        self.assertIsNone(parsed.video_password)
 
     def test_video_password_empty_string_becomes_none(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -396,7 +396,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "video_password": "",
         })
-        self.assertIsNone(parsed["video_password"])
+        self.assertIsNone(parsed.video_password)
 
     def test_video_password_rejects_non_string(self):
         with self.assertRaises(main.web.HTTPBadRequest):

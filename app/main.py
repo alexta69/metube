@@ -23,6 +23,7 @@ from watchfiles import awatch
 import bg_tasks
 import format_catalog
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
+from download_options import DownloadOptions
 from subscriptions import SubscriptionManager, SubscriptionNotifier, SubscriptionInfo, browse_playlist, coerce_optional_bool
 from yt_dlp.version import __version__ as yt_dlp_version
 
@@ -959,8 +960,9 @@ def _playlist_item_limit_field(post: dict) -> int:
     return value
 
 
-def parse_download_options(post: dict) -> dict:
-    """Validate add/subscribe body; raise HTTPBadRequest on invalid input."""
+def parse_download_options(post: dict) -> tuple[str, DownloadOptions]:
+    """Validate an add/subscribe body into its URL and options; raise
+    HTTPBadRequest on invalid input."""
     post = _migrate_legacy_request(dict(post))
     url = post.get('url')
     download_type = post.get('download_type')
@@ -1047,28 +1049,27 @@ def parse_download_options(post: dict) -> dict:
         if clip_start is not None and clip_end is not None and clip_end <= clip_start:
             raise web.HTTPBadRequest(reason='clip_end must be greater than clip_start')
 
-    return {
-        'url': url,
-        'download_type': download_type,
-        'codec': codec,
-        'format': format,
-        'quality': quality,
-        'folder': folder,
-        'custom_name_prefix': custom_name_prefix,
-        'playlist_item_limit': playlist_item_limit,
-        'auto_start': auto_start,
-        'split_by_chapters': split_by_chapters,
-        'sponsorblock': sponsorblock,
-        'audio_tags': audio_tags,
-        'chapter_template': chapter_template,
-        'subtitle_language': subtitle_language,
-        'subtitle_mode': subtitle_mode,
-        'ytdl_options_presets': ytdl_options_presets,
-        'ytdl_options_overrides': ytdl_options_overrides,
-        'clip_start': clip_start,
-        'clip_end': clip_end,
-        'video_password': video_password,
-    }
+    return url, DownloadOptions(
+        download_type=download_type,
+        codec=codec,
+        format=format,
+        quality=quality,
+        folder=folder,
+        custom_name_prefix=custom_name_prefix,
+        playlist_item_limit=playlist_item_limit,
+        auto_start=auto_start,
+        split_by_chapters=split_by_chapters,
+        sponsorblock=sponsorblock,
+        audio_tags=audio_tags,
+        chapter_template=chapter_template,
+        subtitle_language=subtitle_language,
+        subtitle_mode=subtitle_mode,
+        ytdl_options_presets=ytdl_options_presets,
+        ytdl_options_overrides=ytdl_options_overrides,
+        clip_start=clip_start,
+        clip_end=clip_end,
+        video_password=video_password,
+    )
 
 
 @routes.post(config.URL_PREFIX + 'add')
@@ -1076,40 +1077,19 @@ async def add(request):
     log.info("Received request to add download")
     post = await _read_json_request(request)
     try:
-        o = parse_download_options(post)
+        url, options = parse_download_options(post)
     except web.HTTPBadRequest as e:
         log.error("Bad request: %s", e.reason)
         raise
     log.info(
         "Add download request: type=%s quality=%s format=%s has_folder=%s auto_start=%s",
-        o['download_type'],
-        o['quality'],
-        o['format'],
-        bool(o.get('folder')),
-        o['auto_start'],
+        options.download_type,
+        options.quality,
+        options.format,
+        bool(options.folder),
+        options.auto_start,
     )
-    status = await dqueue.add(
-        o['url'],
-        o['download_type'],
-        o['codec'],
-        o['format'],
-        o['quality'],
-        o['folder'],
-        o['custom_name_prefix'],
-        o['playlist_item_limit'],
-        o['auto_start'],
-        o['split_by_chapters'],
-        o['chapter_template'],
-        o['subtitle_language'],
-        o['subtitle_mode'],
-        o['ytdl_options_presets'],
-        o['ytdl_options_overrides'],
-        o['clip_start'],
-        o['clip_end'],
-        sponsorblock=o['sponsorblock'],
-        audio_tags=o['audio_tags'],
-        video_password=o['video_password'],
-    )
+    status = await dqueue.add(url, options)
     return web.Response(text=serializer.encode(status))
 
 
@@ -1169,7 +1149,7 @@ async def retry(request):
 @routes.post(config.URL_PREFIX + 'subscribe')
 async def subscribe(request):
     post = await _read_json_request(request)
-    o = parse_download_options(post)
+    url, options = parse_download_options(post)
     cic = post.get('check_interval_minutes')
     if cic is None:
         cic = config.SUBSCRIPTION_DEFAULT_CHECK_INTERVAL
@@ -1191,32 +1171,32 @@ async def subscribe(request):
         _clip_field_provided_in_post(post.get('clip_start'))
         or _clip_field_provided_in_post(post.get('clip_end'))
     )
-    sub_clip_start = o['clip_start'] if clip_given else None
-    sub_clip_end = o['clip_end'] if clip_given else None
+    if not clip_given:
+        options = options.replace(clip_start=None, clip_end=None)
 
     result = await submgr.add_subscription(
-        o['url'],
+        url,
         check_interval_minutes=cic,
-        download_type=o['download_type'],
-        codec=o['codec'],
-        format=o['format'],
-        quality=o['quality'],
-        folder=o['folder'] or '',
-        custom_name_prefix=o['custom_name_prefix'],
-        auto_start=o['auto_start'],
-        playlist_item_limit=o['playlist_item_limit'],
-        split_by_chapters=o['split_by_chapters'],
-        chapter_template=o['chapter_template'],
-        subtitle_language=o['subtitle_language'],
-        subtitle_mode=o['subtitle_mode'],
-        ytdl_options_presets=o['ytdl_options_presets'],
-        ytdl_options_overrides=o['ytdl_options_overrides'],
-        sponsorblock=o['sponsorblock'],
-        audio_tags=o['audio_tags'],
+        download_type=options.download_type,
+        codec=options.codec,
+        format=options.format,
+        quality=options.quality,
+        folder=options.folder or '',
+        custom_name_prefix=options.custom_name_prefix,
+        auto_start=options.auto_start,
+        playlist_item_limit=options.playlist_item_limit,
+        split_by_chapters=options.split_by_chapters,
+        chapter_template=options.chapter_template,
+        subtitle_language=options.subtitle_language,
+        subtitle_mode=options.subtitle_mode,
+        ytdl_options_presets=list(options.ytdl_options_presets),
+        ytdl_options_overrides=options.ytdl_options_overrides,
+        sponsorblock=options.sponsorblock,
+        audio_tags=options.audio_tags,
         title_regex=post.get('title_regex'),
         skip_subscriber_only=skip_subscriber_only,
-        clip_start=sub_clip_start,
-        clip_end=sub_clip_end,
+        clip_start=options.clip_start,
+        clip_end=options.clip_end,
     )
     return web.Response(text=serializer.encode(result))
 
