@@ -257,6 +257,25 @@ describe('App', () => {
     expect(restored.componentInstance.subscriptionsCollapsed).toBe(false);
   });
 
+  it('enables Clear completed and Clear/Retry failed from the done list', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const app = fixture.componentInstance;
+    expect(app.hasCompletedDone).toBe(false);
+    expect(app.hasFailedDone).toBe(false);
+
+    downloads.done.set('a', { url: 'a', status: 'finished' } as Download);
+    downloads.doneChanged.next();
+    expect(app.hasCompletedDone).toBe(true);
+    expect(app.hasFailedDone).toBe(false);
+
+    downloads.done.set('b', { url: 'b', status: 'error' } as Download);
+    downloads.done.delete('a');
+    downloads.doneChanged.next();
+    expect(app.hasCompletedDone).toBe(false);
+    expect(app.hasFailedDone).toBe(true);
+  });
+
   describe('digitsOnly', () => {
     const press = (key: string, mods: Partial<KeyboardEventInit> = {}) => {
       const fixture = TestBed.createComponent(App);

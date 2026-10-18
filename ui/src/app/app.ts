@@ -251,11 +251,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
       this.syncLiveCountdownTimer();
+      // Undefined until the view exists; the first render reads the list itself.
+      this.queueMasterCheckbox()?.selectionChanged();
       this.cdr.markForCheck();
     });
     this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
       this.rebuildSortedDone();
+      this.doneMasterCheckbox()?.selectionChanged();
       this.cdr.markForCheck();
     });
     // Subscribe to real-time updates
@@ -285,17 +288,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   ngAfterViewInit() {
-    this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.queueMasterCheckbox()?.selectionChanged();
-      this.cdr.markForCheck();
-    });
-    this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.doneMasterCheckbox()?.selectionChanged();
-      this.updateDoneActionButtons();
-      this.cdr.markForCheck();
-    });
-    // Initialize action button states for already-loaded entries.
-    this.updateDoneActionButtons();
+    // Counts and action button states for already-loaded entries.
+    this.updateMetrics();
     this.fetchVersionInfo();
     this.socket.fromEvent('connect')
       .pipe(takeUntilDestroyed(this.destroyRef))
@@ -924,26 +918,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   doneSelectionChanged(checked: number) {
     this.doneDelSelected().nativeElement.disabled = checked === 0;
     this.doneDownloadSelected().nativeElement.disabled = checked === 0;
-  }
-
-  private updateDoneActionButtons() {
-    let completed = 0;
-    let failed = 0;
-    this.downloads.done.forEach((download) => {
-      const isFailed = download.status === 'error';
-      const isCompleted = !isFailed && (
-        download.status === 'finished' ||
-        download.status === 'completed' ||
-        Boolean(download.filename)
-      );
-      if (isCompleted) {
-        completed++;
-      } else if (isFailed) {
-        failed++;
-      }
-    });
-    this.hasCompletedDone = completed > 0;
-    this.hasFailedDone = failed > 0;
   }
 
   // Each choice list is the catalog's: the selected type's formats and codecs,
@@ -1897,6 +1871,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.queuedDownloads = queued;
     this.completedDownloads = completed;
     this.failedDownloads = failed;
+    // Clear completed / Clear failed / Retry failed act on exactly these rows.
+    this.hasCompletedDone = completed > 0;
+    this.hasFailedDone = failed > 0;
     this.totalSpeed = speed;
   }
 }
