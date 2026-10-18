@@ -436,7 +436,7 @@
                       class="form-control"
                       placeholder="Default"
                       name="playlistItemLimit"
-                      (keydown)="isNumber($event)"
+                      (keydown)="digitsOnly($event)"
                       [(ngModel)]="playlistItemLimit"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading">
                   </div>
@@ -448,7 +448,7 @@
                       min="1"
                       class="form-control"
                       name="checkIntervalMinutes"
-                      (keydown)="isNumber($event)"
+                      (keydown)="digitsOnly($event)"
                       [(ngModel)]="checkIntervalMinutes"
                       (ngModelChange)="checkIntervalChanged()"
                       [disabled]="addInProgress || subscribeInProgress || downloads.loading">

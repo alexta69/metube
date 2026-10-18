@@ -257,6 +257,31 @@ describe('App', () => {
     expect(restored.componentInstance.subscriptionsCollapsed).toBe(false);
   });
 
+  describe('digitsOnly', () => {
+    const press = (key: string, mods: Partial<KeyboardEventInit> = {}) => {
+      const fixture = TestBed.createComponent(App);
+      const event = new KeyboardEvent('keydown', { key, cancelable: true, ...mods });
+      fixture.componentInstance.digitsOnly(event);
+      return event.defaultPrevented;
+    };
+
+    it('blocks typed characters other than digits', () => {
+      for (const key of ['a', '-', '.', 'e', ' ']) {
+        expect(press(key)).toBe(true);
+      }
+      expect(press('7')).toBe(false);
+    });
+
+    it('lets shortcuts and named keys through', () => {
+      expect(press('v', { ctrlKey: true })).toBe(false);
+      expect(press('a', { metaKey: true })).toBe(false);
+      expect(press('c', { ctrlKey: true })).toBe(false);
+      for (const key of ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'Backspace', 'F5']) {
+        expect(press(key)).toBe(false);
+      }
+    });
+  });
+
   describe('OnPush rendering of asynchronous results', () => {
     // The root component is OnPush: state set from an HTTP callback or a timer
     // is not rendered unless the callback marks the view. These go through

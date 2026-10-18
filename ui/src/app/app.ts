@@ -1567,12 +1567,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return parts[parts.length - 1];
   }
 
-  isNumber(event: KeyboardEvent) {
-    const allowedControlKeys = ['Backspace', 'Delete', 'ArrowLeft', 'ArrowRight', 'Tab', 'Home', 'End'];
-    if (allowedControlKeys.includes(event.key)) {
+  // Keeps the non-negative integer fields to digits. Only a typed character
+  // is filtered: named keys (Enter, Tab, arrows, Escape, F-keys) and anything
+  // with a modifier pass, so Enter submits and Ctrl/Cmd+A/C/V/X/Z still work.
+  // An allowlist of named keys used to block all of those.
+  digitsOnly(event: KeyboardEvent) {
+    if (event.ctrlKey || event.metaKey || event.altKey || event.key.length !== 1) {
       return;
     }
-
     if (!/^[0-9]$/.test(event.key)) {
       event.preventDefault();
     }
