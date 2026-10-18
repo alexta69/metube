@@ -557,6 +557,26 @@ class SubscriptionManager:
     def _save_locked(self) -> None:
         self._store.save({"items": [_subscription_to_record(sub) for sub in self._subs.values()]})
 
+    async def _mutate(self, sub_id: str, change) -> Optional[SubscriptionInfo]:
+        """Apply *change* to a subscription and persist it, under the lock.
+
+        If the save fails the subscription is put back as it was and the error
+        propagates, so memory never runs ahead of what is on disk. Returns the
+        updated subscription, or None if it has been deleted meanwhile.
+        """
+        async with self._lock:
+            cur = self._subs.get(sub_id)
+            if cur is None:
+                return None
+            previous = copy.deepcopy(cur)
+            change(cur)
+            try:
+                self._save_locked()
+            except Exception:
+                self._subs[sub_id] = previous
+                raise
+            return cur
+
     def _scan_extra_opts(
         self,
         ytdl_options_presets: Optional[list[str]],
@@ -877,13 +897,11 @@ class SubscriptionManager:
                 return {"status": "error", "msg": "check_interval_minutes must be an integer"}
             interval_set = True
 
-        async with self._lock:
-            sub = self._subs.get(sub_id)
-            if not sub:
-                return {"status": "error", "msg": "Subscription not found"}
-            previous = copy.deepcopy(sub)
-            old_enabled = sub.enabled
+        old_enabled = None
 
+        def apply(sub: SubscriptionInfo) -> None:
+            nonlocal old_enabled
+            old_enabled = sub.enabled
             if enabled_set:
                 sub.enabled = validated_enabled
             if interval_set:
@@ -899,12 +917,9 @@ class SubscriptionManager:
             if skip_so_set:
                 sub.skip_subscriber_only = validated_skip_so
 
-            try:
-                self._save_locked()
-            except Exception:
-                self._subs[sub_id] = previous
-                raise
-            updated = sub
+        updated = await self._mutate(sub_id, apply)
+        if updated is None:
+            return {"status": "error", "msg": "Subscription not found"}
         if "enabled" in changes and updated.enabled != old_enabled:
             log.info(
                 "Subscription %s %s",
@@ -944,6 +959,15 @@ class SubscriptionManager:
             async with self._lock:
                 self._checks_in_flight.discard(sid)
 
+    async def _record_check(self, sub_id: str, *, error: Optional[str], seen_ids=None) -> Optional[SubscriptionInfo]:
+        """Persist the outcome of a check: when it ran, its error, and the ids it saw."""
+        def apply(sub: SubscriptionInfo) -> None:
+            sub.last_checked = time.time()
+            sub.error = error
+            if seen_ids is not None:
+                sub.seen_ids = seen_ids
+        return await self._mutate(sub_id, apply)
+
     async def _check_one_inner(self, sub: SubscriptionInfo) -> None:
         sid = sub.id
         scan = self.config.SUBSCRIPTION_SCAN_PLAYLIST_END
@@ -958,18 +982,7 @@ class SubscriptionManager:
                 partial(extract_flat_playlist, self.config, sub.url, scan, extra_opts=scan_extra_opts),
             )
         except yt_dlp.utils.YoutubeDLError as exc:
-            async with self._lock:
-                cur = self._subs.get(sid)
-                if cur:
-                    previous = copy.deepcopy(cur)
-                    cur.error = str(exc)
-                    cur.last_checked = time.time()
-                    try:
-                        self._save_locked()
-                    except Exception:
-                        self._subs[sid] = previous
-                        raise
-                    sub = cur
+            sub = await self._record_check(sid, error=str(exc)) or sub
             log.warning("Subscription check failed for %s: %s", sub.name, exc)
             await self.notifier.subscription_updated(sub)
             return
@@ -977,34 +990,12 @@ class SubscriptionManager:
 
         etype = (info or {}).get("_type") or "video"
         if etype == "video":
-            async with self._lock:
-                cur = self._subs.get(sid)
-                if cur:
-                    previous = copy.deepcopy(cur)
-                    cur.error = VIDEO_ONLY_MSG
-                    cur.last_checked = time.time()
-                    try:
-                        self._save_locked()
-                    except Exception:
-                        self._subs[sid] = previous
-                        raise
-                    sub = cur
+            sub = await self._record_check(sid, error=VIDEO_ONLY_MSG) or sub
             log.warning("Subscription %s no longer resolves to a subscribable feed", sub.name)
             await self.notifier.subscription_updated(sub)
             return
         if not entries:
-            async with self._lock:
-                cur = self._subs.get(sid)
-                if cur:
-                    previous = copy.deepcopy(cur)
-                    cur.last_checked = time.time()
-                    cur.error = None
-                    try:
-                        self._save_locked()
-                    except Exception:
-                        self._subs[sid] = previous
-                        raise
-                    sub = cur
+            sub = await self._record_check(sid, error=None) or sub
             log.warning("Subscription check finished for %s: No entries found", sub.name)
             await self.notifier.subscription_updated(sub)
             return
@@ -1088,20 +1079,10 @@ class SubscriptionManager:
         if len(merged) > max_seen:
             merged = merged[:max_seen]
 
-        async with self._lock:
-            cur = self._subs.get(sid)
-            if not cur:
-                return
-            previous = copy.deepcopy(cur)
-            cur.seen_ids = merged
-            cur.last_checked = time.time()
-            cur.error = "; ".join(list(dict.fromkeys(queue_errors))[:3]) if queue_errors else None
-            try:
-                self._save_locked()
-            except Exception:
-                self._subs[sid] = previous
-                raise
-            sub = cur
+        error = "; ".join(list(dict.fromkeys(queue_errors))[:3]) if queue_errors else None
+        sub = await self._record_check(sid, error=error, seen_ids=merged)
+        if sub is None:
+            return
         await self.notifier.subscription_updated(sub)
 
     async def emit_all(self) -> None:

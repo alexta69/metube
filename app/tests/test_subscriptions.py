@@ -1821,3 +1821,24 @@ class SubscriptionEventLoopTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubscriptionMutateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_save_restores_the_subscription(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub = SubscriptionInfo(id="s1", name="Before", url="https://example.com/c")
+            mgr._subs[sub.id] = sub
+
+            with patch.object(mgr, "_save_locked", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    await mgr.update_subscription("s1", {"name": "After", "enabled": False})
+
+            self.assertEqual(mgr.get("s1").name, "Before")
+            self.assertTrue(mgr.get("s1").enabled)
+
+    async def test_update_of_a_deleted_subscription_reports_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            result = await mgr.update_subscription("gone", {"name": "x"})
+            self.assertEqual(result, {"status": "error", "msg": "Subscription not found"})
