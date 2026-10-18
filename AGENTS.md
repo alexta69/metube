@@ -93,18 +93,9 @@ uv run pytest app/tests/
 
 All of these run in CI (`.github/workflows/main.yml`) on every push to master and must pass.
 
-Gotchas:
-
-- Backend tests must run **from the repo root**: `main.py` resolves the static-assets
-  path relative to the cwd, and several test modules import `main`. Running from
-  `app/` makes five test modules fail to import.
-- The frontend must be **built before** running backend tests (same reason — the
-  assets at `ui/dist/metube/browser` must exist). The command order above is
-  load-bearing.
-- `app/tests/test_ytdl_utils.py` stubs `yt_dlp` at import time. Run standalone,
-  two tests fail with `AttributeError: <module 'yt_dlp'> does not have the
-  attribute 'YoutubeDL'`; under the full suite the real module is imported first
-  and they pass. This is a known quirk, not a bug to fix in the code under test.
+The backend tests need no frontend build and can run from the repo root or
+from `app/`: `app/tests/conftest.py` points `BASE_DIR` at a stand-in UI
+directory before `main` is imported.
 
 Every non-markdown push to master builds multi-arch Docker images and cuts a dated
 release the same day. **Master is continuously released** — a PR must be

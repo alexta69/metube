@@ -1,4 +1,7 @@
-"""Tests for pure helpers and migration logic in ``ytdl``."""
+"""Tests for pure helpers and migration logic in ``ytdl``.
+
+These run against the real yt-dlp, as every other test module does.
+"""
 
 from __future__ import annotations
 
@@ -7,7 +10,6 @@ import multiprocessing
 import json
 import os
 import signal
-import sys
 import tempfile
 import threading
 import time
@@ -19,63 +21,6 @@ from decimal import Decimal
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
-
-fake_yt_dlp = types.ModuleType("yt_dlp")
-fake_networking = types.ModuleType("yt_dlp.networking")
-fake_impersonate = types.ModuleType("yt_dlp.networking.impersonate")
-fake_postprocessor = types.ModuleType("yt_dlp.postprocessor")
-fake_postprocessor_common = types.ModuleType("yt_dlp.postprocessor.common")
-fake_utils = types.ModuleType("yt_dlp.utils")
-
-
-class _ImpersonateTarget:
-    @staticmethod
-    def from_str(value):
-        return value
-
-
-class _PostProcessor:
-    def __init__(self, downloader=None):
-        self._downloader = downloader
-
-
-class _YoutubeDL:
-    """Minimal stand-in so ``_ConfinedYoutubeDL`` can subclass it under the shim.
-
-    ``prepare_filename`` is patched per-test; the real containment logic lives in
-    the ``_ConfinedYoutubeDL`` override, which is what the tests exercise.
-    """
-
-    def __init__(self, params=None, **kwargs):
-        self.params = params or {}
-
-    def prepare_filename(self, *args, **kwargs):
-        return ""
-
-    def add_post_processor(self, *args, **kwargs):
-        pass
-
-
-fake_utils.DownloadError = type("DownloadError", (Exception,), {})
-fake_utils.YoutubeDLError = fake_utils.DownloadError
-fake_yt_dlp.YoutubeDL = _YoutubeDL
-fake_impersonate.ImpersonateTarget = _ImpersonateTarget
-fake_networking.impersonate = fake_impersonate
-fake_postprocessor_common.PostProcessor = _PostProcessor
-# The inner ``key`` group mirrors the real ``STR_FORMAT_RE_TMPL`` so that
-# ``_OUTTMPL_FIELD_RE`` (compiled at import time) has the named group that
-# ``_resolve_outtmpl_fields`` reads via ``match.group('key')``.
-fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>(?P<key>{}))\)(?P<format>[-0-9.]*{})"
-fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
-fake_yt_dlp.networking = fake_networking
-fake_yt_dlp.postprocessor = fake_postprocessor
-fake_yt_dlp.utils = fake_utils
-sys.modules.setdefault("yt_dlp", fake_yt_dlp)
-sys.modules.setdefault("yt_dlp.networking", fake_networking)
-sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
-sys.modules.setdefault("yt_dlp.postprocessor", fake_postprocessor)
-sys.modules.setdefault("yt_dlp.postprocessor.common", fake_postprocessor_common)
-sys.modules.setdefault("yt_dlp.utils", fake_utils)
 
 import ytdl
 from state_store import to_json_compatible
@@ -92,14 +37,6 @@ from ytdl import (
     _sanitize_path_component,
     _short_title_for_failed_url,
 )
-
-# Detect whether the real yt-dlp is loaded (as opposed to the minimal fake
-# shim above).  _resolve_outtmpl_fields needs YoutubeDL.evaluate_outtmpl at
-# runtime, which the shim's YoutubeDL stand-in deliberately does not provide.
-_has_real_ytdlp = hasattr(
-    getattr(sys.modules.get("yt_dlp"), "YoutubeDL", None), "evaluate_outtmpl"
-)
-
 
 class AlbumArtistPostProcessorTests(unittest.TestCase):
     def setUp(self):
@@ -260,7 +197,6 @@ class SanitizePathComponentTests(unittest.TestCase):
         self.assertEqual(_sanitize_path_component('   '), '_')
 
 
-@unittest.skipUnless(_has_real_ytdlp, "requires real yt-dlp")
 class ResolveOuttmplFieldsTests(unittest.TestCase):
     """Tests for _resolve_outtmpl_fields (delegates to yt-dlp's template engine)."""
 
