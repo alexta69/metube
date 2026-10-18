@@ -237,8 +237,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   qualityChanged() {
     this.settings.set('metube_quality', this.quality);
     this.saveSelection(this.downloadType);
-    // Re-trigger custom directory change
-    this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   downloadTypeChanged() {
@@ -250,7 +248,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.refreshFormatOptions();
     this.saveSelection(this.downloadType);
     this.previousDownloadType = this.downloadType;
-    this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   codecChanged() {
@@ -470,8 +467,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.settings.set('metube_format', this.format);
     this.setQualities();
     this.saveSelection(this.downloadType);
-    // Re-trigger custom directory change
-    this.downloads.customDirsChanged.next(this.downloads.customDirs);
   }
 
   autoStartChanged() {

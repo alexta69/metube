@@ -92,7 +92,6 @@ class DownloadsServiceStub {
   configurationChanged = new Subject<Record<string, unknown>>();
   formats: FormatCatalog | null = testCatalog();
   formatsChanged = new Subject<FormatCatalog>();
-  customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
   retryCalls: string[] = [];
