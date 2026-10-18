@@ -1,13 +1,13 @@
-import { DatePipe, NgTemplateOutlet } from '@angular/common';
+import { NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
 import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, tap } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faCheck, faDownload, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faChevronRight, faChevronDown, faUpload } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { ADD_REQUEST_CONCURRENCY, AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -16,10 +16,8 @@ import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { BatchUrlsService, BatchUrlFilter } from './services/batch-urls.service';
 import { SettingsStore } from './services/settings-store.service';
-import { downloadTypeLabel, formatCodecLabel, formatQualityLabel } from './catalog-labels';
 import { Themes } from './theme';
 import {
-  Download,
   Status,
   Theme,
   Option,
@@ -27,17 +25,15 @@ import {
   DownloadTypeOption,
   FormatCatalog,
   FormatOption,
-  State,
 } from './interfaces';
-import { SpeedPipe, FileSizePipe } from './pipes';
+import { SpeedPipe } from './pipes';
 import {
-  SelectAllCheckboxComponent,
-  ItemCheckboxComponent,
   ToastContainerComponent,
   PlaylistBrowserComponent,
   SubscriptionsSectionComponent,
   BatchImportComponent,
   DownloadingSectionComponent,
+  CompletedSectionComponent,
 } from './components/';
 
 @Component({
@@ -46,17 +42,14 @@ import {
   imports: [
         FormsModule,
         NgTemplateOutlet,
-        DatePipe,
         FontAwesomeModule,
         NgbModule,
         NgSelectModule,
         SpeedPipe,
-        FileSizePipe,
-        SelectAllCheckboxComponent,
-        ItemCheckboxComponent,
         ToastContainerComponent,
         SubscriptionsSectionComponent,
         DownloadingSectionComponent,
+        CompletedSectionComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.sass',
@@ -123,14 +116,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
-  sortAscending = false;
-  completedCollapsed = false;
-  expandedErrors: Set<string> = new Set<string>();
-  cachedSortedDone: [string, Download][] = [];
-  // The done ids in rendered order, so a shift-click range follows the sort
-  // the user is looking at rather than the map's insertion order.
-  cachedSortedDoneIds: string[] = [];
-  lastCopiedErrorId: string | null = null;
   private previousDownloadType = '';
   private addRequestSub?: Subscription;
   private selectionsByType: Record<string, {
@@ -157,35 +142,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   completedDownloads = 0;
   failedDownloads = 0;
   totalSpeed = 0;
-  hasCompletedDone = false;
-  hasFailedDone = false;
 
-  readonly doneMasterCheckbox = viewChild<SelectAllCheckboxComponent>('doneMasterCheckboxRef');
-  readonly doneDelSelected = viewChild.required<ElementRef>('doneDelSelected');
-  readonly doneDownloadSelected = viewChild.required<ElementRef>('doneDownloadSelected');
 
   faTrashAlt = faTrashAlt;
   faCheckCircle = faCheckCircle;
   faTimesCircle = faTimesCircle;
-  faRedoAlt = faRedoAlt;
-  faSun = faSun;
-  faMoon = faMoon;
   faCheck = faCheck;
-  faCircleHalfStroke = faCircleHalfStroke;
   faDownload = faDownload;
-  faExternalLinkAlt = faExternalLinkAlt;
   faFileImport = faFileImport;
   faFileExport = faFileExport;
   faCopy = faCopy;
   faGithub = faGithub;
   faClock = faClock;
   faTachometerAlt = faTachometerAlt;
-  faSortAmountDown = faSortAmountDown;
-  faSortAmountUp = faSortAmountUp;
   faChevronRight = faChevronRight;
   faChevronDown = faChevronDown;
   faUpload = faUpload;
-  faShareNodes = faShareNodes;
   constructor() {
     // Remembered choices are checked against the catalog when it arrives.
     this.downloadType = this.settings.get('metube_download_type');
@@ -211,8 +183,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.applyCatalog(catalog);
       this.cdr.markForCheck();
     });
-    this.sortAscending = this.settings.get('metube_sort_ascending') === 'true';
-    this.completedCollapsed = this.settings.get('metube_completed_collapsed') === 'true';
 
     const ci = parseInt(this.settings.get('metube_check_interval') || '', 10);
     if (!Number.isNaN(ci) && ci >= 1) {
@@ -227,8 +197,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
     this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
-      this.rebuildSortedDone();
-      this.doneMasterCheckbox()?.selectionChanged();
       this.cdr.markForCheck();
     });
     // Subscribe to real-time updates
@@ -421,19 +389,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.settings.set('metube_check_interval', String(this.checkIntervalMinutes));
   }
 
-  private getStatusError(res: unknown): string | null {
-    const status = res as { status?: string; msg?: string };
-    return status?.status === 'error' ? status.msg || null : null;
-  }
-
-  private handleActionResult(res: unknown, fallbackMsg: string) {
-    const error = this.getStatusError(res);
-    if (error) {
-      this.toasts.error(error || fallbackMsg);
-    }
-    this.cdr.markForCheck();
-  }
-
   addSubscription() {
     if (this.subscribeInProgress) {
       return;
@@ -584,24 +539,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   isVideoType() {
     return this.downloadType === 'video';
-  }
-
-  // The labels the Completed table shows, worded the way the form words them.
-  formatQualityLabel(download: Download): string {
-    return formatQualityLabel(download, this.downloadTypes);
-  }
-
-  downloadTypeLabel(download: Download): string {
-    return downloadTypeLabel(download, this.downloadTypes);
-  }
-
-  formatCodecLabel(download: Download): string {
-    return formatCodecLabel(download, this.downloadTypes);
-  }
-
-  doneSelectionChanged(checked: number) {
-    this.doneDelSelected().nativeElement.disabled = checked === 0;
-    this.doneDownloadSelected().nativeElement.disabled = checked === 0;
   }
 
   // Each choice list is the catalog's: the selected type's formats and codecs,
@@ -910,292 +847,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  retryDownload(key: string, download: Download) {
-    this.retryRequest(key, download).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
-  }
-
-  private retryRequest(key: string, download: Download): Observable<Status> {
-    // Only remove the done-list record once the retry is confirmed queued —
-    // deleting it eagerly would silently lose history if the re-add fails.
-    return this.downloads.retry(key).pipe(
-      tap((status: Status) => {
-        if (status.status === 'error') {
-          this.toasts.error(`Error retrying ${download.title}: ${status.msg}`);
-          this.cdr.markForCheck();
-          return;
-        }
-        this.downloads.delById('done', [key]).subscribe();
-      }),
-    );
-  }
-
-  // In ask mode (DELETE_FILE_ON_TRASHCAN='ask'), completed entries may still have
-  // a file on disk, so the user is asked whether to keep or delete it before the
-  // list entry is removed. Returns undefined when no prompt is needed (send no
-  // flag), false/true for the user's choice, or null when the user cancelled.
-  private asksBeforeDeletingFiles(where: State, ids: string[]): boolean {
-    return where === 'done' &&
-      this.downloads.configuration['DELETE_FILE_ON_TRASHCAN'] === 'ask' &&
-      ids.some((id) => {
-        const dl = this.downloads.done.get(id);
-        return !!dl?.filename || !!dl?.chapter_files?.length;
-      });
-  }
-
-  private async confirmFileDeletion(where: State, ids: string[]): Promise<boolean | null | undefined> {
-    if (
-      where !== 'done' ||
-      this.downloads.configuration['DELETE_FILE_ON_TRASHCAN'] !== 'ask' ||
-      ids.length === 0
-    ) {
-      return undefined;
-    }
-    if (!this.asksBeforeDeletingFiles(where, ids)) {
-      return false;
-    }
-    const message = ids.length === 1
-      ? `Remove "${this.downloads.done.get(ids[0])?.title ?? ids[0]}" from the list? You can also delete its file from disk.`
-      : `Remove ${ids.length} items from the list? You can also delete their files from disk.`;
-    return await this.toasts.choose<boolean | null>(message, [
-      { label: 'Cancel', value: null },
-      { label: 'Remove from list', value: false },
-      { label: 'Delete files', value: true, primary: true },
-    ]);
-  }
-
-  // ids are collected before the prompt is shown: the user's choice applies to
-  // that snapshot, so entries that finish (or otherwise change) while the
-  // prompt is open must not get swept into the delete along with it.
-  private async removeDownloads(where: State, ids: string[], errorMsg: string) {
-    const deleteFiles = await this.confirmFileDeletion(where, ids);
-    if (deleteFiles === null) {
-      return;
-    }
-    this.downloads.delById(where, ids, deleteFiles).subscribe((res) => this.handleActionResult(res, errorMsg));
-    this.cdr.markForCheck();
-  }
-
-  async delDownload(where: State, id: string) {
-    await this.removeDownloads(where, [id], 'Delete failed');
-  }
-
-  async delSelectedDownloads(where: State) {
-    const ids: string[] = [];
-    this.downloads[where].forEach((dl: Download, key: string) => { if (dl.checked) ids.push(key); });
-    await this.removeDownloads(where, ids, 'Delete failed');
-  }
-
-  async clearCompletedDownloads() {
-    const ids: string[] = [];
-    this.downloads.done.forEach((dl, key) => { if (dl.status === 'finished') ids.push(key); });
-    await this.removeDownloads('done', ids, 'Clear completed failed');
-  }
-
-  // A failed row holds the only copy of its URL, and Clear failed sits next to
-  // Retry failed, so it asks first (#1094). When ask mode is about to prompt
-  // for leftover files anyway, that prompt (which has Cancel) is the question.
-  async clearFailedDownloads() {
-    const ids: string[] = [];
-    this.downloads.done.forEach((dl, key) => { if (dl.status === 'error') ids.push(key); });
-    if (ids.length === 0) {
-      return;
-    }
-    if (!this.asksBeforeDeletingFiles('done', ids)) {
-      const count = ids.length === 1 ? 'the failed download' : `${ids.length} failed downloads`;
-      const confirmed = await this.toasts.confirm(
-        `Clear ${count}? ${ids.length === 1 ? 'Its URL is' : 'Their URLs are'} not kept anywhere else, ` +
-        'so retrying later means finding them again.',
-        'Clear',
-        'Cancel',
-      );
-      if (!confirmed) {
-        return;
-      }
-    }
-    await this.removeDownloads('done', ids, 'Clear failed downloads failed');
-  }
-
-  // Each retry is a full yt-dlp extraction on the server, so a long failed
-  // list goes out a few at a time rather than all at once.
-  retryFailedDownloads() {
-    const failed: [string, Download][] = [];
-    this.downloads.done.forEach((dl, key) => {
-      if (dl.status === 'error') {
-        failed.push([key, dl]);
-      }
-    });
-    from(failed).pipe(
-      mergeMap(([key, dl]) => this.retryRequest(key, dl), ADD_REQUEST_CONCURRENCY),
-      takeUntilDestroyed(this.destroyRef),
-    ).subscribe();
-  }
-
-  // Chromium-based browsers silently drop programmatic downloads beyond ~10 when
-  // triggered in a tight loop. Trigger in batches with a short pause in between so
-  // large selections download cleanly. See issue #1008.
-  private static readonly DOWNLOAD_BATCH_SIZE = 10;
-  private static readonly DOWNLOAD_BATCH_DELAY_MS = 1000;
-
-  async downloadSelectedFiles() {
-    const selected: Download[] = [];
-    this.downloads.done.forEach((dl) => {
-      if (dl.status === 'finished' && dl.checked) {
-        selected.push(dl);
-      }
-    });
-
-    for (let i = 0; i < selected.length; i++) {
-      const dl = selected[i];
-      const link = document.createElement('a');
-      link.href = this.buildDownloadLink(dl);
-      link.setAttribute('download', dl.filename);
-      link.setAttribute('target', '_self');
-      document.body.appendChild(link);
-      link.click();
-      document.body.removeChild(link);
-
-      if (
-        (i + 1) % App.DOWNLOAD_BATCH_SIZE === 0 &&
-        i + 1 < selected.length
-      ) {
-        await new Promise((resolve) =>
-          setTimeout(resolve, App.DOWNLOAD_BATCH_DELAY_MS),
-        );
-      }
-    }
-  }
-
-  buildDownloadLink(download: Download) {
-    let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    // Must match the server's directory rule exactly: ytdl.py writes to
-    // AUDIO_DOWNLOAD_DIR on download_type alone. Treating any .mp3 as audio
-    // sent the link to audio_download/ for mp3s produced under a video-type
-    // download (a postprocessor, a preset, or a legacy record), which the
-    // server had written to DOWNLOAD_DIR -- a 404 whenever the two differ.
-    if (download.download_type === 'audio') {
-      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
-    }
-
-    if (download.folder) {
-      baseDir += this.encodeFolderPath(download.folder);
-    }
-
-    return baseDir + encodeURIComponent(download.filename);
-  }
-
-  // Web Share API support — primarily for iOS Safari / Chrome, lets the user
-  // hand the downloaded file off to the platform share sheet (Photos.app,
-  // Files, third-party apps, AirDrop). Falls back silently to the standard
-  // download flow on platforms without navigator.share / canShare.
-  canShareDownloads(): boolean {
-    // navigator.share alone is not enough — Desktop Safari implements
-    // navigator.share but not canShare with files. We explicitly require
-    // both, since we always intend to share a file (not a URL).
-    return typeof navigator !== 'undefined'
-      && typeof navigator.share === 'function'
-      && typeof navigator.canShare === 'function';
-  }
-
-  // Conservative warning threshold for the share sheet — iOS' actual
-  // refusal limit varies between ~50 MB (older versions) and ~150 MB
-  // (recent ones). 80 MB warns the user before the time-wasting fetch+
-  // copy of a too-large file that the platform will then reject.
-  private static readonly SHARE_SIZE_WARN_BYTES = 80 * 1024 * 1024;
-
-  async shareDownload(download: Download): Promise<void> {
-    if (!this.canShareDownloads()) {
-      return;
-    }
-    // Pre-flight size check: warn the user about the iOS share-sheet
-    // soft-fail on large files, before we spend time fetching the whole
-    // file into memory only to have navigator.canShare reject it.
-    if (download.size && download.size > App.SHARE_SIZE_WARN_BYTES) {
-      const sizeMb = Math.round(download.size / 1024 / 1024);
-      const proceed = await this.toasts.confirm(
-        `This file is ${sizeMb} MB. iOS' share sheet often refuses files ` +
-        `larger than ~100 MB and the share will silently fail. ` +
-        `Try anyway? (Use the download button instead if it fails.)`,
-        'Try anyway',
-        'Cancel',
-      );
-      if (!proceed) return;
-    }
-    try {
-      const response = await fetch(this.buildDownloadLink(download));
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status} fetching file for share`);
-      }
-      const blob = await response.blob();
-      const file = new File([blob], download.filename, {
-        type: blob.type || 'application/octet-stream',
-      });
-      const payload: ShareData = { files: [file], title: download.title };
-      if (!navigator.canShare(payload)) {
-        // The platform refused the payload — most commonly because the
-        // file is too large for the iOS share sheet, or the MIME type
-        // isn't accepted. Tell the user so they can fall back to the
-        // download button right next to this one instead of staring at
-        // a button that quietly did nothing.
-        console.warn('navigator.canShare rejected payload for', download.filename);
-        this.toasts.error(
-          `Your device's share sheet doesn't accept this file ` +
-          `(most likely because it's too large). ` +
-          `Please use the download button instead.`
-        );
-        return;
-      }
-      await navigator.share(payload);
-    } catch (err) {
-      const e = err as { name?: string; message?: string };
-      // AbortError = user dismissed the share sheet → silent no-op.
-      if (e.name === 'AbortError') return;
-      console.error('Share failed:', err);
-      this.toasts.error(
-        `Share failed: ${e.message || 'unknown error'}. ` +
-        `Please use the download button instead.`
-      );
-    }
-  }
-
-  buildResultItemTooltip(download: Download) {
-    const parts = [];
-    if (download.msg) {
-      parts.push(download.msg);
-    }
-    if (download.error) {
-      parts.push(download.error);
-    }
-    return parts.join(' | ');
-  }
-
-  buildChapterDownloadLink(download: Download, chapterFilename: string) {
-    let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
-    // Same server-side rule as buildDownloadLink above.
-    if (download.download_type === 'audio') {
-      baseDir = this.downloads.configuration["PUBLIC_HOST_AUDIO_URL"];
-    }
-
-    if (download.folder) {
-      baseDir += this.encodeFolderPath(download.folder);
-    }
-
-    return baseDir + encodeURIComponent(chapterFilename);
-  }
-
-  private encodeFolderPath(folder: string): string {
-    return folder
-      .split('/')
-      .filter(segment => segment.length > 0)
-      .map(segment => encodeURIComponent(segment))
-      .join('/') + '/';
-  }
-
-  getChapterFileName(filepath: string) {
-    // Extract just the filename from the path
-    const parts = filepath.split('/');
-    return parts[parts.length - 1];
-  }
-
   // Keeps the non-negative integer fields to digits. Only a typed character
   // is filtered: named keys (Enter, Tab, arrows, Escape, F-keys) and anything
   // with a modifier pass, so Enter submits and Ctrl/Cmd+A/C/V/X/Z still work.
@@ -1246,78 +897,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   toggleAdvanced() {
     this.isAdvancedOpen = !this.isAdvancedOpen;
-  }
-
-  toggleSortOrder() {
-    this.sortAscending = !this.sortAscending;
-    this.settings.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false');
-    this.rebuildSortedDone();
-  }
-
-  toggleCompletedCollapsed() {
-    this.completedCollapsed = !this.completedCollapsed;
-    this.settings.set('metube_completed_collapsed', this.completedCollapsed ? 'true' : 'false');
-  }
-
-  private rebuildSortedDone() {
-    const result: [string, Download][] = [];
-    this.downloads.done.forEach((dl, key) => {
-      result.push([key, dl]);
-    });
-    if (!this.sortAscending) {
-      result.reverse();
-    }
-    this.cachedSortedDone = result;
-    this.cachedSortedDoneIds = result.map(([key]) => key);
-  }
-
-  toggleErrorDetail(id: string) {
-    if (this.expandedErrors.has(id)) this.expandedErrors.delete(id);
-    else this.expandedErrors.add(id);
-  }
-
-  copyErrorMessage(id: string, download: Download) {
-    const parts: string[] = [];
-    if (download.title) parts.push(`Title: ${download.title}`);
-    if (download.url) parts.push(`URL: ${download.url}`);
-    if (download.msg) parts.push(`Message: ${download.msg}`);
-    if (download.error) parts.push(`Error: ${download.error}`);
-    const text = parts.join('\n');
-    if (!text.trim()) return;
-    const done = () => {
-      this.lastCopiedErrorId = id;
-      this.cdr.markForCheck();
-      setTimeout(() => {
-        this.lastCopiedErrorId = null;
-        this.cdr.markForCheck();
-      }, 1500);
-    };
-    const fail = (err?: unknown) => {
-      console.error('Clipboard write failed:', err);
-      this.toasts.error('Failed to copy to clipboard. Your browser may require HTTPS for clipboard access.');
-    };
-    if (navigator.clipboard?.writeText) {
-      navigator.clipboard.writeText(text).then(done).catch(fail);
-    } else {
-      try {
-        const ta = document.createElement('textarea');
-        ta.value = text;
-        ta.setAttribute('readonly', '');
-        ta.style.position = 'fixed';
-        ta.style.opacity = '0';
-        document.body.appendChild(ta);
-        ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
-        done();
-      } catch (e) {
-        fail(e);
-      }
-    }
-  }
-
-  isErrorExpanded(id: string): boolean {
-    return this.expandedErrors.has(id);
   }
 
   onCookieFileSelect(event: Event) {
@@ -1422,9 +1001,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.queuedDownloads = queued;
     this.completedDownloads = completed;
     this.failedDownloads = failed;
-    // Clear completed / Clear failed / Retry failed act on exactly these rows.
-    this.hasCompletedDone = completed > 0;
-    this.hasFailedDone = failed > 0;
     this.totalSpeed = speed;
   }
 }
