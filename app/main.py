@@ -18,7 +18,7 @@ import pathlib
 import re
 import time
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
-from watchfiles import DefaultFilter, Change, awatch
+from watchfiles import awatch
 
 import bg_tasks
 import format_catalog
@@ -793,25 +793,6 @@ async def _start_nightly_update_schedule(app):
 
 app.on_startup.append(_start_nightly_update_schedule)
 
-class FileOpsFilter(DefaultFilter):
-    def __call__(self, change_type: int, path: str) -> bool:
-        # Check if this path matches our YTDL_OPTIONS_FILE
-        if path != config.YTDL_OPTIONS_FILE:
-            return False
-
-        # For existing files, use samefile comparison to handle symlinks correctly
-        if os.path.exists(config.YTDL_OPTIONS_FILE):
-            try:
-                if not os.path.samefile(path, config.YTDL_OPTIONS_FILE):
-                    return False
-            except (OSError, IOError):
-                # If samefile fails, fall back to string comparison
-                if path != config.YTDL_OPTIONS_FILE:
-                    return False
-
-        # Accept all change types for our file: modified, added, deleted
-        return change_type in (Change.modified, Change.added, Change.deleted)
-
 def get_options_update_time(success=True, msg=''):
     result = {
         'success': success,
@@ -829,15 +810,49 @@ def get_options_update_time(success=True, msg=''):
 
     return result
 
-async def watch_files():
-    async def _watch_files():
-        async for changes in awatch(config.YTDL_OPTIONS_FILE, watch_filter=FileOpsFilter()):
-            success, msg = config.load_ytdl_options()
-            result = get_options_update_time(success, msg)
-            await sio.emit('ytdl_options_changed', serializer.encode(result))
 
+def _options_file_signature(path: str):
+    """What identifies one version of the options file, or None if it is gone.
+
+    os.stat follows symlinks, so this sees through a Kubernetes ConfigMap mount,
+    where the visible file is a symlink whose target is swapped on update.
+    """
+    try:
+        st = os.stat(path)
+    except OSError:
+        return None
+    return (st.st_dev, st.st_ino, st.st_mtime_ns, st.st_size)
+
+
+async def _watch_options_file(on_change, *, debounce: int = 1600, stop_event=None) -> None:
+    """Call *on_change* whenever YTDL_OPTIONS_FILE changes.
+
+    Watches the file's directory, not the file. A watch on the file itself is
+    tied to its inode, and editors, `sed -i` and config tools save by writing a
+    new file and renaming it over the old one: the first such save was seen
+    and every change after it was not. Non-recursive, so an options file kept
+    in the download directory does not put a watch on the whole library.
+    """
+    path = os.path.abspath(config.YTDL_OPTIONS_FILE)
+    last = _options_file_signature(path)
+    async for _changes in awatch(
+        os.path.dirname(path), recursive=False, debounce=debounce, stop_event=stop_event,
+    ):
+        current = _options_file_signature(path)
+        if current == last:
+            continue
+        last = current
+        await on_change()
+
+
+async def _reload_ytdl_options() -> None:
+    success, msg = config.load_ytdl_options()
+    await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time(success, msg)))
+
+
+async def watch_files():
     log.info(f'Starting Watch File: {config.YTDL_OPTIONS_FILE}')
-    bg_tasks.create_task(_watch_files(), name="watch_ytdl_options_file")
+    bg_tasks.create_task(_watch_options_file(_reload_ytdl_options), name="watch_ytdl_options_file")
 
 async def _watch_files_startup(app):
     await watch_files()

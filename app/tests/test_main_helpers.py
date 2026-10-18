@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import main
 
@@ -394,3 +398,69 @@ class WarnIfCookiefileShadowedTests(unittest.TestCase):
             main.config.YTDL_OPTIONS["cookiefile"] = value
             with self.assertNoLogs("main", level="WARNING"):
                 main.warn_if_cookiefile_shadowed()
+
+
+class WatchOptionsFileTests(unittest.IsolatedAsyncioTestCase):
+    """The hot reload has to survive the file being replaced, which is how
+    editors, `sed -i` and config tools save it."""
+
+    async def _wait_for(self, predicate, timeout=10.0):
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not predicate():
+            if asyncio.get_running_loop().time() > deadline:
+                return False
+            await asyncio.sleep(0.05)
+        return True
+
+    async def test_reloads_after_every_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'opts.json')
+            with open(path, 'w') as f:
+                f.write('{}')
+            calls = []
+
+            async def on_change():
+                calls.append(1)
+
+            stop = asyncio.Event()
+            with patch.object(main.config, 'YTDL_OPTIONS_FILE', path):
+                task = asyncio.create_task(main._watch_options_file(on_change, debounce=50, stop_event=stop))
+                try:
+                    await asyncio.sleep(0.5)  # let the watcher attach
+                    for expected, body in enumerate(('{"a": 1}', '{"a": 22}'), start=1):
+                        tmp_path = path + '.tmp'
+                        with open(tmp_path, 'w') as f:
+                            f.write(body)
+                        os.replace(tmp_path, path)
+                        self.assertTrue(await self._wait_for(lambda: len(calls) >= expected),
+                                        f'replace #{expected} was not noticed')
+                    with open(path, 'a') as f:
+                        f.write(' ')
+                    self.assertTrue(await self._wait_for(lambda: len(calls) >= 3),
+                                    'an in-place edit after the replaces was not noticed')
+                finally:
+                    stop.set()
+                    await asyncio.wait_for(task, timeout=5)
+
+    async def test_ignores_other_files_in_the_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'opts.json')
+            with open(path, 'w') as f:
+                f.write('{}')
+            calls = []
+
+            async def on_change():
+                calls.append(1)
+
+            stop = asyncio.Event()
+            with patch.object(main.config, 'YTDL_OPTIONS_FILE', path):
+                task = asyncio.create_task(main._watch_options_file(on_change, debounce=50, stop_event=stop))
+                try:
+                    await asyncio.sleep(0.5)
+                    with open(os.path.join(tmp, 'other.txt'), 'w') as f:
+                        f.write('x')
+                    await asyncio.sleep(1.0)
+                    self.assertEqual(calls, [])
+                finally:
+                    stop.set()
+                    await asyncio.wait_for(task, timeout=5)
