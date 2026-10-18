@@ -872,6 +872,44 @@ async def _read_json_request(request: web.Request) -> dict:
     return post
 
 
+def _bool_field(post: dict, key: str, default: bool) -> bool:
+    """A boolean body field, also accepting the string and 0/1 spellings API
+    clients send. Absent, null or blank takes *default*; anything else that is
+    not a boolean is refused rather than read as truthy."""
+    value = post.get(key)
+    if value is None or (isinstance(value, str) and not value.strip()):
+        return default
+    try:
+        return coerce_optional_bool(value, default=default, field_name=key)
+    except ValueError as exc:
+        raise web.HTTPBadRequest(reason=str(exc)) from exc
+
+
+def _str_field(post: dict, key: str, default):
+    """A string body field: absent or null takes *default*, a non-string is refused."""
+    value = post.get(key)
+    if value is None:
+        return default
+    if not isinstance(value, str):
+        raise web.HTTPBadRequest(reason=f"'{key}' must be a string")
+    return value
+
+
+def _playlist_item_limit_field(post: dict) -> int:
+    value = post.get('playlist_item_limit')
+    if value is None:
+        value = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
+    if isinstance(value, bool):
+        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer')
+    try:
+        value = int(value)
+    except (TypeError, ValueError) as exc:
+        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
+    if value < 0:
+        raise web.HTTPBadRequest(reason='playlist_item_limit must not be negative')
+    return value
+
+
 def parse_download_options(post: dict) -> dict:
     """Validate add/subscribe body; raise HTTPBadRequest on invalid input."""
     post = _migrate_legacy_request(dict(post))
@@ -883,29 +921,19 @@ def parse_download_options(post: dict) -> dict:
     if not url or not quality or not download_type:
         raise web.HTTPBadRequest(reason="missing 'url', 'download_type', or 'quality'")
     url = str(url).strip()
-    folder = post.get('folder')
-    custom_name_prefix = post.get('custom_name_prefix')
-    playlist_item_limit = post.get('playlist_item_limit')
-    auto_start = post.get('auto_start')
-    split_by_chapters = post.get('split_by_chapters')
-    sponsorblock = bool(post.get('sponsorblock'))
+    folder = _str_field(post, 'folder', None)
+    custom_name_prefix = _str_field(post, 'custom_name_prefix', '')
+    playlist_item_limit = _playlist_item_limit_field(post)
+    auto_start = _bool_field(post, 'auto_start', True)
+    split_by_chapters = _bool_field(post, 'split_by_chapters', False)
+    sponsorblock = _bool_field(post, 'sponsorblock', False)
     audio_tags = str(post.get('audio_tags') or format_catalog.choice_default('audio', 'audio_tags')).strip().lower()
-    chapter_template = post.get('chapter_template')
+    chapter_template = _str_field(post, 'chapter_template', config.OUTPUT_TEMPLATE_CHAPTER)
     subtitle_language = post.get('subtitle_language')
     subtitle_mode = post.get('subtitle_mode')
     ytdl_options_overrides = post.get('ytdl_options_overrides')
     video_password = post.get('video_password')
 
-    if custom_name_prefix is None:
-        custom_name_prefix = ''
-    if auto_start is None:
-        auto_start = True
-    if playlist_item_limit is None:
-        playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
-    if split_by_chapters is None:
-        split_by_chapters = False
-    if chapter_template is None:
-        chapter_template = config.OUTPUT_TEMPLATE_CHAPTER
     if subtitle_language is None:
         subtitle_language = format_catalog.choice_default('captions', 'subtitle_language')
     if subtitle_mode is None:
@@ -936,11 +964,6 @@ def parse_download_options(post: dict) -> dict:
         codec, format, quality = format_catalog.resolve_selection(download_type, codec, format, quality)
     except format_catalog.InvalidOption as exc:
         raise web.HTTPBadRequest(reason=str(exc)) from exc
-
-    try:
-        playlist_item_limit = int(playlist_item_limit)
-    except (TypeError, ValueError) as exc:
-        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
 
     clip_start_raw = post.get('clip_start')
     clip_end_raw = post.get('clip_end')
@@ -1062,13 +1085,7 @@ async def browse(request):
         post.get('ytdl_options_overrides'),
         enabled=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
     )
-    playlist_item_limit = post.get('playlist_item_limit')
-    if playlist_item_limit is None:
-        playlist_item_limit = config.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT
-    try:
-        playlist_item_limit = int(playlist_item_limit)
-    except (TypeError, ValueError) as exc:
-        raise web.HTTPBadRequest(reason='playlist_item_limit must be an integer') from exc
+    playlist_item_limit = _playlist_item_limit_field(post)
     log.info("Received request to browse playlist (item limit %s)", playlist_item_limit)
     status = await browse_playlist(
         config, url, playlist_item_limit, ytdl_options_presets, ytdl_options_overrides
@@ -1113,14 +1130,7 @@ async def subscribe(request):
         raise web.HTTPBadRequest(reason='check_interval_minutes must be an integer') from exc
     if cic < 1:
         raise web.HTTPBadRequest(reason='check_interval_minutes must be at least 1')
-    try:
-        skip_subscriber_only = coerce_optional_bool(
-            post.get('skip_subscriber_only'),
-            default=False,
-            field_name='skip_subscriber_only',
-        )
-    except ValueError as exc:
-        raise web.HTTPBadRequest(reason=str(exc)) from exc
+    skip_subscriber_only = _bool_field(post, 'skip_subscriber_only', False)
 
     # A t= timestamp in the URL means "start playing here" and parse_download_options
     # turns it into a clip start, which is right for a one-off download of that video.

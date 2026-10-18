@@ -126,6 +126,60 @@ class ParseYtdlOverridesTests(unittest.TestCase):
 
 
 class ParseDownloadOptionsTests(unittest.TestCase):
+    _BODY = {"url": "https://example.com/v", "download_type": "video", "format": "any", "quality": "best"}
+
+    def _parse(self, **fields):
+        return main.parse_download_options({**self._BODY, **fields})
+
+    def _rejects(self, **fields):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            self._parse(**fields)
+
+    def test_string_and_numeric_booleans_are_coerced(self):
+        # 'false' used to pass through as a truthy string: split_by_chapters
+        # split anyway, and auto_start (tested with `is True`) parked even
+        # 'true' in Pending.
+        for raw, expected in (("true", True), ("false", False), ("1", True), ("0", False),
+                              (1, True), (0, False), (True, True), (False, False)):
+            with self.subTest(raw=raw):
+                parsed = self._parse(auto_start=raw, split_by_chapters=raw, sponsorblock=raw)
+                self.assertIs(parsed["auto_start"], expected)
+                self.assertIs(parsed["split_by_chapters"], expected)
+                self.assertIs(parsed["sponsorblock"], expected)
+
+    def test_boolean_defaults(self):
+        parsed = self._parse()
+        self.assertIs(parsed["auto_start"], True)
+        self.assertIs(parsed["split_by_chapters"], False)
+        self.assertIs(parsed["sponsorblock"], False)
+        parsed = self._parse(auto_start="", split_by_chapters=None)
+        self.assertIs(parsed["auto_start"], True)
+        self.assertIs(parsed["split_by_chapters"], False)
+
+    def test_unrecognised_booleans_are_refused(self):
+        for field in ("auto_start", "split_by_chapters", "sponsorblock"):
+            for raw in ("yes please", 2, [], {}):
+                with self.subTest(field=field, raw=raw):
+                    self._rejects(**{field: raw})
+
+    def test_playlist_item_limit(self):
+        self.assertEqual(self._parse(playlist_item_limit="5")["playlist_item_limit"], 5)
+        self.assertEqual(self._parse(playlist_item_limit=0)["playlist_item_limit"], 0)
+        for raw in (-1, "-5", "abc", True, [1]):
+            with self.subTest(raw=raw):
+                self._rejects(playlist_item_limit=raw)
+
+    def test_string_fields_must_be_strings(self):
+        # A non-string prefix reached DownloadInfo's len() and was a 500.
+        for field in ("folder", "custom_name_prefix", "chapter_template"):
+            for raw in (7, ["a"], {"a": 1}, True):
+                with self.subTest(field=field, raw=raw):
+                    self._rejects(**{field: raw})
+        parsed = self._parse(folder=None, custom_name_prefix=None, chapter_template=None)
+        self.assertIsNone(parsed["folder"])
+        self.assertEqual(parsed["custom_name_prefix"], "")
+        self.assertEqual(parsed["chapter_template"], main.config.OUTPUT_TEMPLATE_CHAPTER)
+
     def test_accepts_known_preset_and_overrides(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
         previous_allow = main.config.ALLOW_YTDL_OPTIONS_OVERRIDES

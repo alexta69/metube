@@ -1118,3 +1118,38 @@ async def test_add_with_only_a_url_downloads_the_best_video(mock_dqueue):
     resp = await main.add(_json_request({"url": "https://example.com/v"}))
     assert resp.status == 200
     assert mock_dqueue.add.await_args.args[1:5] == ("video", "auto", "any", "best")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_reads_string_booleans(mock_dqueue, monkeypatch):
+    # add_subscription stores bool(value), so a string 'false' used to enable
+    # chapter splitting and auto start on every future download.
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request({
+        **_valid_video_add_body(), "check_interval_minutes": 60,
+        "split_by_chapters": "false", "auto_start": "false", "sponsorblock": "true",
+    })
+    await main.subscribe(req)
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["split_by_chapters"] is False
+    assert kwargs["auto_start"] is False
+    assert kwargs["sponsorblock"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("custom_name_prefix", 7),
+    ("folder", ["a"]),
+    ("auto_start", "maybe"),
+    ("playlist_item_limit", -1),
+])
+async def test_add_refuses_malformed_fields_with_400(mock_dqueue, field, value):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(_json_request(_valid_video_add_body(**{field: value})))
+    mock_dqueue.add.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browse_refuses_negative_item_limit(mock_dqueue):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(_json_request({"url": "https://example.com/list", "playlist_item_limit": -3}))
