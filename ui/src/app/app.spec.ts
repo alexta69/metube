@@ -10,6 +10,17 @@ import { ToastService } from './services/toast.service';
 import { SettingsStore } from './services/settings-store.service';
 import { CookieService } from 'ngx-cookie-service';
 import { Download, FormatCatalog } from './interfaces';
+import { catalogTypes, formatLabel } from './catalog-labels';
+import { DownloadingSectionComponent } from './components';
+import { ComponentFixture } from '@angular/core/testing';
+import { Type } from '@angular/core';
+import { By } from '@angular/platform-browser';
+
+// A section component rendered inside the page.
+function child<T>(fixture: ComponentFixture<unknown>, type: Type<T>): T {
+  fixture.detectChanges();
+  return fixture.debugElement.query(By.directive(type)).componentInstance as T;
+}
 
 const choice = (def: string, ...pairs: [string, string][]) => ({
   default: def,
@@ -243,21 +254,25 @@ describe('App', () => {
     fixture.detectChanges();
     const app = fixture.componentInstance;
     const settings = TestBed.inject(SettingsStore);
+    const downloading = child(fixture, DownloadingSectionComponent);
 
-    expect(app.downloadingCollapsed).toBe(false);
+    expect(downloading.collapsed).toBe(false);
     expect(app.completedCollapsed).toBe(false);
 
     app.toggleCompletedCollapsed();
 
     expect(app.completedCollapsed).toBe(true);
-    expect(app.downloadingCollapsed).toBe(false);
+    expect(downloading.collapsed).toBe(false);
     expect(settings.get('metube_completed_collapsed')).toBe('true');
+
+    downloading.toggleCollapsed();
+    expect(settings.get('metube_downloading_collapsed')).toBe('true');
 
     // A fresh component picks the state back up.
     const restored = TestBed.createComponent(App);
     restored.detectChanges();
     expect(restored.componentInstance.completedCollapsed).toBe(true);
-    expect(restored.componentInstance.downloadingCollapsed).toBe(false);
+    expect(child(restored, DownloadingSectionComponent).collapsed).toBe(true);
   });
 
   it('enables Clear completed and Clear/Retry failed from the done list', () => {
@@ -412,9 +427,7 @@ describe('App', () => {
   });
 
   it('asIsOrder returns a stable comparator value (insertion order preserved)', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app.asIsOrder()).toBe(0);
+    expect(child(TestBed.createComponent(App), DownloadingSectionComponent).asIsOrder()).toBe(0);
   });
 
   it('hides manual override input when disabled', () => {
@@ -626,6 +639,24 @@ describe('App', () => {
     expect(root.textContent).toContain('starts in');
   });
 
+  it('enables the Downloading toolbar once a row is ticked', async () => {
+    downloads.queue.set('u1', { url: 'u1', title: 'One', status: 'pending', checked: false } as Download);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    // ngModel writes the checkbox's initial state asynchronously.
+    await new Promise((resolve) => setTimeout(resolve));
+    const root = fixture.nativeElement as HTMLElement;
+    const cancelSelected = () =>
+      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes('Cancel selected'))!;
+    expect(cancelSelected().disabled).toBe(true);
+
+    const box = root.querySelector<HTMLInputElement>('app-downloading-section tbody input[type=checkbox]')!;
+    box.click();
+    fixture.detectChanges();
+
+    expect(cancelSelected().disabled).toBe(false);
+  });
+
   it('shows the queued format in the Downloading table', () => {
     downloads.queue.set('https://example.com/v', {
       id: 'v1',
@@ -655,15 +686,15 @@ describe('App', () => {
   });
 
   it('labels formats the way the form does, and copes with an unknown one', () => {
-    const app = TestBed.createComponent(App).componentInstance;
+    const types = catalogTypes(testCatalog());
     const base = { format: '' } as Download;
 
-    expect(app.formatLabel({ ...base, format: 'any' })).toBe('Auto');
-    expect(app.formatLabel({ ...base, format: 'mp4' })).toBe('MP4');
-    expect(app.formatLabel({ ...base, format: 'srt' })).toBe('SRT');
+    expect(formatLabel({ ...base, format: 'any' }, types)).toBe('Auto');
+    expect(formatLabel({ ...base, format: 'mp4' }, types)).toBe('MP4');
+    expect(formatLabel({ ...base, format: 'srt' }, types)).toBe('SRT');
     // A format from a record older than the option list still reads sensibly.
-    expect(app.formatLabel({ ...base, format: 'mkv' })).toBe('MKV');
-    expect(app.formatLabel(base)).toBe('-');
+    expect(formatLabel({ ...base, format: 'mkv' }, types)).toBe('MKV');
+    expect(formatLabel(base, types)).toBe('-');
   });
 
   describe('download options come from the server catalog', () => {
@@ -823,8 +854,9 @@ describe('App', () => {
       expect(app.formatCodecLabel(dl({ download_type: 'video', codec: 'h265' }))).toBe('H.265 (HEVC)');
       expect(app.formatCodecLabel(dl({ download_type: 'audio', format: 'flac' }))).toBe('FLAC');
       expect(app.downloadTypeLabel(dl({ download_type: 'captions' }))).toBe('Captions');
-      expect(app.formatLabel(dl({ download_type: 'audio', format: 'auto' }))).toBe('Auto');
-      expect(app.formatLabel(dl({ download_type: 'captions', format: 'dfxp' }))).toBe('DFXP');
+      const types = catalogTypes(testCatalog());
+      expect(formatLabel(dl({ download_type: 'audio', format: 'auto' }), types)).toBe('Auto');
+      expect(formatLabel(dl({ download_type: 'captions', format: 'dfxp' }), types)).toBe('DFXP');
     });
   });
 
@@ -1056,11 +1088,11 @@ describe('App', () => {
     } as Download);
 
     it('runs the bar indeterminate while preparing or post-processing', () => {
-      const app = TestBed.createComponent(App).componentInstance;
-      expect(app.isIndeterminate(queueEntry('preparing'))).toBe(true);
-      expect(app.isIndeterminate(queueEntry('postprocessing'))).toBe(true);
-      expect(app.isIndeterminate(queueEntry('downloading'))).toBe(false);
-      expect(app.isIndeterminate(queueEntry('pending'))).toBe(false);
+      const downloading = child(TestBed.createComponent(App), DownloadingSectionComponent);
+      expect(downloading.isIndeterminate(queueEntry('preparing'))).toBe(true);
+      expect(downloading.isIndeterminate(queueEntry('postprocessing'))).toBe(true);
+      expect(downloading.isIndeterminate(queueEntry('downloading'))).toBe(false);
+      expect(downloading.isIndeterminate(queueEntry('pending'))).toBe(false);
     });
 
     it('labels the bar and counts the item as active', () => {
@@ -1339,16 +1371,15 @@ describe('App', () => {
     it('does not prompt for queue deletions', async () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.queue.set('u1', doneEntry({ url: 'u1', status: 'downloading' }));
-      const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const downloading = child(TestBed.createComponent(App), DownloadingSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('queue', 'u1');
+      downloading.delDownload('u1');
 
       expect(chooseSpy).not.toHaveBeenCalled();
-      expect(delSpy).toHaveBeenCalledWith('queue', ['u1'], undefined);
+      expect(delSpy).toHaveBeenCalledWith('queue', ['u1']);
     });
 
     it('retryDownload does not prompt even in ask mode, and sends no flag', () => {

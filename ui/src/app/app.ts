@@ -1,4 +1,4 @@
-import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
+import { DatePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
 import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, tap } from 'rxjs';
@@ -16,6 +16,7 @@ import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { BatchUrlsService, BatchUrlFilter } from './services/batch-urls.service';
 import { SettingsStore } from './services/settings-store.service';
+import { downloadTypeLabel, formatCodecLabel, formatQualityLabel } from './catalog-labels';
 import { Themes } from './theme';
 import {
   Download,
@@ -28,7 +29,7 @@ import {
   FormatOption,
   State,
 } from './interfaces';
-import { EtaPipe, SpeedPipe, FileSizePipe } from './pipes';
+import { SpeedPipe, FileSizePipe } from './pipes';
 import {
   SelectAllCheckboxComponent,
   ItemCheckboxComponent,
@@ -36,6 +37,7 @@ import {
   PlaylistBrowserComponent,
   SubscriptionsSectionComponent,
   BatchImportComponent,
+  DownloadingSectionComponent,
 } from './components/';
 
 @Component({
@@ -44,18 +46,17 @@ import {
   imports: [
         FormsModule,
         NgTemplateOutlet,
-        KeyValuePipe,
         DatePipe,
         FontAwesomeModule,
         NgbModule,
         NgSelectModule,
-        EtaPipe,
         SpeedPipe,
         FileSizePipe,
         SelectAllCheckboxComponent,
         ItemCheckboxComponent,
         ToastContainerComponent,
         SubscriptionsSectionComponent,
+        DownloadingSectionComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.sass',
@@ -123,7 +124,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   metubeVersion: string | null = null;
   isAdvancedOpen = false;
   sortAscending = false;
-  downloadingCollapsed = false;
   completedCollapsed = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
@@ -133,7 +133,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   lastCopiedErrorId: string | null = null;
   private previousDownloadType = '';
   private addRequestSub?: Subscription;
-  private liveCountdownTimer?: ReturnType<typeof setInterval>;
   private selectionsByType: Record<string, {
     codec: string;
     format: string;
@@ -161,9 +160,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   hasCompletedDone = false;
   hasFailedDone = false;
 
-  readonly queueMasterCheckbox = viewChild<SelectAllCheckboxComponent>('queueMasterCheckboxRef');
-  readonly queueDelSelected = viewChild.required<ElementRef>('queueDelSelected');
-  readonly queueDownloadSelected = viewChild.required<ElementRef>('queueDownloadSelected');
   readonly doneMasterCheckbox = viewChild<SelectAllCheckboxComponent>('doneMasterCheckboxRef');
   readonly doneDelSelected = viewChild.required<ElementRef>('doneDelSelected');
   readonly doneDownloadSelected = viewChild.required<ElementRef>('doneDownloadSelected');
@@ -216,7 +212,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.cdr.markForCheck();
     });
     this.sortAscending = this.settings.get('metube_sort_ascending') === 'true';
-    this.downloadingCollapsed = this.settings.get('metube_downloading_collapsed') === 'true';
     this.completedCollapsed = this.settings.get('metube_completed_collapsed') === 'true';
 
     const ci = parseInt(this.settings.get('metube_check_interval') || '', 10);
@@ -228,9 +223,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Subscribe to download updates
     this.downloads.queueChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
-      this.syncLiveCountdownTimer();
-      // Undefined until the view exists; the first render reads the list itself.
-      this.queueMasterCheckbox()?.selectionChanged();
       this.cdr.markForCheck();
     });
     this.downloads.doneChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
@@ -242,7 +234,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     // Subscribe to real-time updates
     this.downloads.updated.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
       this.updateMetrics();
-      this.syncLiveCountdownTimer();
       this.cdr.markForCheck();
     });
 
@@ -272,16 +263,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   ngOnDestroy() {
     this.addRequestSub?.unsubscribe();
-    if (this.liveCountdownTimer) {
-      clearInterval(this.liveCountdownTimer);
-    }
     this.colorSchemeMediaQuery.removeEventListener('change', this.onColorSchemeChanged);
-  }
-
-  // keyvalue comparator that preserves insertion order (Angular's keyvalue
-  // pipe sorts by key by default): https://github.com/angular/angular/issues/31420
-  asIsOrder() {
-    return 0;
   }
 
   qualityChanged() {
@@ -604,50 +586,17 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return this.downloadType === 'video';
   }
 
-  // The labels below describe a queued or finished download the way the form
-  // labels it, looked up in the catalog under the download's own type.
+  // The labels the Completed table shows, worded the way the form words them.
   formatQualityLabel(download: Download): string {
-    const q = download.quality;
-    const type = this.typeEntry(download.download_type || '');
-    const format = type?.format.options.find(f => f.id === download.format);
-    if (type && format && !format.quality) {
-      return '-';
-    }
-    if (!q) return '';
-    const label = format?.quality?.options.find(o => o.id === q)?.text;
-    return label ?? q.charAt(0).toUpperCase() + q.slice(1);
+    return formatQualityLabel(download, this.downloadTypes);
   }
 
   downloadTypeLabel(download: Download): string {
-    const type = download.download_type || '';
-    return this.typeEntry(type)?.text ?? type.charAt(0).toUpperCase() + type.slice(1);
-  }
-
-  formatLabel(download: Download): string {
-    const format = (download.format || '').trim();
-    if (!format) {
-      return '-';
-    }
-    // Records without a type still find their label under any type.
-    const options = this.typeEntry(download.download_type || '')?.format.options
-      ?? this.downloadTypes.flatMap(t => t.format.options);
-    return options.find(o => o.id === format)?.text ?? format.toUpperCase();
+    return downloadTypeLabel(download, this.downloadTypes);
   }
 
   formatCodecLabel(download: Download): string {
-    const type = this.typeEntry(download.download_type || '');
-    if (type && !type.codec) {
-      const format = (download.format || '').toUpperCase();
-      return format || '-';
-    }
-    const codec = download.codec;
-    if (!codec) return '-';
-    return type?.codec?.options.find(c => c.id === codec)?.text ?? codec;
-  }
-
-  queueSelectionChanged(checked: number) {
-    this.queueDelSelected().nativeElement.disabled = checked === 0;
-    this.queueDownloadSelected().nativeElement.disabled = checked === 0;
+    return formatCodecLabel(download, this.downloadTypes);
   }
 
   doneSelectionChanged(checked: number) {
@@ -961,38 +910,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  downloadItemByKey(id: string) {
-    this.downloads.startById([id]).subscribe((res) => this.handleActionResult(res, 'Start download failed'));
-  }
-
-  // 'preparing' (yt-dlp starting up) and 'postprocessing' (ffmpeg merging,
-  // re-encoding or splitting once the bytes have landed) both have real work in
-  // flight with no percentage to report, so the bar runs animated at full width
-  // instead of showing a number that cannot move.
-  isIndeterminate(download: Download): boolean {
-    return download.status === 'preparing' || download.status === 'postprocessing';
-  }
-
-  liveCountdownSeconds(download: Download): number | null {
-    const ts = download.live_release_timestamp;
-    if (ts == null || download.status !== 'scheduled') {
-      return null;
-    }
-    return Math.max(0, ts - Date.now() / 1000);
-  }
-
-  private syncLiveCountdownTimer() {
-    const hasScheduled = Array.from(this.downloads.queue.values()).some(
-      (download) => download.status === 'scheduled',
-    );
-    if (hasScheduled && !this.liveCountdownTimer) {
-      this.liveCountdownTimer = setInterval(() => this.cdr.markForCheck(), 1000);
-    } else if (!hasScheduled && this.liveCountdownTimer) {
-      clearInterval(this.liveCountdownTimer);
-      this.liveCountdownTimer = undefined;
-    }
-  }
-
   retryDownload(key: string, download: Download) {
     this.retryRequest(key, download).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
   }
@@ -1060,10 +977,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   async delDownload(where: State, id: string) {
     await this.removeDownloads(where, [id], 'Delete failed');
-  }
-
-  startSelectedDownloads(where: State){
-    this.downloads.startByFilter(where, dl => !!dl.checked).subscribe((res) => this.handleActionResult(res, 'Start download failed'));
   }
 
   async delSelectedDownloads(where: State) {
@@ -1339,11 +1252,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.sortAscending = !this.sortAscending;
     this.settings.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false');
     this.rebuildSortedDone();
-  }
-
-  toggleDownloadingCollapsed() {
-    this.downloadingCollapsed = !this.downloadingCollapsed;
-    this.settings.set('metube_downloading_collapsed', this.downloadingCollapsed ? 'true' : 'false');
   }
 
   toggleCompletedCollapsed() {
