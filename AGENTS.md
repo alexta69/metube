@@ -87,7 +87,7 @@ pnpm exec ng test --watch=false
 
 # Backend (run from repo root)
 uv sync --frozen --group dev
-python -m compileall app
+uv run python -m compileall -q app
 uv run pytest app/tests/
 ```
 

@@ -40,7 +40,7 @@ jobs:
       - name: Install Python dependencies
         run: uv sync --frozen --group dev
       - name: Run backend smoke checks
-        run: python -m compileall app
+        run: uv run python -m compileall -q app
       - name: Run backend tests
         run: uv run pytest app/tests/
       - name: Run Trivy filesystem scan
