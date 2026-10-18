@@ -276,6 +276,35 @@ describe('App', () => {
     expect(app.hasFailedDone).toBe(true);
   });
 
+  it('Retry failed sends at most four retries at a time', () => {
+    const pending: Subject<{ status: 'ok' }>[] = [];
+    downloads.retry = (id: string) => {
+      downloads.retryCalls.push(id);
+      const result = new Subject<{ status: 'ok' }>();
+      pending.push(result);
+      return result;
+    };
+    for (let i = 0; i < 10; i++) {
+      downloads.done.set(`u${i}`, { url: `u${i}`, title: `t${i}`, status: 'error' } as Download);
+    }
+    downloads.done.set('ok', { url: 'ok', status: 'finished' } as Download);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    fixture.componentInstance.retryFailedDownloads();
+    expect(downloads.retryCalls).toHaveLength(4);
+
+    pending[0].next({ status: 'ok' });
+    pending[0].complete();
+    expect(downloads.retryCalls).toHaveLength(5);
+
+    for (let i = 1; i < 10; i++) {
+      pending[i]?.next({ status: 'ok' });
+      pending[i]?.complete();
+    }
+    expect(downloads.retryCalls).toEqual([...Array(10).keys()].map((i) => `u${i}`));
+  });
+
   describe('digitsOnly', () => {
     const press = (key: string, mods: Partial<KeyboardEventInit> = {}) => {
       const fixture = TestBed.createComponent(App);

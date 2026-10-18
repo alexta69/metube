@@ -133,10 +133,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   batchImportFailures = 0;
   importInProgress = false;
   private batchImportCancel$ = new Subject<void>();
-  // Maximum number of /add requests to have in-flight at once during a batch
-  // import. Keeps the server from being hit with hundreds of simultaneous
-  // yt-dlp metadata extractions when a user pastes a huge URL list.
-  private static readonly BATCH_IMPORT_CONCURRENCY = 4;
+  // Maximum number of /add or /retry requests to have in flight at once when
+  // queuing many items (batch import, picked playlist entries, Retry failed).
+  // Each one is a yt-dlp metadata extraction on the server, which must not be
+  // hit with hundreds at a time when a list is long.
+  private static readonly ADD_REQUEST_CONCURRENCY = 4;
   ytDlpOptionsUpdateTime: string | null = null;
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
@@ -1195,7 +1196,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
             }
           }),
         ),
-        App.BATCH_IMPORT_CONCURRENCY,
+        App.ADD_REQUEST_CONCURRENCY,
       ),
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
@@ -1263,18 +1264,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   retryDownload(key: string, download: Download) {
+    this.retryRequest(key, download).pipe(takeUntilDestroyed(this.destroyRef)).subscribe();
+  }
+
+  private retryRequest(key: string, download: Download): Observable<Status> {
     // Only remove the done-list record once the retry is confirmed queued —
     // deleting it eagerly would silently lose history if the re-add fails.
-    this.downloads.retry(key)
-      .pipe(takeUntilDestroyed(this.destroyRef))
-      .subscribe((status: Status) => {
+    return this.downloads.retry(key).pipe(
+      tap((status: Status) => {
         if (status.status === 'error') {
           this.toasts.error(`Error retrying ${download.title}: ${status.msg}`);
           this.cdr.markForCheck();
           return;
         }
         this.downloads.delById('done', [key]).subscribe();
-      });
+      }),
+    );
   }
 
   // In ask mode (DELETE_FILE_ON_TRASHCAN='ask'), completed entries may still have
@@ -1367,12 +1372,19 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     await this.removeDownloads('done', ids, 'Clear failed downloads failed');
   }
 
+  // Each retry is a full yt-dlp extraction on the server, so a long failed
+  // list goes out a few at a time rather than all at once.
   retryFailedDownloads() {
+    const failed: [string, Download][] = [];
     this.downloads.done.forEach((dl, key) => {
       if (dl.status === 'error') {
-        this.retryDownload(key, dl);
+        failed.push([key, dl]);
       }
     });
+    from(failed).pipe(
+      mergeMap(([key, dl]) => this.retryRequest(key, dl), App.ADD_REQUEST_CONCURRENCY),
+      takeUntilDestroyed(this.destroyRef),
+    ).subscribe();
   }
 
   // Chromium-based browsers silently drop programmatic downloads beyond ~10 when
@@ -1616,7 +1628,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
             this.cdr.markForCheck();
           }),
         ),
-        App.BATCH_IMPORT_CONCURRENCY,
+        App.ADD_REQUEST_CONCURRENCY,
       ),
       takeUntil(this.batchImportCancel$),
       takeUntilDestroyed(this.destroyRef),
