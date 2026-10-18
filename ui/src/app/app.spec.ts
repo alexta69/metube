@@ -392,6 +392,7 @@ describe('App', () => {
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.footer-content')).toBeNull();
 
+      expect(TestBed.inject(HttpClient).get).toHaveBeenCalledWith('version');
       version.next({ 'yt-dlp': '2026.10.01', version: '2026.10.18' });
       fixture.detectChanges();
       expect(fixture.nativeElement.querySelector('.footer-content')?.textContent).toContain('2026.10.18');

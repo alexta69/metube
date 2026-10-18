@@ -872,10 +872,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   fetchVersionInfo(): void {
-    // eslint-disable-next-line no-useless-escape
-    const baseUrl = `${window.location.origin}${window.location.pathname.replace(/\/[^\/]*$/, '/')}`;
-    const versionUrl = `${baseUrl}version`;
-    this.http.get<{ 'yt-dlp': string, version: string }>(versionUrl)
+    // Relative, like every other API call, so it follows URL_PREFIX.
+    this.http.get<{ 'yt-dlp': string, version: string }>('version')
       .subscribe({
         next: (data) => {
           this.ytDlpVersion = data['yt-dlp'];
