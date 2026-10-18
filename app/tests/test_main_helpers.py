@@ -71,6 +71,15 @@ class ParseLogLevelTests(unittest.TestCase):
     def test_invalid_returns_none(self):
         self.assertIsNone(main.parseLogLevel("not_a_level"))
         self.assertIsNone(main.parseLogLevel(123))
+        # Attributes of the logging module that are not levels.
+        self.assertIsNone(main.parseLogLevel("basic_format"))
+        self.assertIsNone(main.parseLogLevel("NOTSET"))
+
+    def test_none_silences_everything(self):
+        # Documented in the README since the variable was added, but used to
+        # fall back to INFO.
+        self.assertGreater(main.parseLogLevel("NONE"), logging.CRITICAL)
+        self.assertGreater(main.parseLogLevel("none"), logging.CRITICAL)
 
 
 class ObjectSerializerTests(unittest.TestCase):

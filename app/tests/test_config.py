@@ -256,6 +256,42 @@ class ConfigTests(unittest.TestCase):
                 with self.assertRaises(SystemExit):
                     Config()
 
+    def test_invalid_custom_dirs_exclude_regex_exits(self):
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX="("), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
+
+    def test_custom_dirs_exclude_regex_compiled(self):
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX="^tmp"), clear=False):
+            c = Config()
+        self.assertIsNotNone(c.CUSTOM_DIRS_EXCLUDE_RE.search("tmp/x"))
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX=""), clear=False):
+            self.assertIsNone(Config().CUSTOM_DIRS_EXCLUDE_RE)
+
+    def test_invalid_loglevel_exits(self):
+        for raw in ("LOUD", "basic_format"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, _base_env(LOGLEVEL=raw), clear=False):
+                    with self.assertRaises(SystemExit):
+                        Config()
+
+    def test_blank_loglevel_and_theme_take_defaults(self):
+        with patch.dict(os.environ, _base_env(LOGLEVEL=" ", DEFAULT_THEME=""), clear=False):
+            c = Config()
+        self.assertEqual(c.LOGLEVEL, "INFO")
+        self.assertEqual(c.DEFAULT_THEME, "auto")
+
+    def test_loglevel_none_accepted(self):
+        with patch.dict(os.environ, _base_env(LOGLEVEL="NONE"), clear=False):
+            Config()
+
+    def test_default_theme_normalized_and_validated(self):
+        with patch.dict(os.environ, _base_env(DEFAULT_THEME=" Dark "), clear=False):
+            self.assertEqual(Config().DEFAULT_THEME, "dark")
+        with patch.dict(os.environ, _base_env(DEFAULT_THEME="purple"), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
+
     def test_runtime_override_roundtrip(self):
         with patch.dict(os.environ, _base_env(), clear=False):
             c = Config()

@@ -44,10 +44,24 @@ def seconds_until_next_daily_time(time_hhmm: str, now: datetime | None = None) -
         target += timedelta(days=1)
     return (target - now).total_seconds()
 
+# LOGLEVEL=NONE is documented to turn logging off; a level above CRITICAL
+# drops every record.
+_LOG_LEVEL_NONE = logging.CRITICAL + 10
+
+
 def parseLogLevel(logLevel):
+    """The numeric level for a LOGLEVEL name, or None if it is not one.
+
+    Only real level names count: a bare getattr on the logging module would
+    also "resolve" attribute names such as BASIC_FORMAT.
+    """
     if not isinstance(logLevel, str):
         return None
-    return getattr(logging, logLevel.upper(), None)
+    name = logLevel.strip().upper()
+    if name == 'NONE':
+        return _LOG_LEVEL_NONE
+    level = logging.getLevelNamesMapping().get(name)
+    return level if isinstance(level, int) and name != 'NOTSET' else None
 
 # Configure logging before Config() uses it so early messages are not dropped.
 # Only configure if no handlers are set (avoid clobbering hosting app settings).
@@ -190,6 +204,38 @@ class Config:
                 'Environment variable "YTDL_NIGHTLY_UPDATE_TIME" must be HH:MM (24-hour), got "%s"',
                 self.YTDL_NIGHTLY_UPDATE_TIME,
             )
+            sys.exit(1)
+
+        # A variable set blank in a compose file means "use the default".
+        for attr in ('LOGLEVEL', 'DEFAULT_THEME'):
+            if not getattr(self, attr).strip():
+                setattr(self, attr, self._DEFAULTS[attr])
+
+        if parseLogLevel(self.LOGLEVEL) is None:
+            log.error(
+                'Environment variable "LOGLEVEL" must be one of DEBUG, INFO, WARNING, ERROR, '
+                'CRITICAL or NONE, got "%s"', self.LOGLEVEL)
+            sys.exit(1)
+
+        # The theme cookie is matched against the UI's theme ids as-is.
+        self.DEFAULT_THEME = self.DEFAULT_THEME.strip().lower()
+        if self.DEFAULT_THEME not in ('light', 'dark', 'auto'):
+            log.error(
+                'Environment variable "DEFAULT_THEME" must be one of light, dark or auto, got "%s"',
+                self.DEFAULT_THEME)
+            sys.exit(1)
+
+        # Compiled once here: get_custom_dirs() runs inside every Socket.IO
+        # connect, where a bad pattern used to raise on each one and leave the
+        # client without its folder list.
+        try:
+            self.CUSTOM_DIRS_EXCLUDE_RE = (
+                re.compile(self.CUSTOM_DIRS_EXCLUDE_REGEX) if self.CUSTOM_DIRS_EXCLUDE_REGEX else None
+            )
+        except re.error as exc:
+            log.error(
+                'Environment variable "CUSTOM_DIRS_EXCLUDE_REGEX" is not a valid regular expression '
+                '("%s"): %s', self.CUSTOM_DIRS_EXCLUDE_REGEX, exc)
             sys.exit(1)
 
         self._validate_int('MAX_CONCURRENT_DOWNLOADS', minimum=1)
@@ -1415,10 +1461,8 @@ def get_custom_dirs():
 
         # Include only directories which do not match the exclude filter
         def include_dir(d):
-            if len(config.CUSTOM_DIRS_EXCLUDE_REGEX) == 0:
-                return True
-            else:
-                return re.search(config.CUSTOM_DIRS_EXCLUDE_REGEX, d) is None
+            exclude = config.CUSTOM_DIRS_EXCLUDE_RE
+            return exclude is None or exclude.search(d) is None
 
         # Recursively lists all subdirectories of DOWNLOAD_DIR.
         # Always include '' (the base directory itself) even when the
