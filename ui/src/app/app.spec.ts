@@ -7,6 +7,7 @@ import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
+import { SettingsStore } from './services/settings-store.service';
 import { CookieService } from 'ngx-cookie-service';
 import { Download, FormatCatalog } from './interfaces';
 
@@ -172,12 +173,17 @@ class CookieServiceStub {
   check(name: string) {
     return this.cookies.has(name);
   }
+
+  delete(name: string) {
+    this.cookies.delete(name);
+  }
 }
 
 describe('App', () => {
   let downloads: DownloadsServiceStub;
 
   beforeEach(async () => {
+    localStorage.clear();
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       enumerable: true,
@@ -236,7 +242,7 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
     const app = fixture.componentInstance;
-    const cookies = TestBed.inject(CookieService);
+    const settings = TestBed.inject(SettingsStore);
 
     expect(app.downloadingCollapsed).toBe(false);
     expect(app.completedCollapsed).toBe(false);
@@ -247,9 +253,9 @@ describe('App', () => {
     expect(app.completedCollapsed).toBe(true);
     expect(app.downloadingCollapsed).toBe(false);
     expect(app.subscriptionsCollapsed).toBe(false);
-    expect(cookies.get('metube_completed_collapsed')).toBe('true');
+    expect(settings.get('metube_completed_collapsed')).toBe('true');
 
-    // A fresh component picks the state back up from the cookie.
+    // A fresh component picks the state back up.
     const restored = TestBed.createComponent(App);
     restored.detectChanges();
     expect(restored.componentInstance.completedCollapsed).toBe(true);
@@ -713,7 +719,7 @@ describe('App', () => {
         .toEqual(['m4a', 'best', 'with_cover', 'prefer_manual']);
       expect(app.subtitleLanguage).toBe('en');
 
-      TestBed.inject(CookieService).set('metube_download_type', 'gif');
+      TestBed.inject(SettingsStore).set('metube_download_type', 'gif');
       expect(TestBed.createComponent(App).componentInstance.downloadType).toBe('video');
     });
 

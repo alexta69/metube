@@ -15,6 +15,7 @@ import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { BatchUrlsService, BatchUrlFilter } from './services/batch-urls.service';
+import { SettingsStore } from './services/settings-store.service';
 import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
 import {
@@ -64,6 +65,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private batchUrls = inject(BatchUrlsService);
   private socket = inject(MeTubeSocket);
   private cookieService = inject(CookieService);
+  private settings = inject(SettingsStore);
   private http = inject(HttpClient);
   private cdr = inject(ChangeDetectorRef);
   private destroyRef = inject(DestroyRef);
@@ -162,8 +164,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     subtitleLanguage: string;
     subtitleMode: string;
   }> = {};
-  private readonly selectionCookiePrefix = 'metube_selection_';
-  private readonly settingsCookieExpiryDays = 3650;
+  private readonly selectionKeyPrefix = 'metube_selection_';
+  // The theme is the one setting kept in a cookie: the server sets it to
+  // DEFAULT_THEME on a first visit. Everything else is in SettingsStore.
+  private static readonly THEME_COOKIE_EXPIRY_DAYS = 3650;
   private lastFocusedElement: HTMLElement | null = null;
   private colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private onColorSchemeChanged = () => {
@@ -214,22 +218,22 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faShareNodes = faShareNodes;
   constructor() {
     // Remembered choices are checked against the catalog when it arrives.
-    this.downloadType = this.cookieService.get('metube_download_type');
-    this.codec = this.cookieService.get('metube_codec');
-    this.format = this.cookieService.get('metube_format');
-    this.quality = this.cookieService.get('metube_quality');
-    this.autoStart = this.cookieService.get('metube_auto_start') !== 'false';
-    this.splitByChapters = this.cookieService.get('metube_split_chapters') === 'true';
-    this.sponsorblock = this.cookieService.get('metube_sponsorblock') === 'true';
-    this.audioTags = this.cookieService.get('metube_audio_tags');
+    this.downloadType = this.settings.get('metube_download_type');
+    this.codec = this.settings.get('metube_codec');
+    this.format = this.settings.get('metube_format');
+    this.quality = this.settings.get('metube_quality');
+    this.autoStart = this.settings.get('metube_auto_start') !== 'false';
+    this.splitByChapters = this.settings.get('metube_split_chapters') === 'true';
+    this.sponsorblock = this.settings.get('metube_sponsorblock') === 'true';
+    this.audioTags = this.settings.get('metube_audio_tags');
     // Will be set from backend configuration, use empty string as placeholder
-    this.chapterTemplate = this.cookieService.get('metube_chapter_template') || '';
-    this.clipStart = this.cookieService.get('metube_clip_start') || '';
-    this.clipEnd = this.cookieService.get('metube_clip_end') || '';
-    this.subtitleLanguage = this.cookieService.get('metube_subtitle_language');
-    this.subtitleMode = this.cookieService.get('metube_subtitle_mode');
-    this.ytdlOptionsPresets = this.loadYtdlOptionsPresetsFromCookie();
-    this.ytdlOptionsOverrides = this.cookieService.get('metube_ytdl_options_overrides') || '';
+    this.chapterTemplate = this.settings.get('metube_chapter_template') || '';
+    this.clipStart = this.settings.get('metube_clip_start') || '';
+    this.clipEnd = this.settings.get('metube_clip_end') || '';
+    this.subtitleLanguage = this.settings.get('metube_subtitle_language');
+    this.subtitleMode = this.settings.get('metube_subtitle_mode');
+    this.ytdlOptionsPresets = this.loadStoredYtdlOptionsPresets();
+    this.ytdlOptionsOverrides = this.settings.get('metube_ytdl_options_overrides') || '';
     if (this.downloads.formats) {
       this.applyCatalog(this.downloads.formats);
     }
@@ -237,12 +241,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.applyCatalog(catalog);
       this.cdr.markForCheck();
     });
-    this.sortAscending = this.cookieService.get('metube_sort_ascending') === 'true';
-    this.downloadingCollapsed = this.cookieService.get('metube_downloading_collapsed') === 'true';
-    this.completedCollapsed = this.cookieService.get('metube_completed_collapsed') === 'true';
-    this.subscriptionsCollapsed = this.cookieService.get('metube_subscriptions_collapsed') === 'true';
+    this.sortAscending = this.settings.get('metube_sort_ascending') === 'true';
+    this.downloadingCollapsed = this.settings.get('metube_downloading_collapsed') === 'true';
+    this.completedCollapsed = this.settings.get('metube_completed_collapsed') === 'true';
+    this.subscriptionsCollapsed = this.settings.get('metube_subscriptions_collapsed') === 'true';
 
-    const ci = parseInt(this.cookieService.get('metube_check_interval') || '', 10);
+    const ci = parseInt(this.settings.get('metube_check_interval') || '', 10);
     if (!Number.isNaN(ci) && ci >= 1) {
       this.checkIntervalMinutes = ci;
     }
@@ -312,7 +316,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   qualityChanged() {
-    this.cookieService.set('metube_quality', this.quality, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_quality', this.quality);
     this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
     this.downloads.customDirsChanged.next(this.downloads.customDirs);
@@ -321,7 +325,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   downloadTypeChanged() {
     this.saveSelection(this.previousDownloadType);
     this.restoreSelection(this.downloadType);
-    this.cookieService.set('metube_download_type', this.downloadType, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_download_type', this.downloadType);
     this.normalizeSelectionsForType();
     this.setQualities();
     this.refreshFormatOptions();
@@ -331,7 +335,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   codecChanged() {
-    this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_codec', this.codec);
     this.saveSelection(this.downloadType);
   }
 
@@ -391,11 +395,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         if (!this.folder) {
           this.folder = String(config['DEFAULT_FOLDER'] ?? '');
         }
-        // Set chapter template from backend config if not already set by cookie
+        // Set chapter template from backend config if not already remembered
         if (!this.chapterTemplate) {
           this.chapterTemplate = config['OUTPUT_TEMPLATE_CHAPTER'];
         }
-        if (!this.cookieService.check('metube_check_interval')) {
+        if (!this.settings.has('metube_check_interval')) {
           const dci = parseInt(String(config['SUBSCRIPTION_DEFAULT_CHECK_INTERVAL'] ?? 60), 10);
           if (!Number.isNaN(dci) && dci >= 1) {
             this.checkIntervalMinutes = dci;
@@ -425,19 +429,19 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     });
   }
 
-  private loadYtdlOptionsPresetsFromCookie(): string[] {
-    const jsonCookie = this.cookieService.get('metube_ytdl_options_presets');
-    if (jsonCookie) {
+  private loadStoredYtdlOptionsPresets(): string[] {
+    const stored = this.settings.get('metube_ytdl_options_presets');
+    if (stored) {
       try {
-        const parsed = JSON.parse(jsonCookie) as unknown;
+        const parsed = JSON.parse(stored) as unknown;
         if (Array.isArray(parsed)) {
           return parsed.filter((p): p is string => typeof p === 'string' && p.length > 0);
         }
       } catch {
-        // fall through to legacy cookie
+        // fall through to the legacy single-preset value
       }
     }
-    const legacy = this.cookieService.get('metube_ytdl_options_preset')?.trim();
+    const legacy = this.settings.get('metube_ytdl_options_preset')?.trim();
     return legacy ? [legacy] : [];
   }
 
@@ -473,9 +477,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   checkIntervalChanged() {
-    this.cookieService.set('metube_check_interval', String(this.checkIntervalMinutes), {
-      expires: this.settingsCookieExpiryDays,
-    });
+    this.settings.set('metube_check_interval', String(this.checkIntervalMinutes));
   }
 
   private getStatusError(res: unknown): string | null {
@@ -778,7 +780,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   themeChanged(theme: Theme) {
-    this.cookieService.set('metube_theme', theme.id, { expires: this.settingsCookieExpiryDays });
+    this.cookieService.set('metube_theme', theme.id, { expires: App.THEME_COOKIE_EXPIRY_DAYS });
     this.setTheme(theme);
   }
 
@@ -792,7 +794,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   formatChanged() {
-    this.cookieService.set('metube_format', this.format, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_format', this.format);
     this.setQualities();
     this.saveSelection(this.downloadType);
     // Re-trigger custom directory change
@@ -800,12 +802,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   autoStartChanged() {
-    this.cookieService.set('metube_auto_start', this.autoStart ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_auto_start', this.autoStart ? 'true' : 'false');
   }
 
   audioTagsChanged(value: string) {
     this.audioTags = value;
-    this.cookieService.set('metube_audio_tags', this.audioTags, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_audio_tags', this.audioTags);
   }
 
   // Whether the selected audio format can carry tags (the catalog's flag).
@@ -820,11 +822,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   }
 
   sponsorblockChanged() {
-    this.cookieService.set('metube_sponsorblock', this.sponsorblock ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_sponsorblock', this.sponsorblock ? 'true' : 'false');
   }
 
   splitByChaptersChanged() {
-    this.cookieService.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_split_chapters', this.splitByChapters ? 'true' : 'false');
   }
 
   chapterTemplateChanged() {
@@ -833,37 +835,33 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       const configuredTemplate = this.downloads.configuration['OUTPUT_TEMPLATE_CHAPTER'];
       this.chapterTemplate = typeof configuredTemplate === 'string' ? configuredTemplate : '';
     }
-    this.cookieService.set('metube_chapter_template', this.chapterTemplate, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_chapter_template', this.chapterTemplate);
   }
 
   clipStartChanged() {
-    this.cookieService.set('metube_clip_start', this.clipStart, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_clip_start', this.clipStart);
   }
 
   clipEndChanged() {
-    this.cookieService.set('metube_clip_end', this.clipEnd, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_clip_end', this.clipEnd);
   }
 
   subtitleLanguageChanged() {
-    this.cookieService.set('metube_subtitle_language', this.subtitleLanguage, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_subtitle_language', this.subtitleLanguage);
     this.saveSelection(this.downloadType);
   }
 
   subtitleModeChanged() {
-    this.cookieService.set('metube_subtitle_mode', this.subtitleMode, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_subtitle_mode', this.subtitleMode);
     this.saveSelection(this.downloadType);
   }
 
   ytdlOptionsPresetsChanged() {
-    this.cookieService.set(
-      'metube_ytdl_options_presets',
-      JSON.stringify(this.ytdlOptionsPresets ?? []),
-      { expires: this.settingsCookieExpiryDays },
-    );
+    this.settings.set('metube_ytdl_options_presets', JSON.stringify(this.ytdlOptionsPresets ?? []));
   }
 
   ytdlOptionsOverridesChanged() {
-    this.cookieService.set('metube_ytdl_options_overrides', this.ytdlOptionsOverrides, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_ytdl_options_overrides', this.ytdlOptionsOverrides);
   }
 
   isVideoType() {
@@ -1037,8 +1035,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       // Any language tag is accepted; only an empty one takes the default.
       this.subtitleLanguage = captions.subtitle_language.default;
     }
-    this.cookieService.set('metube_format', this.format, { expires: this.settingsCookieExpiryDays });
-    this.cookieService.set('metube_codec', this.codec, { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_format', this.format);
+    this.settings.set('metube_codec', this.codec);
   }
 
   private saveSelection(type: string) {
@@ -1051,11 +1049,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       subtitleMode: this.subtitleMode,
     };
     this.selectionsByType[type] = selection;
-    this.cookieService.set(
-      this.selectionCookiePrefix + type,
-      JSON.stringify(selection),
-      { expires: this.settingsCookieExpiryDays }
-    );
+    this.settings.set(this.selectionKeyPrefix + type, JSON.stringify(selection));
   }
 
   private restoreSelection(type: string) {
@@ -1070,10 +1064,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   private loadSavedSelections() {
     for (const type of this.downloadTypes.map(t => t.id)) {
-      const key = this.selectionCookiePrefix + type;
-      if (!this.cookieService.check(key)) continue;
+      const key = this.selectionKeyPrefix + type;
+      if (!this.settings.has(key)) continue;
       try {
-        const raw = this.cookieService.get(key);
+        const raw = this.settings.get(key);
         const parsed = JSON.parse(raw);
         if (parsed && typeof parsed === 'object') {
           this.selectionsByType[type] = {
@@ -1085,7 +1079,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
           };
         }
       } catch {
-        // Ignore malformed cookie values.
+        // Ignore malformed stored values.
       }
     }
   }
@@ -1701,23 +1695,23 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   toggleSortOrder() {
     this.sortAscending = !this.sortAscending;
-    this.cookieService.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_sort_ascending', this.sortAscending ? 'true' : 'false');
     this.rebuildSortedDone();
   }
 
   toggleDownloadingCollapsed() {
     this.downloadingCollapsed = !this.downloadingCollapsed;
-    this.cookieService.set('metube_downloading_collapsed', this.downloadingCollapsed ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_downloading_collapsed', this.downloadingCollapsed ? 'true' : 'false');
   }
 
   toggleCompletedCollapsed() {
     this.completedCollapsed = !this.completedCollapsed;
-    this.cookieService.set('metube_completed_collapsed', this.completedCollapsed ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_completed_collapsed', this.completedCollapsed ? 'true' : 'false');
   }
 
   toggleSubscriptionsCollapsed() {
     this.subscriptionsCollapsed = !this.subscriptionsCollapsed;
-    this.cookieService.set('metube_subscriptions_collapsed', this.subscriptionsCollapsed ? 'true' : 'false', { expires: this.settingsCookieExpiryDays });
+    this.settings.set('metube_subscriptions_collapsed', this.subscriptionsCollapsed ? 'true' : 'false');
   }
 
   private rebuildSortedDone() {
