@@ -7,7 +7,7 @@ import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -16,7 +16,6 @@ import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
 import { BatchUrlsService, BatchUrlFilter } from './services/batch-urls.service';
 import { SettingsStore } from './services/settings-store.service';
-import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
 import {
   Download,
@@ -35,6 +34,7 @@ import {
   ItemCheckboxComponent,
   ToastContainerComponent,
   PlaylistBrowserComponent,
+  SubscriptionsSectionComponent,
 } from './components/';
 
 @Component({
@@ -54,6 +54,7 @@ import {
         SelectAllCheckboxComponent,
         ItemCheckboxComponent,
         ToastContainerComponent,
+        SubscriptionsSectionComponent,
   ],
   templateUrl: './app.html',
   styleUrl: './app.sass',
@@ -109,16 +110,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   checkIntervalMinutes = 60;
   titleRegex = '';
   skipSubscriberOnly = false;
-  editingTitleRegexId: string | null = null;
-  titleRegexEditDraft = '';
-  editingNameId: string | null = null;
-  nameEditDraft = '';
-  readonly subscriptionNameMaxLength = 200;
-  cachedSubs: [string, SubscriptionRow][] = [];
-  selectedSubscriptionIds = new Set<string>();
-  checkingSubscriptionIds = new Set<string>();
-  checkingAllSubscriptions = false;
-  checkingSelectedSubscriptions = false;
   hasCookies = false;
   cookieUploadInProgress = false;
   themes: Theme[] = Themes;
@@ -147,7 +138,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   sortAscending = false;
   downloadingCollapsed = false;
   completedCollapsed = false;
-  subscriptionsCollapsed = false;
   expandedErrors: Set<string> = new Set<string>();
   cachedSortedDone: [string, Download][] = [];
   // The done ids in rendered order, so a shift-click range follows the sort
@@ -213,8 +203,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faChevronRight = faChevronRight;
   faChevronDown = faChevronDown;
   faUpload = faUpload;
-  faPause = faPause;
-  faPlay = faPlay;
   faShareNodes = faShareNodes;
   constructor() {
     // Remembered choices are checked against the catalog when it arrives.
@@ -244,7 +232,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.sortAscending = this.settings.get('metube_sort_ascending') === 'true';
     this.downloadingCollapsed = this.settings.get('metube_downloading_collapsed') === 'true';
     this.completedCollapsed = this.settings.get('metube_completed_collapsed') === 'true';
-    this.subscriptionsCollapsed = this.settings.get('metube_subscriptions_collapsed') === 'true';
 
     const ci = parseInt(this.settings.get('metube_check_interval') || '', 10);
     if (!Number.isNaN(ci) && ci >= 1) {
@@ -273,10 +260,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.cdr.markForCheck();
     });
 
-    this.subscriptionsSvc.subscriptionsChanged.pipe(takeUntilDestroyed(this.destroyRef)).subscribe(() => {
-      this.rebuildCachedSubs();
-      this.cdr.markForCheck();
-    });
   }
 
   ngOnInit() {
@@ -466,16 +449,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return true;
   }
 
-  private rebuildCachedSubs() {
-    this.cachedSubs = Array.from(this.subscriptionsSvc.subscriptions.entries());
-    const validIds = new Set(this.cachedSubs.map(([id]) => id));
-    for (const id of [...this.selectedSubscriptionIds]) {
-      if (!validIds.has(id)) {
-        this.selectedSubscriptionIds.delete(id);
-      }
-    }
-  }
-
   checkIntervalChanged() {
     this.settings.set('metube_check_interval', String(this.checkIntervalMinutes));
   }
@@ -491,48 +464,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       this.toasts.error(error || fallbackMsg);
     }
     this.cdr.markForCheck();
-  }
-
-  private refreshSubscriptionsWithAlert() {
-    this.subscriptionsSvc.refreshList().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((refreshRes) => {
-      const error = this.getStatusError(refreshRes);
-      if (error) {
-        this.toasts.error(error || 'Refresh subscriptions failed');
-        return;
-      }
-      this.cdr.markForCheck();
-    });
-  }
-
-  isSubSelected(id: string): boolean {
-    return this.selectedSubscriptionIds.has(id);
-  }
-
-  toggleSubSelected(id: string) {
-    if (this.selectedSubscriptionIds.has(id)) {
-      this.selectedSubscriptionIds.delete(id);
-    } else {
-      this.selectedSubscriptionIds.add(id);
-    }
-    this.cdr.markForCheck();
-  }
-
-  toggleSubMaster(event: Event) {
-    const checked = (event.target as HTMLInputElement).checked;
-    this.selectedSubscriptionIds.clear();
-    if (checked) {
-      for (const [id] of this.cachedSubs) {
-        this.selectedSubscriptionIds.add(id);
-      }
-    }
-    this.cdr.markForCheck();
-  }
-
-  allSubsSelected(): boolean {
-    if (this.cachedSubs.length === 0) {
-      return false;
-    }
-    return this.cachedSubs.every(([id]) => this.selectedSubscriptionIds.has(id));
   }
 
   addSubscription() {
@@ -587,187 +518,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
           }
         },
       });
-  }
-
-  beginEditTitleRegex(id: string, current: string | undefined) {
-    this.editingTitleRegexId = id;
-    this.titleRegexEditDraft = current ?? '';
-    this.cdr.markForCheck();
-  }
-
-  cancelEditTitleRegex() {
-    this.editingTitleRegexId = null;
-    this.titleRegexEditDraft = '';
-    this.cdr.markForCheck();
-  }
-
-  saveTitleRegex(id: string) {
-    const raw = (this.titleRegexEditDraft || '').trim();
-    if (raw) {
-      try {
-        void RegExp(raw);
-      } catch {
-        this.toasts.error('Invalid subscription title filter (regex)');
-        return;
-      }
-    }
-    this.subscriptionsSvc.update(id, { title_regex: raw }).subscribe((res) => {
-      const error = this.getStatusError(res);
-      if (error) {
-        this.toasts.error(error || 'Update subscription failed');
-        return;
-      }
-      this.cancelEditTitleRegex();
-    });
-  }
-
-  beginEditName(id: string, current: string | undefined) {
-    this.editingNameId = id;
-    this.nameEditDraft = current ?? '';
-    this.cdr.markForCheck();
-  }
-
-  cancelEditName() {
-    this.editingNameId = null;
-    this.nameEditDraft = '';
-    this.cdr.markForCheck();
-  }
-
-  saveName(id: string) {
-    const name = (this.nameEditDraft || '').trim();
-    if (!name) {
-      this.toasts.error('Subscription name must not be empty');
-      return;
-    }
-    this.subscriptionsSvc.update(id, { name }).subscribe((res) => {
-      const error = this.getStatusError(res);
-      if (error) {
-        this.toasts.error(error || 'Update subscription failed');
-        return;
-      }
-      this.cancelEditName();
-    });
-  }
-
-  deleteSubscription(id: string) {
-    this.subscriptionsSvc.delete([id]).subscribe((res) => {
-      const error = this.getStatusError(res);
-      if (error) {
-        this.toasts.error(error || 'Delete subscription failed');
-        return;
-      }
-      this.selectedSubscriptionIds.delete(id);
-      this.cdr.markForCheck();
-    });
-  }
-
-  deleteSelectedSubscriptions() {
-    const ids = Array.from(this.selectedSubscriptionIds);
-    if (!ids.length) {
-      return;
-    }
-    this.subscriptionsSvc.delete(ids).subscribe((res) => {
-      const error = this.getStatusError(res);
-      if (error) {
-        this.toasts.error(error || 'Delete subscriptions failed');
-        return;
-      }
-      this.selectedSubscriptionIds.clear();
-      this.cdr.markForCheck();
-    });
-  }
-
-  checkSubscriptionNow(id: string) {
-    if (this.checkingSubscriptionIds.has(id)) {
-      return;
-    }
-    this.checkingSubscriptionIds.add(id);
-    this.cdr.markForCheck();
-    this.subscriptionsSvc
-      .checkNow([id])
-      .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => {
-          this.checkingSubscriptionIds.delete(id);
-          this.cdr.markForCheck();
-        }),
-      )
-      .subscribe((res) => {
-        const error = this.getStatusError(res);
-        if (error) {
-          this.toasts.error(error || 'Subscription check failed');
-          return;
-        }
-        this.refreshSubscriptionsWithAlert();
-      });
-  }
-
-  isSubscriptionChecking(id: string): boolean {
-    return this.checkingSubscriptionIds.has(id);
-  }
-
-  private runBulkSubscriptionCheck(ids: string[] | undefined, mode: 'all' | 'selected') {
-    const targetIds = ids ?? this.cachedSubs.filter(([, row]) => row.enabled).map(([id]) => id);
-    if (!targetIds.length) {
-      return;
-    }
-
-    const checkedIds = new Set(targetIds);
-    for (const id of checkedIds) {
-      this.checkingSubscriptionIds.add(id);
-    }
-    if (mode === 'all') {
-      this.checkingAllSubscriptions = true;
-    } else {
-      this.checkingSelectedSubscriptions = true;
-    }
-    this.cdr.markForCheck();
-
-    this.subscriptionsSvc
-      .checkNow(ids)
-      .pipe(
-        takeUntilDestroyed(this.destroyRef),
-        finalize(() => {
-          for (const id of checkedIds) {
-            this.checkingSubscriptionIds.delete(id);
-          }
-          if (mode === 'all') {
-            this.checkingAllSubscriptions = false;
-          } else {
-            this.checkingSelectedSubscriptions = false;
-          }
-          this.cdr.markForCheck();
-        }),
-      )
-      .subscribe((res) => {
-        const error = this.getStatusError(res);
-        if (error) {
-          this.toasts.error(error || 'Subscription check failed');
-          return;
-        }
-        this.refreshSubscriptionsWithAlert();
-      });
-  }
-
-  checkSelectedSubscriptions() {
-    const ids = Array.from(this.selectedSubscriptionIds);
-    if (!ids.length) {
-      return;
-    }
-    this.runBulkSubscriptionCheck(ids, 'selected');
-  }
-
-  checkAllSubscriptions() {
-    this.runBulkSubscriptionCheck(undefined, 'all');
-  }
-
-  toggleSubscriptionEnabled(row: SubscriptionRow) {
-    this.subscriptionsSvc.update(row.id, { enabled: !row.enabled }).subscribe((res) => {
-      const error = this.getStatusError(res);
-      if (error) {
-        this.toasts.error(error || 'Update subscription failed');
-      }
-    });
   }
 
   getPreferredTheme(cookieService: CookieService) {
@@ -1707,11 +1457,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   toggleCompletedCollapsed() {
     this.completedCollapsed = !this.completedCollapsed;
     this.settings.set('metube_completed_collapsed', this.completedCollapsed ? 'true' : 'false');
-  }
-
-  toggleSubscriptionsCollapsed() {
-    this.subscriptionsCollapsed = !this.subscriptionsCollapsed;
-    this.settings.set('metube_subscriptions_collapsed', this.subscriptionsCollapsed ? 'true' : 'false');
   }
 
   private rebuildSortedDone() {

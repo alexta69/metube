@@ -246,13 +246,11 @@ describe('App', () => {
 
     expect(app.downloadingCollapsed).toBe(false);
     expect(app.completedCollapsed).toBe(false);
-    expect(app.subscriptionsCollapsed).toBe(false);
 
     app.toggleCompletedCollapsed();
 
     expect(app.completedCollapsed).toBe(true);
     expect(app.downloadingCollapsed).toBe(false);
-    expect(app.subscriptionsCollapsed).toBe(false);
     expect(settings.get('metube_completed_collapsed')).toBe('true');
 
     // A fresh component picks the state back up.
@@ -260,7 +258,6 @@ describe('App', () => {
     restored.detectChanges();
     expect(restored.componentInstance.completedCollapsed).toBe(true);
     expect(restored.componentInstance.downloadingCollapsed).toBe(false);
-    expect(restored.componentInstance.subscriptionsCollapsed).toBe(false);
   });
 
   it('enables Clear completed and Clear/Retry failed from the done list', () => {
@@ -974,38 +971,6 @@ describe('App', () => {
     errorSpy.mockRestore();
   });
 
-  it('renames a subscription and closes the inline editor', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
-
-    app.beginEditName('sub1', 'Videos');
-    expect(app.editingNameId).toBe('sub1');
-    expect(app.nameEditDraft).toBe('Videos');
-
-    app.nameEditDraft = '  Jane uploads  ';
-    app.saveName('sub1');
-
-    expect(subs.updateCalls).toEqual([['sub1', { name: 'Jane uploads' }]]);
-    expect(app.editingNameId).toBeNull();
-  });
-
-  it('blocks renaming a subscription to an empty name', () => {
-    const toasts = TestBed.inject(ToastService);
-    const errorSpy = vi.spyOn(toasts, 'error').mockImplementation(() => undefined);
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
-
-    app.beginEditName('sub1', 'Videos');
-    app.nameEditDraft = '   ';
-    app.saveName('sub1');
-
-    expect(subs.updateCalls.length).toBe(0);
-    expect(app.editingNameId).toBe('sub1');
-    expect(errorSpy).toHaveBeenCalledWith('Subscription name must not be empty');
-    errorSpy.mockRestore();
-  });
   // Issue #533: the server picks AUDIO_DOWNLOAD_DIR on download_type alone
   // (ytdl.py), so the UI's choice of URL base has to use the same rule. It used
   // to also treat any .mp3 as audio, which pointed the link at audio_download/
