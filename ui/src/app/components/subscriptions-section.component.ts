@@ -13,6 +13,7 @@ import {
 } from '@fortawesome/free-solid-svg-icons';
 import { NgbPopover, NgbTooltip } from '@ng-bootstrap/ng-bootstrap';
 import { finalize } from 'rxjs';
+import { actionError } from '../action-result';
 import { SubscriptionRow } from '../interfaces/subscription';
 import { DownloadsService } from '../services/downloads.service';
 import { SettingsStore } from '../services/settings-store.service';
@@ -71,11 +72,6 @@ export class SubscriptionsSectionComponent {
     });
   }
 
-  private getStatusError(res: unknown): string | null {
-    const status = res as { status?: string; msg?: string };
-    return status?.status === 'error' ? status.msg || null : null;
-  }
-
   private rebuildCachedSubs() {
     this.cachedSubs = Array.from(this.subscriptionsSvc.subscriptions.entries());
     const validIds = new Set(this.cachedSubs.map(([id]) => id));
@@ -88,7 +84,7 @@ export class SubscriptionsSectionComponent {
 
   private refreshSubscriptionsWithAlert() {
     this.subscriptionsSvc.refreshList().pipe(takeUntilDestroyed(this.destroyRef)).subscribe((refreshRes) => {
-      const error = this.getStatusError(refreshRes);
+      const error = actionError(refreshRes);
       if (error) {
         this.toasts.error(error || 'Refresh subscriptions failed');
         return;
@@ -151,7 +147,7 @@ export class SubscriptionsSectionComponent {
       }
     }
     this.subscriptionsSvc.update(id, { title_regex: raw }).subscribe((res) => {
-      const error = this.getStatusError(res);
+      const error = actionError(res);
       if (error) {
         this.toasts.error(error || 'Update subscription failed');
         return;
@@ -179,7 +175,7 @@ export class SubscriptionsSectionComponent {
       return;
     }
     this.subscriptionsSvc.update(id, { name }).subscribe((res) => {
-      const error = this.getStatusError(res);
+      const error = actionError(res);
       if (error) {
         this.toasts.error(error || 'Update subscription failed');
         return;
@@ -190,7 +186,7 @@ export class SubscriptionsSectionComponent {
 
   deleteSubscription(id: string) {
     this.subscriptionsSvc.delete([id]).subscribe((res) => {
-      const error = this.getStatusError(res);
+      const error = actionError(res);
       if (error) {
         this.toasts.error(error || 'Delete subscription failed');
         return;
@@ -206,7 +202,7 @@ export class SubscriptionsSectionComponent {
       return;
     }
     this.subscriptionsSvc.delete(ids).subscribe((res) => {
-      const error = this.getStatusError(res);
+      const error = actionError(res);
       if (error) {
         this.toasts.error(error || 'Delete subscriptions failed');
         return;
@@ -232,7 +228,7 @@ export class SubscriptionsSectionComponent {
         }),
       )
       .subscribe((res) => {
-        const error = this.getStatusError(res);
+        const error = actionError(res);
         if (error) {
           this.toasts.error(error || 'Subscription check failed');
           return;
@@ -279,7 +275,7 @@ export class SubscriptionsSectionComponent {
         }),
       )
       .subscribe((res) => {
-        const error = this.getStatusError(res);
+        const error = actionError(res);
         if (error) {
           this.toasts.error(error || 'Subscription check failed');
           return;
@@ -302,7 +298,7 @@ export class SubscriptionsSectionComponent {
 
   toggleSubscriptionEnabled(row: SubscriptionRow) {
     this.subscriptionsSvc.update(row.id, { enabled: !row.enabled }).subscribe((res) => {
-      const error = this.getStatusError(res);
+      const error = actionError(res);
       if (error) {
         this.toasts.error(error || 'Update subscription failed');
       }
