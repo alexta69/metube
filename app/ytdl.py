@@ -1413,12 +1413,12 @@ class DownloadQueue:
         self.done = PersistentQueue("completed", self.config.STATE_DIR + '/completed')
         self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
-        self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
+        self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_DOWNLOADS)
         # Each active download parks two threads for its whole duration
         # (proc.join + status_queue.get). A dedicated pool keeps those from
         # starving the default executor, which extract_info/live-probes also use.
         self._download_executor = ThreadPoolExecutor(
-            max_workers=2 * int(self.config.MAX_CONCURRENT_DOWNLOADS) + 2,
+            max_workers=2 * self.config.MAX_CONCURRENT_DOWNLOADS + 2,
             thread_name_prefix="dl",
         )
         self.done.load()
@@ -1690,11 +1690,7 @@ class DownloadQueue:
             else:
                 await self.done.put(download)
                 bg_tasks.create_task(self.notifier.completed(download.info), name="notify_completed")
-                try:
-                    clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
-                except ValueError:
-                    log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
-                    clear_after = 0
+                clear_after = self.config.CLEAR_COMPLETED_AFTER
                 if clear_after > 0:
                     # bg_tasks.create_task already logs unexpected task failures.
                     bg_tasks.create_task(

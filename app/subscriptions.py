@@ -488,7 +488,7 @@ class SubscriptionManager:
         return (url or "").strip()
 
     def _normalize_seen_ids(self, seen_ids: list[str]) -> list[str]:
-        max_seen = int(getattr(self.config, "SUBSCRIPTION_MAX_SEEN_IDS", 50000))
+        max_seen = self.config.SUBSCRIPTION_MAX_SEEN_IDS
         normalized = [str(sid) for sid in dict.fromkeys(seen_ids)]
         if len(normalized) > max_seen:
             normalized = normalized[:max_seen]
@@ -737,7 +737,7 @@ class SubscriptionManager:
             self._pending_urls.add(url)
 
         try:
-            scan_first = max(int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50)), 1)
+            scan_first = self.config.SUBSCRIPTION_SCAN_PLAYLIST_END
             scan_extra_opts = self._scan_extra_opts(ytdl_options_presets, ytdl_options_overrides)
             try:
                 info, entries = await asyncio.get_running_loop().run_in_executor(
@@ -963,7 +963,7 @@ class SubscriptionManager:
 
     async def _check_one_inner(self, sub: SubscriptionInfo) -> None:
         sid = sub.id
-        scan = int(getattr(self.config, "SUBSCRIPTION_SCAN_PLAYLIST_END", 50))
+        scan = self.config.SUBSCRIPTION_SCAN_PLAYLIST_END
         # ytdl_options_presets/overrides are set at subscription creation and
         # never mutated afterwards (update_subscription doesn't allow it), so
         # reading them off `sub` here without holding the lock is safe.
@@ -1136,7 +1136,7 @@ class SubscriptionManager:
                 queued_ids + filtered_ids + subscriber_filtered_ids + seen_ids_snapshot
             )
         )
-        max_seen = int(getattr(self.config, "SUBSCRIPTION_MAX_SEEN_IDS", 50000))
+        max_seen = self.config.SUBSCRIPTION_MAX_SEEN_IDS
         if len(merged) > max_seen:
             merged = merged[:max_seen]
 

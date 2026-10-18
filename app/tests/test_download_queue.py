@@ -37,7 +37,7 @@ def dq_env():
         cfg.DOWNLOAD_DIR = dl
         cfg.AUDIO_DOWNLOAD_DIR = dl
         cfg.TEMP_DIR = dl
-        cfg.MAX_CONCURRENT_DOWNLOADS = "3"
+        cfg.MAX_CONCURRENT_DOWNLOADS = 3
         # Explicit: an unset attribute on a MagicMock is truthy, which would
         # make validate_url bypass every SSRF check it is asked to run.
         cfg.ALLOW_PRIVATE_ADDRESSES = False
@@ -45,7 +45,7 @@ def dq_env():
         cfg.YTDL_OPTIONS_PRESETS = {}
         cfg.CUSTOM_DIRS = True
         cfg.CREATE_CUSTOM_DIRS = True
-        cfg.CLEAR_COMPLETED_AFTER = "0"
+        cfg.CLEAR_COMPLETED_AFTER = 0
         cfg.DELETE_FILE_ON_TRASHCAN = 'false'
         cfg.OUTPUT_TEMPLATE = "%(title)s.%(ext)s"
         cfg.OUTPUT_TEMPLATE_CHAPTER = "%(title)s.%(ext)s"
@@ -399,7 +399,7 @@ async def test_queued_download_is_not_offered_as_startable(dq_env):
     button silently did nothing and still reported success (#1081).
     """
     notifier = AsyncMock()
-    dq_env.MAX_CONCURRENT_DOWNLOADS = "1"
+    dq_env.MAX_CONCURRENT_DOWNLOADS = 1
     dq = DownloadQueue(dq_env, notifier)
     released = asyncio.Event()
 

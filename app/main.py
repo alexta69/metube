@@ -256,6 +256,8 @@ class Config:
             sys.exit(1)
 
     def _validate_int(self, key, *, minimum=None, maximum=None):
+        """Check an integer setting and store it as an int, so nothing
+        downstream has to convert (or re-validate) it."""
         raw = getattr(self, key)
         try:
             value = int(raw)
@@ -268,6 +270,7 @@ class Config:
         if maximum is not None and value > maximum:
             log.error('Environment variable "%s" must be <= %d, got "%s"', key, maximum, raw)
             sys.exit(1)
+        setattr(self, key, value)
 
     def set_runtime_override(self, key, value):
         self._runtime_overrides[key] = value
@@ -1622,8 +1625,8 @@ if __name__ == '__main__':
     if config.HTTPS:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=config.CERTFILE, keyfile=config.KEYFILE)
-        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), ssl_context=ssl_context, access_log=isAccessLogEnabled())
+        web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=supports_reuse_port(), ssl_context=ssl_context, access_log=isAccessLogEnabled())
     else:
-        web.run_app(app, host=config.HOST, port=int(config.PORT), reuse_port=supports_reuse_port(), access_log=isAccessLogEnabled())
+        web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=supports_reuse_port(), access_log=isAccessLogEnabled())
     if _RESTART_FOR_UPDATE:
         sys.exit(42)
