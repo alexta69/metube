@@ -1085,6 +1085,11 @@ class Download:
         try:
             if self.started():
                 self.proc.close()
+        except ValueError:
+            # Process.close() refuses a process that is still running, which
+            # only happens when start() failed part-way through. Leave it to
+            # be reaped rather than abort the cleanup that records the error.
+            log.warning(f"Download process for {self.info.title} was still running at close")
         finally:
             self.status_queue = None
 
@@ -1598,7 +1603,18 @@ class DownloadQueue:
             if download.canceled:
                 log.info(f"Download {download.info.title} was canceled, skipping start.")
                 return
-            await download.start(self.notifier, self._download_executor)
+            try:
+                await download.start(self.notifier, self._download_executor)
+            except Exception as exc:
+                # Starting can fail before yt-dlp runs at all: the Manager or
+                # the worker process cannot be created (out of memory, a pid
+                # limit), or the first notify fails. Without this the row
+                # stayed at 'preparing' forever, with no way to retry it.
+                log.exception(f"Could not start download {download.info.title}")
+                download.info.msg = f'Could not start the download: {exc}'
+                # If the worker did come up, nothing is reading its status any
+                # more: stop it rather than let it download unseen.
+                download._kill_if_alive()
             await self._post_download_cleanup(download)
 
     async def _post_download_cleanup(self, download):

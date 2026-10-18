@@ -2156,3 +2156,49 @@ async def test_add_failure_record_keeps_the_options_retry_needs(dq_env, failure)
     assert info.sponsorblock is True
     assert info.audio_tags == "none"
     assert info.video_password == "pw"
+
+
+@pytest.mark.asyncio
+async def test_download_that_fails_to_start_becomes_a_failed_row(dq_env):
+    # A start failure used to escape __start_download before the cleanup ran,
+    # leaving the row at 'preparing' in the queue forever.
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    info = DownloadInfo(
+        id="vid1", title="Test Video", url=url, quality="best", download_type="video",
+        codec="auto", format="any", folder="", custom_name_prefix="", error=None, entry=None,
+        playlist_item_limit=0, split_by_chapters=False, chapter_template="",
+    )
+    download = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s",
+                        "%(title)s.%(ext)s", "best", "any", {}, info)
+    await dq.queue.put(download)
+
+    with patch.object(Download, "start", new=AsyncMock(side_effect=OSError("Resource temporarily unavailable"))):
+        await dq._DownloadQueue__start_download(download)
+
+    assert not dq.queue.exists(url)
+    failed = dq.done.get(url).info
+    assert failed.status == "error"
+    assert "Resource temporarily unavailable" in failed.msg
+
+
+@pytest.mark.asyncio
+async def test_a_worker_left_running_by_a_failed_start_is_stopped(dq_env):
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+    info = DownloadInfo(
+        id="vid1", title="Test Video", url=url, quality="best", download_type="video",
+        codec="auto", format="any", folder="", custom_name_prefix="", error=None, entry=None,
+        playlist_item_limit=0, split_by_chapters=False, chapter_template="",
+    )
+    download = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s",
+                        "%(title)s.%(ext)s", "best", "any", {}, info)
+    await dq.queue.put(download)
+
+    with patch.object(Download, "start", new=AsyncMock(side_effect=RuntimeError("notify failed"))), \
+            patch.object(Download, "_kill_if_alive") as kill:
+        await dq._DownloadQueue__start_download(download)
+
+    kill.assert_called_once()
+    assert dq.done.get(url).info.status == "error"
