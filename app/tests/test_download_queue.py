@@ -14,6 +14,8 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import time
 
+import yt_dlp
+
 from ytdl import (
     Download,
     DownloadInfo,
@@ -2131,3 +2133,26 @@ async def test_clear_in_ask_mode_without_delete_files_kwarg_keeps_file(dq_env):
 
     assert os.path.exists(file_path)
     assert not dq.done.exists(download.info.url)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["extraction", "url_guard"])
+async def test_add_failure_record_keeps_the_options_retry_needs(dq_env, failure):
+    # The failed row is what Retry re-submits; it used to be built without
+    # these three, so a retry after a transient error silently dropped
+    # SponsorBlock, wrote a cover the user turned off, and lost the password.
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1" if failure == "extraction" else "http://127.0.0.1/x"
+
+    def boom(self, *_args, **_kwargs):
+        raise yt_dlp.utils.DownloadError("transient")
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        res = await dq.add(url, "audio", "auto", "mp3", "best", None, "", 0,
+                           sponsorblock=True, audio_tags="none", video_password="pw")
+
+    assert res["status"] == "error"
+    info = dq.done.get(url).info
+    assert info.sponsorblock is True
+    assert info.audio_tags == "none"
+    assert info.video_password == "pw"

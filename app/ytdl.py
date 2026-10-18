@@ -2052,6 +2052,9 @@ class DownloadQueue:
         clip_start,
         clip_end,
         entry=None,
+        sponsorblock=False,
+        audio_tags='with_cover',
+        video_password=None,
     ):
         """Surface a URL that failed before a DownloadInfo could be created (unsupported
         URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
@@ -2078,6 +2081,9 @@ class DownloadQueue:
             ytdl_options_overrides=ytdl_options_overrides,
             clip_start=clip_start,
             clip_end=clip_end,
+            sponsorblock=sponsorblock,
+            audio_tags=audio_tags,
+            video_password=video_password,
         )
         info.status = 'error'
         info.msg = msg
@@ -2146,6 +2152,7 @@ class DownloadQueue:
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
                 clip_start, clip_end, retry_entry,
+                sponsorblock=sponsorblock, audio_tags=audio_tags, video_password=video_password,
             )
             return {'status': 'error', 'msg': url_error}
         extract_logger = _ExtractYtdlLogger()
@@ -2162,6 +2169,7 @@ class DownloadQueue:
                 custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
                 subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
                 clip_start, clip_end, retry_entry,
+                sponsorblock=sponsorblock, audio_tags=audio_tags, video_password=video_password,
             )
             return {'status': 'error', 'msg': msg}
         if entry is None:
