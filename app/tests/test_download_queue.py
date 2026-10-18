@@ -377,8 +377,16 @@ async def test_queued_download_is_not_offered_as_startable(dq_env):
         assert not dq.pending.exists(second)
 
         released.set()
+        # Let both finish and their state writes land before the fixture
+        # deletes the state directory; returning straight away raced the
+        # store's writer thread and failed teardown with "Directory not empty".
+        for _ in range(200):
+            if dq.queue.empty():
+                break
+            await asyncio.sleep(0.01)
+        assert dq.queue.empty()
 
-    await asyncio.sleep(0)
+    dq.close()
 
 
 @pytest.mark.asyncio
