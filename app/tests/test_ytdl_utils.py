@@ -1430,3 +1430,55 @@ class UpdateStatusFileStatTests(unittest.IsolatedAsyncioTestCase):
             download.notifier.broadcast_statuses,
             ["postprocessing", "downloading", "postprocessing", "finished"],
         )
+
+
+class UserDictOptionMergeTests(unittest.TestCase):
+    """User outtmpl/paths used to replace MeTube's dicts wholesale."""
+
+    def test_outtmpl_keys_merge_into_metube_templates(self):
+        download = _make_test_download()
+        download.ytdl_opts['outtmpl'] = {'thumbnail': 'thumbs/%(title)s.%(ext)s'}
+
+        params = _capture_ytdl_params(download)
+
+        self.assertEqual(params['outtmpl'], {
+            'default': '%(title)s.%(ext)s',
+            'chapter': '%(title)s.%(ext)s',
+            'thumbnail': 'thumbs/%(title)s.%(ext)s',
+        })
+
+    def test_user_default_template_still_wins(self):
+        download = _make_test_download()
+        download.ytdl_opts['outtmpl'] = {'default': '%(id)s.%(ext)s'}
+        self.assertEqual(_capture_ytdl_params(download)['outtmpl']['default'], '%(id)s.%(ext)s')
+
+    def test_string_outtmpl_means_default(self):
+        download = _make_test_download()
+        download.ytdl_opts['outtmpl'] = '%(id)s.%(ext)s'
+        params = _capture_ytdl_params(download)
+        self.assertEqual(params['outtmpl']['default'], '%(id)s.%(ext)s')
+        self.assertIn('chapter', params['outtmpl'])
+
+    def test_paths_merge(self):
+        download = _make_test_download()
+        download.ytdl_opts['paths'] = {'thumbnail': 'thumbs'}
+        params = _capture_ytdl_params(download)
+        self.assertEqual(params['paths'], {'home': '/tmp', 'temp': '/tmp', 'thumbnail': 'thumbs'})
+
+    def test_chapter_split_does_not_mutate_the_user_dict(self):
+        download = _make_test_download()
+        user_outtmpl = {'thumbnail': 't'}
+        download.ytdl_opts['outtmpl'] = user_outtmpl
+        download.info.split_by_chapters = True
+        download.info.chapter_template = '%(section_number)s.%(ext)s'
+        params = _capture_ytdl_params(download)
+        self.assertEqual(params['outtmpl']['chapter'], '%(section_number)s.%(ext)s')
+        self.assertEqual(user_outtmpl, {'thumbnail': 't'})
+
+    def test_status_hooks_cannot_be_replaced(self):
+        download = _make_test_download()
+        download.ytdl_opts['progress_hooks'] = []
+        download.ytdl_opts['postprocessor_hooks'] = []
+        params = _capture_ytdl_params(download)
+        self.assertEqual(len(params['progress_hooks']), 1)
+        self.assertEqual(len(params['postprocessor_hooks']), 1)

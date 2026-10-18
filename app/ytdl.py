@@ -221,6 +221,24 @@ class _AlbumArtistPostProcessor(PostProcessor):
         return [], info
 
 
+def _merge_option_dict(ours: dict, theirs: Any, *, str_key: Optional[str] = None) -> dict:
+    """Overlay a user-supplied yt-dlp dict option onto MeTube's own.
+
+    User keys win, so a deliberate override still takes effect. yt-dlp also
+    accepts a bare string for some of these options (``outtmpl``), meaning the
+    *str_key* entry; anything else unusable is ignored with a warning rather
+    than passed on to fail inside yt-dlp.
+    """
+    if theirs is None:
+        return dict(ours)
+    if isinstance(theirs, dict):
+        return {**ours, **theirs}
+    if str_key is not None and isinstance(theirs, str):
+        return {**ours, str_key: theirs}
+    log.warning(f'Ignoring a yt-dlp option that should be a dict, got {theirs!r}')
+    return dict(ours)
+
+
 def _is_within_directory(real_base: str, real_target: str) -> bool:
     """True if ``real_target`` is inside (or equal to) ``real_base``.
 
@@ -942,17 +960,25 @@ class Download:
                 'quiet': not debug_logging,
                 'verbose': debug_logging,
                 'no_color': True,
-                'paths': {"home": self.download_dir, "temp": self.temp_dir},
-                'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
                 'socket_timeout': 30,
                 'ignore_no_formats_error': True,
-                'progress_hooks': [put_status],
-                'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
+                # paths and outtmpl are dicts of independent keys. A user value
+                # (YTDL_OPTIONS, a preset, an override) is merged into MeTube's
+                # rather than replacing it, so {"outtmpl": {"thumbnail": ...}}
+                # changes the thumbnail name without also throwing away
+                # OUTPUT_TEMPLATE, the chapter template and the download folder.
+                'paths': _merge_option_dict(
+                    {"home": self.download_dir, "temp": self.temp_dir}, self.ytdl_opts.get('paths')),
+                'outtmpl': _merge_option_dict(
+                    {"default": self.output_template, "chapter": self.output_template_chapter},
+                    self.ytdl_opts.get('outtmpl'), str_key='default'),
             }
-            # Set after the ytdl_opts merge: the failure messages below depend on
-            # this logger, so a user-supplied one must not replace it.
+            # Set after the ytdl_opts merge: the status reporting and failure
+            # messages depend on these, so user options must not replace them.
+            ytdl_params['progress_hooks'] = [put_status]
+            ytdl_params['postprocessor_hooks'] = [put_status_postprocessor]
             ytdl_params['logger'] = ytdl_logger
 
             # SponsorBlock: mark sponsor segments and cut them out, the same
