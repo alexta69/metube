@@ -10,7 +10,6 @@ from aiohttp import web
 from aiohttp.web import GracefulExit
 from aiohttp.log import access_logger
 import ssl
-import socket
 import socketio
 import logging
 import json
@@ -1569,15 +1568,6 @@ async def on_prepare(request, response):
 
 app.on_response_prepare.append(on_prepare)
 
-def supports_reuse_port():
-    try:
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.close()
-        return True
-    except (AttributeError, OSError):
-        return False
-
 def isAccessLogEnabled():
     if config.ENABLE_ACCESSLOG:
         return access_logger
@@ -1600,8 +1590,8 @@ if __name__ == '__main__':
     if config.HTTPS:
         ssl_context = ssl.create_default_context(ssl.Purpose.CLIENT_AUTH)
         ssl_context.load_cert_chain(certfile=config.CERTFILE, keyfile=config.KEYFILE)
-        web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=supports_reuse_port(), ssl_context=ssl_context, access_log=isAccessLogEnabled())
+        web.run_app(app, host=config.HOST, port=config.PORT, ssl_context=ssl_context, access_log=isAccessLogEnabled())
     else:
-        web.run_app(app, host=config.HOST, port=config.PORT, reuse_port=supports_reuse_port(), access_log=isAccessLogEnabled())
+        web.run_app(app, host=config.HOST, port=config.PORT, access_log=isAccessLogEnabled())
     if _RESTART_FOR_UPDATE:
         sys.exit(42)
