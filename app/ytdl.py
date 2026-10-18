@@ -1424,7 +1424,13 @@ class DownloadQueue:
         )
         self.done.load()
         self._add_generation = 0
-        self._canceled_urls = set()  # URLs canceled during current playlist add
+        # URLs canceled while a top-level add was in flight, so a playlist
+        # still being expanded skips them. Kept until the last in-flight add
+        # finishes, not cleared when the next one starts: adds overlap (two
+        # browser tabs, a batch import, a retry), and clearing it there let
+        # a playlist re-queue an item the user had just canceled.
+        self._canceled_urls = set()
+        self._adds_in_flight = 0
         self._scheduled_probe_at: dict[str, float] = {}
         self._scheduled_probe_failures: dict[str, int] = {}
         self._live_monitor_task: Optional[asyncio.Task] = None
@@ -2019,11 +2025,22 @@ class DownloadQueue:
         await self.notifier.completed(info)
 
     async def add(self, url, options: DownloadOptions, *, already=None, _add_gen=None, retry_entry=None):
+        if already is not None:
+            # A URL a playlist or a url-type result led to.
+            return await self.__add(url, options, already, _add_gen, retry_entry)
+        self._adds_in_flight += 1
+        # Asking for a URL again is a fresh request for it, even if it was
+        # canceled out of an add that is still running.
+        self._canceled_urls.discard(url)
+        try:
+            return await self.__add(url, options, set(), self._add_generation, retry_entry)
+        finally:
+            self._adds_in_flight -= 1
+            if self._adds_in_flight == 0:
+                self._canceled_urls.clear()
+
+    async def __add(self, url, options: DownloadOptions, already, _add_gen, retry_entry):
         log.info(f'adding {url}: {options} {already=}')
-        if already is None:
-            _add_gen = self._add_generation
-            self._canceled_urls.clear()
-        already = set() if already is None else already
         if url in already:
             log.info('recursion detected, skipping')
             return {'status': 'ok'}
@@ -2122,8 +2139,12 @@ class DownloadQueue:
 
     async def cancel(self, ids):
         for id in ids:
-            # Track URL so playlist add loop won't re-queue it
-            self._canceled_urls.add(id)
+            # Track URL so an add still expanding a playlist won't re-queue it.
+            # Only while one is running: with none in flight there is nothing
+            # to protect, and the URL would linger and silently swallow the
+            # next time a subscription or an add offered it.
+            if self._adds_in_flight:
+                self._canceled_urls.add(id)
             if self.pending.exists(id):
                 await self.pending.delete(id)
                 await self.notifier.canceled(id)

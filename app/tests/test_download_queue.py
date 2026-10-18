@@ -2055,3 +2055,57 @@ def test_completed_record_with_a_format_no_longer_offered_still_loads(dq_env):
     dq = DownloadQueue(dq_env, AsyncMock())
 
     assert dq.done.get("https://example.com/x").info.format == "webm"
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_a_playlist_add_survives_another_add_starting(dq_env):
+    # Canceling an item while its playlist is still being added keeps it out
+    # of that playlist. Any other add starting meanwhile used to clear the
+    # record of that cancel, and the playlist then queued the item anyway.
+    import threading
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    playlist_url = "https://example.com/playlist"
+    canceled = "https://example.com/watch?v=1"
+    kept = "https://example.com/watch?v=2"
+    other = "https://example.com/watch?v=other"
+    release = threading.Event()
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        if url == playlist_url:
+            release.wait(5)
+            return {"_type": "playlist", "id": "PL1", "title": "List", "entries": [
+                {"_type": "url", "id": "1", "title": "One", "url": canceled, "webpage_url": canceled},
+                {"_type": "url", "id": "2", "title": "Two", "url": kept, "webpage_url": kept},
+            ]}
+        return {"_type": "video", "id": url[-5:], "title": "T", "url": url, "webpage_url": url}
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        playlist_add = asyncio.create_task(dq.add(playlist_url, DownloadOptions(auto_start=False)))
+        await asyncio.sleep(0.1)
+        await dq.cancel([canceled])
+        await dq.add(other, DownloadOptions(auto_start=False))
+        release.set()
+        await playlist_add
+
+    assert dq.pending.exists(other)
+    assert dq.pending.exists(kept)
+    assert not dq.pending.exists(canceled)
+
+
+@pytest.mark.asyncio
+async def test_cancel_outside_any_add_does_not_block_a_later_add(dq_env):
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {"_type": "video", "id": "1", "title": "T", "url": extracted_url, "webpage_url": extracted_url}
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        await dq.add(url, DownloadOptions(auto_start=False))
+        await dq.cancel([url])
+        assert not dq.pending.exists(url)
+        await dq.add_entry({"_type": "video", "id": "1", "title": "T", "url": url, "webpage_url": url},
+                           DownloadOptions(auto_start=False))
+
+    assert dq.pending.exists(url)
