@@ -1697,10 +1697,12 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         next: (data) => {
           this.ytDlpVersion = data['yt-dlp'];
           this.metubeVersion = data.version;
+          this.cdr.markForCheck();
         },
         error: () => {
           this.ytDlpVersion = null;
           this.metubeVersion = null;
+          this.cdr.markForCheck();
         }
       });
   }
@@ -1757,7 +1759,11 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     if (!text.trim()) return;
     const done = () => {
       this.lastCopiedErrorId = id;
-      setTimeout(() => { this.lastCopiedErrorId = null; }, 1500);
+      this.cdr.markForCheck();
+      setTimeout(() => {
+        this.lastCopiedErrorId = null;
+        this.cdr.markForCheck();
+      }, 1500);
     };
     const fail = (err?: unknown) => {
       console.error('Clipboard write failed:', err);
@@ -1791,6 +1797,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     const input = event.target as HTMLInputElement;
     if (!input.files?.length) return;
     this.cookieUploadInProgress = true;
+    this.cdr.markForCheck();
     this.downloads.uploadCookies(input.files[0]).subscribe({
       next: (response) => {
         if (response?.status === 'ok') {
@@ -1801,12 +1808,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         }
         this.cookieUploadInProgress = false;
         input.value = '';
+        this.cdr.markForCheck();
       },
       error: () => {
         this.refreshCookieStatus();
         this.cookieUploadInProgress = false;
         input.value = '';
         this.toasts.error('Error uploading cookies.');
+        this.cdr.markForCheck();
       }
     });
   }
@@ -1852,6 +1861,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   private refreshCookieStatus() {
     this.downloads.getCookieStatus().subscribe(data => {
       this.hasCookies = !!(data && typeof data === 'object' && 'has_cookies' in data && data.has_cookies);
+      this.cdr.markForCheck();
     });
   }
 

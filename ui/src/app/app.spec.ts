@@ -1,3 +1,4 @@
+import { ChangeDetectorRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Subject, of } from 'rxjs';
@@ -254,6 +255,84 @@ describe('App', () => {
     expect(restored.componentInstance.completedCollapsed).toBe(true);
     expect(restored.componentInstance.downloadingCollapsed).toBe(false);
     expect(restored.componentInstance.subscriptionsCollapsed).toBe(false);
+  });
+
+  describe('OnPush rendering of asynchronous results', () => {
+    // The root component is OnPush: state set from an HTTP callback or a timer
+    // is not rendered unless the callback marks the view. These go through
+    // the DOM rather than the fields, which update either way.
+    const cookieStatusText = (fixture: { nativeElement: HTMLElement }) =>
+      fixture.nativeElement.querySelector('.cookie-status')?.textContent?.trim();
+
+    it('renders the cookie upload result when the upload completes', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const result = new Subject<{ status: string; msg?: string }>();
+      downloads.uploadCookies = () => result;
+      const input = { files: [new File(['x'], 'cookies.txt')], value: 'cookies.txt' };
+
+      fixture.componentInstance.onCookieFileSelect({ target: input } as unknown as Event);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('label[for="cookie-upload"] .spinner-border')).not.toBeNull();
+
+      result.next({ status: 'ok' });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('label[for="cookie-upload"] .spinner-border')).toBeNull();
+      expect(cookieStatusText(fixture)).toBe('Cookies active');
+    });
+
+    it('renders the cookie status after deleting cookies', () => {
+      let hasCookies = true;
+      downloads.getCookieStatus = () => of({ status: 'ok', has_cookies: hasCookies });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      expect(cookieStatusText(fixture)).toBe('Cookies active');
+
+      hasCookies = false;
+      fixture.componentInstance.deleteCookies();
+      fixture.detectChanges();
+      expect(cookieStatusText(fixture)).toBe('No cookies configured');
+    });
+
+    it('renders the version footer once the version arrives', () => {
+      const version = new Subject<{ 'yt-dlp': string; version: string }>();
+      (TestBed.inject(HttpClient).get as ReturnType<typeof vi.fn>).mockReturnValue(version);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.footer-content')).toBeNull();
+
+      version.next({ 'yt-dlp': '2026.10.01', version: '2026.10.18' });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.footer-content')?.textContent).toContain('2026.10.18');
+    });
+
+    it('marks the view when the copied confirmation is set and when it clears', async () => {
+      vi.useFakeTimers();
+      try {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: { writeText: vi.fn().mockResolvedValue(undefined) },
+        });
+        const fixture = TestBed.createComponent(App);
+        fixture.detectChanges();
+        const app = fixture.componentInstance;
+        const cdr = (app as unknown as { cdr: ChangeDetectorRef }).cdr;
+        const markForCheck = vi.spyOn(cdr, 'markForCheck');
+
+        app.copyErrorMessage('id1', { title: 't', url: 'u', error: 'e' } as Download);
+        await vi.runAllTicks();
+        await Promise.resolve();
+        expect(app.lastCopiedErrorId).toBe('id1');
+        const callsAfterCopy = markForCheck.mock.calls.length;
+        expect(callsAfterCopy).toBeGreaterThan(0);
+
+        vi.advanceTimersByTime(1500);
+        expect(app.lastCopiedErrorId).toBeNull();
+        expect(markForCheck.mock.calls.length).toBeGreaterThan(callsAfterCopy);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('asIsOrder returns a stable comparator value (insertion order preserved)', () => {
