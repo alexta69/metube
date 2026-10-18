@@ -2202,3 +2202,21 @@ async def test_a_worker_left_running_by_a_failed_start_is_stopped(dq_env):
 
     kill.assert_called_once()
     assert dq.done.get(url).info.status == "error"
+
+
+def test_completed_record_with_a_format_no_longer_offered_still_loads(dq_env):
+    # Loading built a full Download per completed record, which runs the
+    # format mapping; one record with a retired format raised and stopped
+    # the server from starting at all.
+    rec = {
+        "id": "x", "title": "t", "url": "https://example.com/x", "quality": "best",
+        "download_type": "video", "codec": "auto", "format": "webm", "folder": "",
+        "custom_name_prefix": "", "status": "finished", "timestamp": 1,
+    }
+    with open(os.path.join(dq_env.STATE_DIR, "completed.json"), "w") as f:
+        json.dump({"schema_version": 2, "kind": "persistent_queue:completed",
+                   "items": [{"key": rec["url"], "info": rec}]}, f)
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+
+    assert dq.done.get("https://example.com/x").info.format == "webm"

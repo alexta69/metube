@@ -786,12 +786,12 @@ class Download:
             cls.manager = None
 
     def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info, allow_private=False):
+        self._init_state(info)
         self.download_dir = download_dir
         self.temp_dir = temp_dir
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
         self.allow_private = allow_private
-        self.info = info
         self.format = get_format(
             getattr(info, 'download_type', 'video'),
             getattr(info, 'codec', 'auto'),
@@ -810,6 +810,14 @@ class Download:
         )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
+
+    def _init_state(self, info):
+        self.info = info
+        self.download_dir = self.temp_dir = None
+        self.output_template = self.output_template_chapter = None
+        self.allow_private = False
+        self.format = None
+        self.ytdl_opts = {}
         self.canceled = False
         self.tmpfilename = None
         self.status_queue = None
@@ -817,6 +825,19 @@ class Download:
         self.loop = None
         self.notifier = None
         self._executor = None
+
+    @classmethod
+    def record(cls, info):
+        """A download that is not going to run: a completed or failed row.
+
+        Skips the yt-dlp format mapping, which only a run needs. Building it
+        for every completed record at startup meant a single record whose
+        format the catalog no longer offers raised there and took the whole
+        server down. A retry goes back through add(), which validates afresh.
+        """
+        download = cls.__new__(cls)
+        download._init_state(info)
+        return download
 
     # Minimum interval between forwarded 'downloading' progress ticks. yt-dlp
     # emits these many times per second; without throttling, each active
@@ -1266,7 +1287,7 @@ class PersistentQueue:
 
     def load(self):
         for k, v in self.saved_items():
-            self.dict[k] = Download(None, None, None, None, getattr(v, 'quality', 'best'), getattr(v, 'format', 'any'), {}, v)
+            self.dict[k] = Download.record(v)
 
     def exists(self, key):
         return key in self.dict
@@ -1460,7 +1481,7 @@ class DownloadQueue:
             log.warning(f'could not restore download {info.url}: {error["msg"]}')
             info.status = 'error'
             info.msg = error['msg']
-            await self.done.put(Download(None, None, None, None, info.quality, info.format, {}, info))
+            await self.done.put(Download.record(info))
             await self.notifier.completed(info)
 
     async def initialize(self):
@@ -2129,7 +2150,7 @@ class DownloadQueue:
         )
         info.status = 'error'
         info.msg = msg
-        download = Download(None, None, None, None, quality, format, {}, info)
+        download = Download.record(info)
         await self.done.put(download)
         await self.notifier.completed(info)
 
