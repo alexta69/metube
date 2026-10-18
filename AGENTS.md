@@ -172,7 +172,8 @@ these pieces — the last three are the ones commonly missed:
    failed-add and retry paths all carry that one value, so nothing else in
    them needs touching.
 2. A field on `DownloadInfo` in `app/ytdl.py`.
-3. A `hasattr` backfill in `DownloadInfo.__setstate__` for old persisted records.
+3. A default in `_DOWNLOAD_INFO_DEFAULTS` in `app/ytdl.py`, which old persisted
+   records take (a test fails if a `DownloadInfo` field has none).
 4. The safe-deserialization field list in `app/ytdl.py`.
 5. UI form control + `SettingsStore` persistence in `ui/src/app/app.ts` / `app.html`, and
    the payload in `downloads.service.ts` (plus its spec).

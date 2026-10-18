@@ -513,6 +513,39 @@ class DownloadQueueNotifier:
     async def cleared(self, id):
         raise NotImplementedError
 
+# What a stored DownloadInfo gets for a field it does not carry: records
+# written before the field existed, and the progress fields a compact record
+# leaves out. Adding a field to DownloadInfo means adding its default here.
+_DOWNLOAD_INFO_DEFAULTS: dict[str, Any] = {
+    "codec": "auto",
+    "folder": "",
+    "custom_name_prefix": "",
+    "playlist_item_limit": 0,
+    "split_by_chapters": False,
+    "sponsorblock": False,
+    "audio_tags": "with_cover",
+    "video_password": None,
+    "chapter_template": "",
+    "subtitle_language": "en",
+    "subtitle_mode": "prefer_manual",
+    "ytdl_options_overrides": {},
+    "entry": None,
+    "subtitle_files": [],
+    "chapter_files": [],
+    "clip_start": None,
+    "clip_end": None,
+    "live_status": None,
+    "live_release_timestamp": None,
+    "status": "pending",
+    "msg": None,
+    "percent": None,
+    "speed": None,
+    "eta": None,
+    "size": None,
+    "error": None,
+}
+
+
 class DownloadInfo:
     def __init__(
         self,
@@ -630,28 +663,12 @@ class DownloadInfo:
             self.__dict__.pop('video_codec', None)
             self.__dict__.pop('subtitle_format', None)
 
-        if not getattr(self, "codec", None):
+        for name, default in _DOWNLOAD_INFO_DEFAULTS.items():
+            if name not in self.__dict__:
+                # A copy, so records never share one mutable default.
+                setattr(self, name, copy.copy(default))
+        if not self.codec:
             self.codec = "auto"
-        if not hasattr(self, "folder"):
-            self.folder = ""
-        if not hasattr(self, "custom_name_prefix"):
-            self.custom_name_prefix = ""
-        if not hasattr(self, "playlist_item_limit"):
-            self.playlist_item_limit = 0
-        if not hasattr(self, "split_by_chapters"):
-            self.split_by_chapters = False
-        if not hasattr(self, "sponsorblock"):
-            self.sponsorblock = False
-        if not hasattr(self, "audio_tags"):
-            self.audio_tags = "with_cover"
-        if not hasattr(self, "video_password"):
-            self.video_password = None
-        if not hasattr(self, "chapter_template"):
-            self.chapter_template = ""
-        if not hasattr(self, "subtitle_language"):
-            self.subtitle_language = "en"
-        if not hasattr(self, "subtitle_mode"):
-            self.subtitle_mode = "prefer_manual"
         legacy_preset = self.__dict__.pop("ytdl_options_preset", None)
         if "ytdl_options_presets" not in self.__dict__:
             if isinstance(legacy_preset, str) and legacy_preset.strip():
@@ -660,22 +677,6 @@ class DownloadInfo:
                 self.ytdl_options_presets = [str(x).strip() for x in legacy_preset if str(x).strip()]
             else:
                 self.ytdl_options_presets = []
-        if not hasattr(self, "ytdl_options_overrides"):
-            self.ytdl_options_overrides = {}
-        if not hasattr(self, "entry"):
-            self.entry = None
-        if not hasattr(self, "subtitle_files"):
-            self.subtitle_files = []
-        if not hasattr(self, "chapter_files"):
-            self.chapter_files = []
-        if not hasattr(self, "clip_start"):
-            self.clip_start = None
-        if not hasattr(self, "clip_end"):
-            self.clip_end = None
-        if not hasattr(self, "live_status"):
-            self.live_status = None
-        if not hasattr(self, "live_release_timestamp"):
-            self.live_release_timestamp = None
 
 
 # "video_password" is deliberately excluded: it's a secret and must never be
@@ -761,20 +762,6 @@ def _download_info_to_record(
 def _download_info_from_record(record: dict[str, Any]) -> DownloadInfo:
     info = DownloadInfo.__new__(DownloadInfo)
     info.__setstate__({key: from_json_compatible(value) for key, value in record.items()})
-    if not hasattr(info, "msg"):
-        info.msg = None
-    if not hasattr(info, "percent"):
-        info.percent = None
-    if not hasattr(info, "speed"):
-        info.speed = None
-    if not hasattr(info, "eta"):
-        info.eta = None
-    if not hasattr(info, "status"):
-        info.status = "pending"
-    if not hasattr(info, "size"):
-        info.size = None
-    if not hasattr(info, "error"):
-        info.error = None
     return info
 
 class Download:

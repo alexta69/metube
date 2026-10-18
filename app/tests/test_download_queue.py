@@ -2109,3 +2109,28 @@ async def test_cancel_outside_any_add_does_not_block_a_later_add(dq_env):
                            DownloadOptions(auto_start=False))
 
     assert dq.pending.exists(url)
+
+
+def test_every_download_info_field_has_a_default_for_old_records():
+    # A field missing from _DOWNLOAD_INFO_DEFAULTS is simply absent on records
+    # written before it existed, and reading it then raises AttributeError.
+    from ytdl import _DOWNLOAD_INFO_DEFAULTS
+
+    always_stored = {"id", "title", "url", "quality", "download_type", "format", "timestamp",
+                     "ytdl_options_presets"}
+    info = DownloadInfo(id="i", title="t", url="u", quality="best", download_type="video", codec="auto",
+                        format="any", folder="", custom_name_prefix="", error=None, entry=None,
+                        playlist_item_limit=0, split_by_chapters=False, chapter_template="")
+    missing = set(info.__dict__) - set(_DOWNLOAD_INFO_DEFAULTS) - always_stored
+    assert not missing, f"add defaults for {sorted(missing)} to _DOWNLOAD_INFO_DEFAULTS"
+
+
+def test_record_from_an_old_version_gets_every_default():
+    from ytdl import _DOWNLOAD_INFO_DEFAULTS
+
+    info = _download_info_from_record({"id": "i", "title": "t", "url": "u", "quality": "best",
+                                       "download_type": "video", "format": "any", "timestamp": 1})
+    for name, default in _DOWNLOAD_INFO_DEFAULTS.items():
+        assert getattr(info, name) == default, name
+    info.subtitle_files.append("x")
+    assert _DOWNLOAD_INFO_DEFAULTS["subtitle_files"] == []
