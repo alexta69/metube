@@ -603,56 +603,6 @@
     </div>
   </form>
 
-  <!-- Batch Import Modal -->
-  <div class="modal fade" tabindex="-1" role="dialog"
-  aria-modal="true"
-  aria-labelledby="batch-import-modal-title"
-  [class.show]="batchImportModalOpen"
-  [style.display]="batchImportModalOpen ? 'block' : 'none'">
-    <div class="modal-dialog" role="document">
-      <div class="modal-content">
-        <div class="modal-header">
-          <h5 id="batch-import-modal-title" class="modal-title">Batch Import URLs</h5>
-          <button type="button" class="btn-close" aria-label="Close" (click)="closeBatchImportModal()"></button>
-        </div>
-        <div class="modal-body">
-          <textarea id="batch-import-textarea" [(ngModel)]="batchImportText" class="form-control" rows="6"
-          placeholder="Paste one video URL per line"></textarea>
-          <div class="mt-2">
-            @if (batchImportStatus) {
-              <small>{{ batchImportStatus }}</small>
-            }
-            @if (batchImportTotal > 0) {
-              <div class="progress mt-2" style="height: 20px;">
-                <div class="progress-bar"
-                  [class.bg-danger]="batchImportFailures > 0"
-                  role="progressbar"
-                  [style.width.%]="(batchImportCount / batchImportTotal) * 100"
-                  [attr.aria-valuenow]="batchImportCount"
-                  [attr.aria-valuemin]="0"
-                  [attr.aria-valuemax]="batchImportTotal">
-                  {{ batchImportCount }} / {{ batchImportTotal }}
-                </div>
-              </div>
-            }
-          </div>
-        </div>
-        <div class="modal-footer">
-          @if (importInProgress) {
-            <button type="button" class="btn btn-danger me-auto" (click)="cancelBatchImport()">
-              Cancel Import
-            </button>
-          }
-          <button type="button" class="btn btn-secondary" (click)="closeBatchImportModal()">Close</button>
-          <button type="button" class="btn btn-primary" (click)="startBatchImport()" [disabled]="importInProgress">
-            Import URLs
-          </button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-
   @if (downloads.loading) {
     <div class="alert alert-info" role="alert">
       Connecting to server...

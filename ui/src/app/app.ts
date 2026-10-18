@@ -1,7 +1,7 @@
 import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
 import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
-import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, takeUntil, tap } from 'rxjs';
+import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, tap } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
@@ -10,7 +10,7 @@ import { NgSelectModule } from '@ng-select/ng-select';
 import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faShareNodes } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
-import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
+import { ADD_REQUEST_CONCURRENCY, AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { MeTubeSocket } from './services/metube-socket.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
@@ -35,6 +35,7 @@ import {
   ToastContainerComponent,
   PlaylistBrowserComponent,
   SubscriptionsSectionComponent,
+  BatchImportComponent,
 } from './components/';
 
 @Component({
@@ -117,20 +118,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   readonly folderTypeahead = viewChild<NgbTypeahead>('folderTypeahead');
   folderFocus$ = new Subject<string>();
   folderClick$ = new Subject<string>();
-  showBatchPanel = false;
-  batchImportModalOpen = false;
-  batchImportText = '';
-  batchImportStatus = '';
-  batchImportCount = 0;
-  batchImportTotal = 0;
-  batchImportFailures = 0;
-  importInProgress = false;
-  private batchImportCancel$ = new Subject<void>();
-  // Maximum number of /add or /retry requests to have in flight at once when
-  // queuing many items (batch import, picked playlist entries, Retry failed).
-  // Each one is a yt-dlp metadata extraction on the server, which must not be
-  // hit with hundreds at a time when a list is long.
-  private static readonly ADD_REQUEST_CONCURRENCY = 4;
   ytDlpOptionsUpdateTime: string | null = null;
   ytDlpVersion: string | null = null;
   metubeVersion: string | null = null;
@@ -158,7 +145,6 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   // The theme is the one setting kept in a cookie: the server sets it to
   // DEFAULT_THEME on a first visit. Everything else is in SettingsStore.
   private static readonly THEME_COOKIE_EXPIRY_DAYS = 3650;
-  private lastFocusedElement: HTMLElement | null = null;
   private colorSchemeMediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
   private onColorSchemeChanged = () => {
     if (this.activeTheme && this.activeTheme.id === 'auto') {
@@ -940,7 +926,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
             }
           }),
         ),
-        App.ADD_REQUEST_CONCURRENCY,
+        ADD_REQUEST_CONCURRENCY,
       ),
       takeUntilDestroyed(this.destroyRef),
       finalize(() => {
@@ -1126,7 +1112,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
       }
     });
     from(failed).pipe(
-      mergeMap(([key, dl]) => this.retryRequest(key, dl), App.ADD_REQUEST_CONCURRENCY),
+      mergeMap(([key, dl]) => this.retryRequest(key, dl), ADD_REQUEST_CONCURRENCY),
       takeUntilDestroyed(this.destroyRef),
     ).subscribe();
   }
@@ -1310,104 +1296,10 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     }
   }
 
-  // Toggle inline batch panel (if you want to use an inline panel for export; not used for import modal)
-  toggleBatchPanel(): void {
-    this.showBatchPanel = !this.showBatchPanel;
-  }
-
-  // Open the Batch Import modal
+  // Open the Batch Import modal; each URL is queued with the form's settings.
   openBatchImportModal(): void {
-    this.lastFocusedElement = document.activeElement instanceof HTMLElement ? document.activeElement : null;
-    this.batchImportModalOpen = true;
-    this.batchImportText = '';
-    this.batchImportStatus = '';
-    this.batchImportCount = 0;
-    this.batchImportTotal = 0;
-    this.batchImportFailures = 0;
-    this.importInProgress = false;
-    setTimeout(() => {
-      const textarea = document.getElementById('batch-import-textarea');
-      if (textarea instanceof HTMLTextAreaElement) {
-        textarea.focus();
-      }
-    }, 0);
-  }
-
-  // Close the Batch Import modal
-  closeBatchImportModal(): void {
-    this.batchImportModalOpen = false;
-    this.lastFocusedElement?.focus();
-  }
-
-  // Start importing URLs from the batch modal textarea
-  startBatchImport(): void {
-    const urls = this.batchImportText
-      .split(/\r?\n/)
-      .map(url => url.trim())
-      .filter(url => url.length > 0);
-    if (urls.length === 0) {
-      this.toasts.error('No valid URLs found.');
-      return;
-    }
-    this.importInProgress = true;
-    this.batchImportCount = 0;
-    this.batchImportFailures = 0;
-    this.batchImportTotal = urls.length;
-    this.updateBatchImportStatus();
-
-    from(urls).pipe(
-      mergeMap(
-        url => this.downloads.add(this.buildAddPayload({ url })).pipe(
-          // downloads.add() already catches HTTP errors and emits a single
-          // Status value, so `tap` (not `finalize`) is the right place to
-          // count. This avoids incrementing the counter when an in-flight
-          // request is aborted by cancellation.
-          tap((status: Status) => {
-            if (status.status === 'error') {
-              this.batchImportFailures++;
-              console.error(`Error adding URL ${url}: ${status.msg}`);
-            }
-            this.batchImportCount++;
-            this.updateBatchImportStatus();
-            this.cdr.markForCheck();
-          }),
-        ),
-        App.ADD_REQUEST_CONCURRENCY,
-      ),
-      takeUntil(this.batchImportCancel$),
-      takeUntilDestroyed(this.destroyRef),
-      finalize(() => {
-        this.importInProgress = false;
-        this.updateBatchImportStatus(true);
-        this.cdr.markForCheck();
-      }),
-    ).subscribe();
-  }
-
-  private updateBatchImportStatus(done = false): void {
-    const parts: string[] = [];
-    if (done) {
-      const processed = this.batchImportCount;
-      if (processed < this.batchImportTotal) {
-        parts.push(`Import cancelled after ${processed} of ${this.batchImportTotal} URLs.`);
-      } else {
-        parts.push(`Finished importing ${this.batchImportTotal} URLs.`);
-      }
-    } else {
-      parts.push(`Importing ${this.batchImportCount} of ${this.batchImportTotal} URLs...`);
-    }
-    if (this.batchImportFailures > 0) {
-      parts.push(`${this.batchImportFailures} failed.`);
-    }
-    this.batchImportStatus = parts.join(' ');
-  }
-
-  // Cancel the batch import process: aborts in-flight and pending requests
-  // immediately via the cancellation Subject wired into the pipeline.
-  cancelBatchImport(): void {
-    if (this.importInProgress) {
-      this.batchImportCancel$.next();
-    }
+    const ref = this.modal.open(BatchImportComponent);
+    ref.componentInstance.buildPayload = (url: string) => this.buildAddPayload({ url });
   }
 
   // Export URLs based on filter: 'pending', 'completed', 'failed', or 'all'

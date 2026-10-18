@@ -6,6 +6,12 @@ import { MeTubeSocket } from './metube-socket.service';
 import { Download, FormatCatalog, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
+// Maximum number of /add or /retry requests to have in flight at once when
+// queuing many items (batch import, picked playlist entries, Retry failed).
+// Each one is a yt-dlp metadata extraction on the server, which must not be
+// hit with hundreds at a time when a list is long.
+export const ADD_REQUEST_CONCURRENCY = 4;
+
 export interface AddDownloadPayload {
   url: string;
   downloadType: string;
