@@ -143,6 +143,14 @@ class ConfigTests(unittest.TestCase):
             c = Config()
         self.assertEqual(c.YTDL_OPTIONS_PRESETS["Audio extras"]["embed_thumbnail"], True)
 
+    def test_blank_ytdl_options_and_presets_mean_none(self):
+        # A compose file often sets a variable to nothing; that used to be
+        # parsed as JSON and stop the server.
+        with patch.dict(os.environ, _base_env(YTDL_OPTIONS="", YTDL_OPTIONS_PRESETS="  "), clear=False):
+            c = Config()
+        self.assertEqual(c.YTDL_OPTIONS, {})
+        self.assertEqual(c.YTDL_OPTIONS_PRESETS, {})
+
     def test_invalid_ytdl_options_exits(self):
         with patch.dict(os.environ, _base_env(YTDL_OPTIONS="not-json"), clear=False):
             with self.assertRaises(SystemExit):

@@ -307,9 +307,16 @@ class Config:
         """
         return {k: getattr(self, k) for k in self._FRONTEND_KEYS}
 
+    def _env_json(self, key: str):
+        """The JSON in an environment variable, parsed afresh (a reload reads the
+        environment again, since the attribute holds the parsed value). Unset or
+        blank -- as a compose file often leaves it -- means the default."""
+        raw = os.environ.get(key, '').strip() or self._DEFAULTS[key]
+        return json.loads(raw)
+
     def load_ytdl_options(self) -> tuple[bool, str]:
         try:
-            self.YTDL_OPTIONS = json.loads(os.environ.get('YTDL_OPTIONS', '{}'))
+            self.YTDL_OPTIONS = self._env_json('YTDL_OPTIONS')
             assert isinstance(self.YTDL_OPTIONS, dict)
         except (json.decoder.JSONDecodeError, AssertionError):
             msg = 'Environment variable YTDL_OPTIONS is invalid'
@@ -340,7 +347,7 @@ class Config:
 
     def load_ytdl_option_presets(self) -> tuple[bool, str]:
         try:
-            self.YTDL_OPTIONS_PRESETS = json.loads(os.environ.get('YTDL_OPTIONS_PRESETS', '{}'))
+            self.YTDL_OPTIONS_PRESETS = self._env_json('YTDL_OPTIONS_PRESETS')
             assert isinstance(self.YTDL_OPTIONS_PRESETS, dict)
             assert all(isinstance(name, str) and isinstance(options, dict) for name, options in self.YTDL_OPTIONS_PRESETS.items())
         except (json.decoder.JSONDecodeError, AssertionError):
