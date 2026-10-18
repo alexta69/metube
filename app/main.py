@@ -1411,64 +1411,52 @@ async def connect(sid, environ):
     if config.YTDL_OPTIONS_FILE:
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
 
+_CUSTOM_DIRS_CACHE_TTL_SECONDS = 5
+# (key, time, value) of the last listing; a connect storm reuses it.
+_custom_dirs_cache = None
+
+
+def _list_subdirs(base: str) -> list[str]:
+    """Every directory under *base*, relative to it, minus the excluded ones.
+
+    '' (the base itself) comes first, and is listed even when the directory
+    is empty or does not exist yet. Paths are made relative with
+    Path.relative_to rather than by stripping *base* as a string prefix,
+    which with the default DOWNLOAD_DIR '.' also stripped the dot off
+    '.hidden', listing it as 'hidden' where the exclude pattern missed it.
+    """
+    root = pathlib.Path(base)
+    exclude = config.CUSTOM_DIRS_EXCLUDE_RE
+    dirs = ['']
+    for path in root.glob('**/'):
+        rel = path.relative_to(root).as_posix()
+        if rel == '.' or (exclude is not None and exclude.search(rel)):
+            continue
+        dirs.append(rel)
+    return dirs
+
+
 def get_custom_dirs():
-    cache_ttl_seconds = 5
+    global _custom_dirs_cache
     now = time.monotonic()
-    cache_key = (
-        config.DOWNLOAD_DIR,
-        config.AUDIO_DOWNLOAD_DIR,
-        config.CUSTOM_DIRS_EXCLUDE_REGEX,
-    )
+    key = (config.DOWNLOAD_DIR, config.AUDIO_DOWNLOAD_DIR, config.CUSTOM_DIRS_EXCLUDE_REGEX)
     if (
-        hasattr(get_custom_dirs, "_cache_key")
-        and hasattr(get_custom_dirs, "_cache_value")
-        and hasattr(get_custom_dirs, "_cache_time")
-        and get_custom_dirs._cache_key == cache_key
-        and (now - get_custom_dirs._cache_time) < cache_ttl_seconds
+        _custom_dirs_cache is not None
+        and _custom_dirs_cache[0] == key
+        and now - _custom_dirs_cache[1] < _CUSTOM_DIRS_CACHE_TTL_SECONDS
     ):
-        return get_custom_dirs._cache_value
+        return _custom_dirs_cache[2]
 
-    def recursive_dirs(base):
-        path = pathlib.Path(base)
-
-        # Converts PosixPath object to string, and remove base/ prefix
-        def convert(p):
-            s = str(p)
-            if s.startswith(base):
-                s = s[len(base):]
-
-            if s.startswith('/'):
-                s = s[1:]
-
-            return s
-
-        # Include only directories which do not match the exclude filter
-        def include_dir(d):
-            exclude = config.CUSTOM_DIRS_EXCLUDE_RE
-            return exclude is None or exclude.search(d) is None
-
-        # Recursively lists all subdirectories of DOWNLOAD_DIR.
-        # Always include '' (the base directory itself) even when the
-        # directory is empty or does not yet exist.
-        dirs = list(filter(include_dir, map(convert, path.glob('**/'))))
-        if '' not in dirs:
-            dirs.insert(0, '')
-
-        return dirs
-
-    download_dir = recursive_dirs(config.DOWNLOAD_DIR)
-
+    download_dir = _list_subdirs(config.DOWNLOAD_DIR)
     audio_download_dir = download_dir
     if config.DOWNLOAD_DIR != config.AUDIO_DOWNLOAD_DIR:
-        audio_download_dir = recursive_dirs(config.AUDIO_DOWNLOAD_DIR)
+        audio_download_dir = _list_subdirs(config.AUDIO_DOWNLOAD_DIR)
 
     result = {
         "download_dir": download_dir,
         "audio_download_dir": audio_download_dir
     }
-    get_custom_dirs._cache_key = cache_key
-    get_custom_dirs._cache_time = now
-    get_custom_dirs._cache_value = result
+    _custom_dirs_cache = (key, now, result)
     return result
 
 @routes.get(config.URL_PREFIX)

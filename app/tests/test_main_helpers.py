@@ -421,6 +421,25 @@ class GetCustomDirsTests(unittest.TestCase):
         self.assertIn("audio_download_dir", result)
         self.assertIn("", result["download_dir"])
 
+    def test_lists_subdirectories_relative_to_the_base_minus_excluded_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for d in ("Music/Albums", ".hidden", "@eaDir", "Shows"):
+                os.makedirs(os.path.join(tmp, d))
+            dirs = main._list_subdirs(tmp)
+            self.assertEqual(dirs[0], "")
+            self.assertEqual(sorted(dirs), ["", "Music", "Music/Albums", "Shows"])
+            # The default DOWNLOAD_DIR is '.', and stripping it as a string
+            # prefix used to list '.hidden' as 'hidden', past the exclusion.
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                self.assertEqual(sorted(main._list_subdirs(".")), ["", "Music", "Music/Albums", "Shows"])
+            finally:
+                os.chdir(cwd)
+
+    def test_missing_base_still_offers_the_base_itself(self):
+        self.assertEqual(main._list_subdirs("/nonexistent/metube-test"), [""])
+
 
 if __name__ == "__main__":
     unittest.main()
