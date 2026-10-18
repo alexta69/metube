@@ -4,7 +4,6 @@ import yt_dlp
 import collections
 import collections.abc
 import copy
-import pickle
 from collections import OrderedDict
 import time
 import asyncio
@@ -408,36 +407,39 @@ def _resolve_outtmpl_fields(template: str, info_dict: dict, prefixes: tuple[str,
 _MAX_ENTRY_SANITIZE_DEPTH = 64
 
 
-def _sanitize_entry_for_pickle(obj, _depth=0):
-    """Recursively normalize yt-dlp ``info_dict`` data so it can be stored in shelve/pickle.
+def _sanitize_entry(obj, _depth=0):
+    """Recursively normalize yt-dlp ``info_dict`` data so it can be persisted.
 
     Live streams and newer yt-dlp versions may nest generators, iterators, sets, or
-    non-serializable objects (e.g. locks) inside the extracted metadata. The previous
-    helper only walked plain dict/list/tuple and only expanded ``types.GeneratorType``.
+    objects that cannot be stored (e.g. locks) inside the extracted metadata.
+    Containers become lists and dicts; a leaf the JSON state store cannot
+    encode becomes None. (This used to test leaves with pickle, from when the
+    queues were shelves: a value that pickled but was not JSON then failed the
+    state write, and with it the add.)
     """
     if _depth > _MAX_ENTRY_SANITIZE_DEPTH:
         return None
     if obj is None or isinstance(obj, (bool, int, float, str, bytes)):
         return obj
     if isinstance(obj, types.GeneratorType):
-        return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+        return _sanitize_entry(list(obj), _depth + 1)
     if isinstance(obj, collections.abc.Mapping):
-        return {k: _sanitize_entry_for_pickle(v, _depth + 1) for k, v in obj.items()}
+        return {k: _sanitize_entry(v, _depth + 1) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return type(obj)(_sanitize_entry_for_pickle(x, _depth + 1) for x in obj)
+        return type(obj)(_sanitize_entry(x, _depth + 1) for x in obj)
     if isinstance(obj, (set, frozenset)):
-        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+        return [_sanitize_entry(x, _depth + 1) for x in obj]
     if isinstance(obj, collections.deque):
-        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+        return [_sanitize_entry(x, _depth + 1) for x in obj]
     if isinstance(obj, collections.abc.Iterator):
         try:
-            return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+            return _sanitize_entry(list(obj), _depth + 1)
         except Exception:
             return None
     try:
-        pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+        to_json_compatible(obj)
         return obj
-    except Exception:
+    except TypeError:
         return None
 
 
@@ -595,8 +597,8 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        # Strip non-pickleable values (generators, iterators, locks, etc.) for shelve
-        self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
+        # Strip values the state store cannot hold (generators, iterators, locks, etc.)
+        self.entry = _sanitize_entry(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.sponsorblock = sponsorblock

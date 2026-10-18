@@ -4,8 +4,8 @@ from __future__ import annotations
 
 import asyncio
 import multiprocessing
+import json
 import os
-import pickle
 import signal
 import sys
 import tempfile
@@ -14,6 +14,8 @@ import time
 import types
 import unittest
 import warnings
+from datetime import datetime
+from decimal import Decimal
 from pathlib import Path
 from concurrent.futures import ThreadPoolExecutor
 from unittest.mock import AsyncMock, MagicMock, patch
@@ -76,6 +78,7 @@ sys.modules.setdefault("yt_dlp.postprocessor.common", fake_postprocessor_common)
 sys.modules.setdefault("yt_dlp.utils", fake_utils)
 
 import ytdl
+from state_store import to_json_compatible
 from ytdl import (
     Download,
     DownloadInfo,
@@ -85,7 +88,7 @@ from ytdl import (
     _pot_provider_urls,
     _AlbumArtistPostProcessor,
     _resolve_outtmpl_fields,
-    _sanitize_entry_for_pickle,
+    _sanitize_entry,
     _sanitize_path_component,
     _short_title_for_failed_url,
 )
@@ -427,40 +430,47 @@ class ConfinedYoutubeDLTests(unittest.TestCase):
             self._prepared_path(escaping)
 
 
-class SanitizeEntryForPickleTests(unittest.TestCase):
+class SanitizeEntryTests(unittest.TestCase):
     def test_nested(self):
         def g():
             yield 1
 
         obj = {"a": g(), "b": [g()]}
-        out = _sanitize_entry_for_pickle(obj)
+        out = _sanitize_entry(obj)
         self.assertEqual(out, {"a": [1], "b": [[1]]})
-        pickle.dumps(out)
+        json.dumps(to_json_compatible(out))
 
     def test_plain(self):
-        self.assertEqual(_sanitize_entry_for_pickle(5), 5)
+        self.assertEqual(_sanitize_entry(5), 5)
 
     def test_set_converted_to_list(self):
         obj = {"s": {1, 2}}
-        out = _sanitize_entry_for_pickle(obj)
+        out = _sanitize_entry(obj)
         self.assertEqual(sorted(out["s"]), [1, 2])
-        pickle.dumps(out)
+        json.dumps(to_json_compatible(out))
 
     def test_map_iterator(self):
-        out = _sanitize_entry_for_pickle({"m": map(int, ["1", "2"])})
+        out = _sanitize_entry({"m": map(int, ["1", "2"])})
         self.assertEqual(out, {"m": [1, 2]})
 
     def test_lock_replaced_with_none(self):
         lock = threading.Lock()
-        out = _sanitize_entry_for_pickle({"k": lock})
+        out = _sanitize_entry({"k": lock})
         self.assertIsNone(out["k"])
-        pickle.dumps(out)
+        json.dumps(to_json_compatible(out))
+
+    def test_value_the_json_store_cannot_hold_becomes_none(self):
+        # Picklable, but not something the JSON state store can encode: it
+        # used to be kept, and then failed the state write -- and the add.
+        out = _sanitize_entry({"price": Decimal("1.5"), "ok": "yes", "when": datetime(2026, 1, 1)})
+        self.assertEqual(out, {"price": None, "ok": "yes", "when": datetime(2026, 1, 1)})
+        json.dumps(to_json_compatible(out))
 
     def test_ordered_dict(self):
         from collections import OrderedDict
 
         od = OrderedDict([("z", 1), ("a", 2)])
-        out = _sanitize_entry_for_pickle(od)
+        out = _sanitize_entry(od)
         self.assertEqual(out, {"z": 1, "a": 2})
 
 
