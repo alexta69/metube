@@ -506,9 +506,9 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
 
             self.assertEqual(len(queue.entries), 1)
             _entry, args, _kwargs = queue.entries[0]
-            # add_entry(entry, download_type, ..., ytdl_options_overrides, clip_start, clip_end)
-            self.assertEqual(args[-2], 30.0)
-            self.assertEqual(args[-1], 90.0)
+            options, = args
+            self.assertEqual(options.clip_start, 30.0)
+            self.assertEqual(options.clip_end, 90.0)
 
     async def test_clip_bounds_survive_reload_and_default_to_none(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -573,8 +573,8 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 await mgr.check_now([sub_id])
 
             self.assertEqual(len(queue.entries), 1)
-            _entry, _args, kwargs = queue.entries[0]
-            self.assertIs(kwargs["sponsorblock"], True)
+            _entry, (options,), _kwargs = queue.entries[0]
+            self.assertIs(options.sponsorblock, True)
 
     async def test_sponsorblock_survives_reload_and_defaults_to_false(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -633,8 +633,8 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
                 await mgr.check_now([sub_id])
 
             self.assertEqual(len(queue.entries), 1)
-            _entry, _args, kwargs = queue.entries[0]
-            self.assertEqual(kwargs["audio_tags"], "none")
+            _entry, (options,), _kwargs = queue.entries[0]
+            self.assertEqual(options.audio_tags, "none")
 
     async def test_audio_tags_survive_reload_and_default_to_with_cover(self):
         with tempfile.TemporaryDirectory() as tmp:
@@ -1821,3 +1821,24 @@ class SubscriptionEventLoopTests(unittest.IsolatedAsyncioTestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class SubscriptionMutateTests(unittest.IsolatedAsyncioTestCase):
+    async def test_failed_save_restores_the_subscription(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            sub = SubscriptionInfo(id="s1", name="Before", url="https://example.com/c")
+            mgr._subs[sub.id] = sub
+
+            with patch.object(mgr, "_save_locked", side_effect=OSError("disk full")):
+                with self.assertRaises(OSError):
+                    await mgr.update_subscription("s1", {"name": "After", "enabled": False})
+
+            self.assertEqual(mgr.get("s1").name, "Before")
+            self.assertTrue(mgr.get("s1").enabled)
+
+    async def test_update_of_a_deleted_subscription_reports_it(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            result = await mgr.update_subscription("gone", {"name": "x"})
+            self.assertEqual(result, {"status": "error", "msg": "Subscription not found"})

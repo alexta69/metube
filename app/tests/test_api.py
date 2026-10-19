@@ -53,6 +53,10 @@ def _valid_video_add_body(**kwargs):
     return base
 
 
+def _selection(options):
+    return (options.download_type, options.codec, options.format, options.quality)
+
+
 def _json_request(body: dict | None):
     req = MagicMock(spec=web.Request)
     req.json = AsyncMock(return_value=body)
@@ -100,8 +104,8 @@ async def test_add_passes_preset_and_overrides(mock_dqueue, monkeypatch):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.args[13] == ["Preset A"]
-    assert call.args[14] == {"writesubtitles": True}
+    assert call.args[1].ytdl_options_presets == ("Preset A",)
+    assert call.args[1].ytdl_options_overrides == {"writesubtitles": True}
 
 
 @pytest.mark.asyncio
@@ -111,7 +115,7 @@ async def test_add_passes_video_password(mock_dqueue):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.kwargs["video_password"] == "s3cret pw"
+    assert call.args[1].video_password == "s3cret pw"
 
 
 @pytest.mark.asyncio
@@ -121,7 +125,7 @@ async def test_add_without_video_password_passes_none(mock_dqueue):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.kwargs["video_password"] is None
+    assert call.args[1].video_password is None
 
 
 @pytest.mark.asyncio
@@ -149,7 +153,7 @@ async def test_add_legacy_string_preset_normalized(mock_dqueue, monkeypatch):
     resp = await main.add(req)
     assert resp.status == 200
     call = mock_dqueue.add.await_args
-    assert call.args[13] == ["Legacy"]
+    assert call.args[1].ytdl_options_presets == ("Legacy",)
 
 
 @pytest.mark.asyncio
@@ -220,7 +224,7 @@ async def test_add_allows_any_ytdl_options_override_key_when_enabled(mock_dqueue
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.args[14] == {"exec": "echo hi"}
+    assert call.args[1].ytdl_options_overrides == {"exec": "echo hi"}
 
 
 @pytest.mark.asyncio
@@ -393,7 +397,7 @@ async def test_add_legacy_format_migrated(mock_dqueue):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.args[1] == "audio"
+    assert call.args[1].download_type == "audio"
 
 
 @pytest.mark.asyncio
@@ -405,8 +409,8 @@ async def test_add_passes_clip_bounds_to_queue(mock_dqueue):
     assert resp.status == 200
     call = mock_dqueue.add.await_args
     assert call is not None
-    assert call.args[15] == pytest.approx(146.0)
-    assert call.args[16] == pytest.approx(204.0)
+    assert call.args[1].clip_start == pytest.approx(146.0)
+    assert call.args[1].clip_end == pytest.approx(204.0)
 
 
 @pytest.mark.asyncio
@@ -454,8 +458,8 @@ async def test_add_audio_auto_passes_audio_tags(mock_dqueue):
     resp = await main.add(req)
     assert resp.status == 200
     call = mock_dqueue.add.await_args
-    assert call.args[3] == "auto"
-    assert call.kwargs["audio_tags"] == "none"
+    assert call.args[1].format == "auto"
+    assert call.args[1].audio_tags == "none"
 
 
 @pytest.mark.asyncio
@@ -463,7 +467,7 @@ async def test_add_defaults_audio_tags_to_with_cover(mock_dqueue):
     # API clients that predate the field keep today's cover-and-tags behaviour.
     req = _json_request(_valid_video_add_body(download_type="audio", format="mp3"))
     await main.add(req)
-    assert mock_dqueue.add.await_args.kwargs["audio_tags"] == "with_cover"
+    assert mock_dqueue.add.await_args.args[1].audio_tags == "with_cover"
 
 
 @pytest.mark.asyncio
@@ -1093,7 +1097,7 @@ async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, mon
 async def test_add_passes_an_ios_height_through(mock_dqueue):
     resp = await main.add(_json_request(_valid_video_add_body(format="ios", quality="720")))
     assert resp.status == 200
-    assert mock_dqueue.add.await_args.args[1:5] == ("video", "auto", "ios", "720")
+    assert _selection(mock_dqueue.add.await_args.args[1]) == ("video", "auto", "ios", "720")
 
 
 @pytest.mark.asyncio
@@ -1102,7 +1106,7 @@ async def test_add_ignores_a_codec_on_a_type_that_has_none(mock_dqueue):
         _valid_video_add_body(download_type="audio", codec="bogus", format="mp3", quality="320")
     ))
     assert resp.status == 200
-    assert mock_dqueue.add.await_args.args[1:5] == ("audio", "auto", "mp3", "320")
+    assert _selection(mock_dqueue.add.await_args.args[1]) == ("audio", "auto", "mp3", "320")
 
 
 @pytest.mark.asyncio
@@ -1117,4 +1121,39 @@ async def test_add_with_only_a_url_downloads_the_best_video(mock_dqueue):
     # Documented for integration authors on the wiki's "Sending links" page.
     resp = await main.add(_json_request({"url": "https://example.com/v"}))
     assert resp.status == 200
-    assert mock_dqueue.add.await_args.args[1:5] == ("video", "auto", "any", "best")
+    assert _selection(mock_dqueue.add.await_args.args[1]) == ("video", "auto", "any", "best")
+
+
+@pytest.mark.asyncio
+async def test_subscribe_reads_string_booleans(mock_dqueue, monkeypatch):
+    # add_subscription stores bool(value), so a string 'false' used to enable
+    # chapter splitting and auto start on every future download.
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request({
+        **_valid_video_add_body(), "check_interval_minutes": 60,
+        "split_by_chapters": "false", "auto_start": "false", "sponsorblock": "true",
+    })
+    await main.subscribe(req)
+    kwargs = main.submgr.add_subscription.await_args.kwargs
+    assert kwargs["split_by_chapters"] is False
+    assert kwargs["auto_start"] is False
+    assert kwargs["sponsorblock"] is True
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("field,value", [
+    ("custom_name_prefix", 7),
+    ("folder", ["a"]),
+    ("auto_start", "maybe"),
+    ("playlist_item_limit", -1),
+])
+async def test_add_refuses_malformed_fields_with_400(mock_dqueue, field, value):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.add(_json_request(_valid_video_add_body(**{field: value})))
+    mock_dqueue.add.assert_not_awaited()
+
+
+@pytest.mark.asyncio
+async def test_browse_refuses_negative_item_limit(mock_dqueue):
+    with pytest.raises(web.HTTPBadRequest):
+        await main.browse(_json_request({"url": "https://example.com/list", "playlist_item_limit": -3}))

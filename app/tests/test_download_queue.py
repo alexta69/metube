@@ -14,6 +14,10 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import time
 
+import yt_dlp
+
+import subscriptions
+from download_options import DownloadOptions
 from ytdl import (
     Download,
     DownloadInfo,
@@ -35,7 +39,7 @@ def dq_env():
         cfg.DOWNLOAD_DIR = dl
         cfg.AUDIO_DOWNLOAD_DIR = dl
         cfg.TEMP_DIR = dl
-        cfg.MAX_CONCURRENT_DOWNLOADS = "3"
+        cfg.MAX_CONCURRENT_DOWNLOADS = 3
         # Explicit: an unset attribute on a MagicMock is truthy, which would
         # make validate_url bypass every SSRF check it is asked to run.
         cfg.ALLOW_PRIVATE_ADDRESSES = False
@@ -43,7 +47,7 @@ def dq_env():
         cfg.YTDL_OPTIONS_PRESETS = {}
         cfg.CUSTOM_DIRS = True
         cfg.CREATE_CUSTOM_DIRS = True
-        cfg.CLEAR_COMPLETED_AFTER = "0"
+        cfg.CLEAR_COMPLETED_AFTER = 0
         cfg.DELETE_FILE_ON_TRASHCAN = 'false'
         cfg.OUTPUT_TEMPLATE = "%(title)s.%(ext)s"
         cfg.OUTPUT_TEMPLATE_CHAPTER = "%(title)s.%(ext)s"
@@ -113,17 +117,7 @@ async def test_add_single_video_goes_to_pending_when_auto_start_false(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
-        result = await dq.add(
-            "https://example.com/watch?v=1",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-        )
+        result = await dq.add("https://example.com/watch?v=1", DownloadOptions(auto_start=False))
     assert result["status"] == "ok"
     assert dq.pending.exists("https://example.com/watch?v=1")
 
@@ -142,9 +136,7 @@ async def test_add_unsupported_url_recorded_as_failed_entry(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
-        result = await dq.add(
-            url, "video", "auto", "any", "best", "", "", 0, auto_start=True,
-        )
+        result = await dq.add(url, DownloadOptions())
     assert result["status"] == "error"
     assert dq.done.exists(url)
     failed = dq.done.get(url)
@@ -169,7 +161,7 @@ async def test_add_scheme_less_internal_url_refused_before_any_connection(dq_env
     notifier = AsyncMock()
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(socket.socket, "connect", side_effect=AssertionError("connected")) as connect:
-        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+        result = await dq.add(url, DownloadOptions())
     connect.assert_not_called()
     assert result["status"] == "error"
     assert "internal address" in result["msg"]
@@ -190,8 +182,8 @@ async def test_add_of_an_archived_video_says_it_is_in_the_archive(dq_env):
     with patch("ytdl.validate_url", return_value=None), \
             patch.object(socket.socket, "connect", side_effect=AssertionError("connected")):
         result = await dq.add(
-            "https://www.youtube.com/watch?v=jNQXAC9IVRw", "audio", "auto", "mp3", "best", "", "", 0,
-            auto_start=True,
+            "https://www.youtube.com/watch?v=jNQXAC9IVRw",
+            DownloadOptions(download_type="audio", format="mp3"),
         )
 
     assert result["status"] == "error"
@@ -212,10 +204,7 @@ async def test_add_reports_an_error_swallowed_by_ignoreerrors(dq_env):
 
     with patch("ytdl.validate_url", return_value=None), \
             patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
-        result = await dq.add(
-            "https://www.youtube.com/watch?v=abc", "video", "auto", "any", "best", "", "", 0,
-            auto_start=True,
-        )
+        result = await dq.add("https://www.youtube.com/watch?v=abc", DownloadOptions())
 
     assert result == {"status": "error", "msg": "ERROR: [youtube] abc: Private video"}
 
@@ -228,9 +217,7 @@ async def test_add_ssrf_rejected_url_recorded_as_failed_entry(dq_env):
     url = "file:///etc/passwd"
 
     dq = DownloadQueue(dq_env, notifier)
-    result = await dq.add(
-        url, "video", "auto", "any", "best", "", "", 0, auto_start=True,
-    )
+    result = await dq.add(url, DownloadOptions())
     assert result["status"] == "error"
     assert dq.done.exists(url)
     failed = dq.done.get(url)
@@ -255,7 +242,7 @@ async def test_add_does_not_resolve_hostname_when_proxied(dq_env):
          patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
             "https://only-the-proxy-can-resolve.invalid/x",
-            "video", "auto", "any", "best", "", "", 0, auto_start=False,
+            DownloadOptions(auto_start=False),
         )
     assert result["status"] == "ok"
     dq.close()
@@ -271,7 +258,7 @@ async def test_add_resolves_hostname_when_not_proxied(dq_env):
     with patch("url_guard.socket.getaddrinfo",
                return_value=[(socket.AF_INET, socket.SOCK_STREAM, socket.IPPROTO_TCP, "",
                               ("169.254.169.254", 0))]):
-        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+        result = await dq.add(url, DownloadOptions(auto_start=False))
     assert result["status"] == "error"
     dq.close()
 
@@ -291,17 +278,7 @@ async def test_cancel_removes_from_pending(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
-        await dq.add(
-            "https://example.com/pending",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-        )
+        await dq.add("https://example.com/pending", DownloadOptions(auto_start=False))
     url = "https://example.com/pending"
     await dq.cancel([url])
     assert not dq.pending.exists(url)
@@ -331,17 +308,7 @@ async def test_cancel_before_start_marks_download_canceled(dq_env):
     start_mock = AsyncMock()
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        await dq.add(
-            url,
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-        )
+        await dq.add(url, DownloadOptions())
         assert dq.queue.exists(url)
         download = dq.queue.get(url)
         assert download.canceled is False
@@ -366,17 +333,7 @@ async def test_start_pending_moves_to_queue(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
-        await dq.add(
-            "https://example.com/startme",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-        )
+        await dq.add("https://example.com/startme", DownloadOptions(auto_start=False))
     url = "https://example.com/startme"
     # Starting will spawn real download — cancel immediately before worker runs much
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", AsyncMock()):
@@ -397,7 +354,7 @@ async def test_queued_download_is_not_offered_as_startable(dq_env):
     button silently did nothing and still reported success (#1081).
     """
     notifier = AsyncMock()
-    dq_env.MAX_CONCURRENT_DOWNLOADS = "1"
+    dq_env.MAX_CONCURRENT_DOWNLOADS = 1
     dq = DownloadQueue(dq_env, notifier)
     released = asyncio.Event()
 
@@ -413,7 +370,7 @@ async def test_queued_download_is_not_offered_as_startable(dq_env):
          patch("ytdl.Download.start", blocking_start), \
          patch("ytdl.Download.close", lambda self: None):
         for url in (first, second):
-            await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+            await dq.add(url, DownloadOptions())
         await asyncio.sleep(0)
 
         # The first holds the only slot; the second is waiting behind it.
@@ -421,8 +378,16 @@ async def test_queued_download_is_not_offered_as_startable(dq_env):
         assert not dq.pending.exists(second)
 
         released.set()
+        # Let both finish and their state writes land before the fixture
+        # deletes the state directory; returning straight away raced the
+        # store's writer thread and failed teardown with "Directory not empty".
+        for _ in range(200):
+            if dq.queue.empty():
+                break
+            await asyncio.sleep(0.01)
+        assert dq.queue.empty()
 
-    await asyncio.sleep(0)
+    dq.close()
 
 
 @pytest.mark.asyncio
@@ -440,17 +405,7 @@ async def test_add_entry_queues_single_video_without_reextracting(dq_env):
     }
 
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")):
-        result = await dq.add_entry(
-            entry,
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-        )
+        result = await dq.add_entry(entry, DownloadOptions(auto_start=False))
 
     assert result["status"] == "ok"
     assert dq.pending.exists("https://example.com/watch?v=1")
@@ -694,12 +649,15 @@ async def test_add_entry_duplicate_while_pending_is_skipped_not_clobbered(dq_env
     }
 
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")):
-        first = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+        first = await dq.add_entry(entry, DownloadOptions(auto_start=False))
         assert first["status"] == "ok"
         assert "msg" not in first
 
         dupe_entry = {**entry, "title": "Different Title"}
-        second = await dq.add_entry(dupe_entry, "audio", "auto", "mp3", "best", "", "", 0, auto_start=False)
+        second = await dq.add_entry(
+            dupe_entry,
+            DownloadOptions(download_type="audio", format="mp3", auto_start=False),
+        )
 
     assert second["status"] == "ok"
     assert "Already in queue" in second["msg"]
@@ -723,11 +681,11 @@ async def test_add_entry_duplicate_while_queued_is_skipped(dq_env):
 
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", side_effect=AssertionError("should not re-extract")), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        first = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+        first = await dq.add_entry(entry, DownloadOptions())
         assert first["status"] == "ok"
         assert dq.queue.exists("https://example.com/watch?v=1")
 
-        second = await dq.add_entry(entry, "video", "auto", "any", "best", "", "", 0, auto_start=True)
+        second = await dq.add_entry(entry, DownloadOptions())
 
     assert second["status"] == "ok"
     assert "Already in queue" in second["msg"]
@@ -748,7 +706,7 @@ async def test_add_entry_reports_unusable_folder_instead_of_succeeding(dq_env):
     }
 
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        result = await dq.add_entry(entry, "video", "auto", "any", "best", "Missing", "", 0, auto_start=True)
+        result = await dq.add_entry(entry, DownloadOptions(folder="Missing"))
 
     assert result["status"] == "error"
     assert "Missing" in result["msg"]
@@ -774,8 +732,8 @@ async def test_playlist_folder_error_is_reported_once(dq_env):
     with patch("ytdl.validate_url", return_value=None), \
          patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
-            "https://example.com/playlist?list=PL1", "video", "auto", "any", "best", "Sub", "", 0,
-            auto_start=False,
+            "https://example.com/playlist?list=PL1",
+            DownloadOptions(folder="Sub", auto_start=False),
         )
 
     assert result["status"] == "error"
@@ -789,7 +747,7 @@ async def test_saved_download_that_cannot_be_restored_is_kept_as_failed(dq_env):
     os.makedirs(os.path.join(dq_env.DOWNLOAD_DIR, "Shows"))
     first = DownloadQueue(dq_env, AsyncMock())
     entry = {"_type": "video", "id": "vid1", "title": "Test Video", "url": url, "webpage_url": url}
-    await first.add_entry(entry, "video", "auto", "any", "best", "Shows", "", 0, auto_start=False)
+    await first.add_entry(entry, DownloadOptions(folder="Shows", auto_start=False))
     assert first.pending.exists(url)
 
     # The folder is gone by the next start, and may not be recreated.
@@ -840,14 +798,7 @@ async def test_channel_download_uses_output_template_when_channel_template_empty
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
             "https://www.youtube.com/@odin/videos",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
+            DownloadOptions(auto_start=False),
         )
 
     assert result["status"] == "ok"
@@ -887,14 +838,7 @@ async def test_playlist_download_not_treated_as_channel(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
             "https://www.youtube.com/playlist?list=PLxyz789",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
+            DownloadOptions(auto_start=False),
         )
 
     assert result["status"] == "ok"
@@ -936,7 +880,7 @@ async def _add_and_get_template(dq_env, extraction, url):
 
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
-        result = await dq.add(url, "video", "auto", "any", "best", "", "", 0, auto_start=False)
+        result = await dq.add(url, DownloadOptions(auto_start=False))
     assert result["status"] == "ok"
     return dq.pending.get("https://example.com/watch?v=1").output_template
 
@@ -1002,16 +946,11 @@ async def test_add_merges_global_preset_and_override_options(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
             "https://example.com/preset",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-            ytdl_options_presets=["Preset A", "Preset B"],
-            ytdl_options_overrides={"proxy": "http://override", "embed_thumbnail": True},
+            DownloadOptions(
+                auto_start=False,
+                ytdl_options_presets=["Preset A", "Preset B"],
+                ytdl_options_overrides={"proxy": "http://override", "embed_thumbnail": True},
+            ),
         )
 
     assert result["status"] == "ok"
@@ -1043,18 +982,7 @@ async def test_add_with_video_password_sets_ytdl_opt_and_reaches_extract_info(dq
 
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        result = await dq.add(
-            url,
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-            video_password="s3cret pw",
-        )
+        result = await dq.add(url, DownloadOptions(video_password="s3cret pw"))
 
     assert result["status"] == "ok"
     assert captured["kwargs"]["video_password"] == "s3cret pw"
@@ -1079,17 +1007,7 @@ async def test_add_without_video_password_omits_videopassword_opt(dq_env):
 
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        result = await dq.add(
-            url,
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-        )
+        result = await dq.add(url, DownloadOptions())
 
     assert result["status"] == "ok"
     queued = dq.queue.get(url)
@@ -1118,16 +1036,10 @@ async def test_add_video_password_overrides_ytdl_options_overrides(dq_env):
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
         result = await dq.add(
             url,
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-            ytdl_options_overrides={"videopassword": "other"},
-            video_password="s3cret pw",
+            DownloadOptions(
+                ytdl_options_overrides={"videopassword": "other"},
+                video_password="s3cret pw",
+            ),
         )
 
     assert result["status"] == "ok"
@@ -1189,15 +1101,7 @@ async def test_extract_info_preset_null_download_archive_overrides_global(dq_env
     with patch("ytdl.yt_dlp.YoutubeDL", FakeYoutubeDL):
         result = await dq.add(
             "https://example.com/archive-test",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-            ytdl_options_presets=["NoArchive"],
+            DownloadOptions(auto_start=False, ytdl_options_presets=["NoArchive"]),
         )
 
     assert result["status"] == "ok"
@@ -1236,20 +1140,54 @@ async def test_extract_info_metube_extract_keys_win_over_preset(dq_env):
     with patch("ytdl.yt_dlp.YoutubeDL", FakeYoutubeDL):
         result = await dq.add(
             "https://example.com/flat-test",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-            ytdl_options_presets=["TryOverride"],
+            DownloadOptions(auto_start=False, ytdl_options_presets=["TryOverride"]),
         )
 
     assert result["status"] == "ok"
     assert captured_params[0]["extract_flat"] is True
     assert captured_params[0]["noplaylist"] is True
+
+
+# The two tests below construct a real YoutubeDL and stub only the network
+# call: what they check is what YoutubeDL's constructor does to the params it
+# is given, which no fake can show. It fills its own default templates into
+# the outtmpl dict in place, so params sharing that dict with YTDL_OPTIONS or a
+# preset rewrote the config, and from the first extraction on yt-dlp's
+# "%(title)s [%(id)s].%(ext)s" beat OUTPUT_TEMPLATE in every download.
+
+
+@pytest.mark.asyncio
+async def test_extraction_leaves_the_configured_outtmpl_alone(dq_env):
+    dq_env.YTDL_OPTIONS = {"outtmpl": {"thumbnail": "thumbs/%(title)s.%(ext)s"}}
+    dq_env.YTDL_OPTIONS_PRESETS = {"Covers": {"outtmpl": {"pl_thumbnail": "covers/%(title)s.%(ext)s"}}}
+    configured = copy.deepcopy((dq_env.YTDL_OPTIONS, dq_env.YTDL_OPTIONS_PRESETS))
+
+    def extract_info(self, url, download=False):
+        return {"_type": "video", "id": url[-1], "title": "Clip", "url": url, "webpage_url": url}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(yt_dlp.YoutubeDL, "extract_info", extract_info):
+        for url in ("https://example.com/watch?v=1", "https://example.com/watch?v=2"):
+            result = await dq.add(url, DownloadOptions(auto_start=False, ytdl_options_presets=["Covers"]))
+            assert result["status"] == "ok"
+
+    assert (dq_env.YTDL_OPTIONS, dq_env.YTDL_OPTIONS_PRESETS) == configured
+    # The preset's outtmpl replaces the global one, as any preset key does, and
+    # nothing of yt-dlp's crept in, so the download's own merge still puts
+    # OUTPUT_TEMPLATE in as the default template.
+    assert dq.pending.get("https://example.com/watch?v=2").ytdl_opts["outtmpl"] == {
+        "pl_thumbnail": "covers/%(title)s.%(ext)s",
+    }
+
+
+def test_subscription_scan_leaves_the_configured_outtmpl_alone(dq_env):
+    dq_env.YTDL_OPTIONS = {"outtmpl": {"thumbnail": "thumbs/%(title)s.%(ext)s"}}
+    extra_opts = {"outtmpl": {"pl_thumbnail": "covers/%(title)s.%(ext)s"}}
+    configured = copy.deepcopy((dq_env.YTDL_OPTIONS, extra_opts))
+
+    yt_dlp.YoutubeDL(subscriptions._build_ydl_params(dq_env, extra_opts=extra_opts))
+
+    assert (dq_env.YTDL_OPTIONS, extra_opts) == configured
 
 
 def _feed_extract(feed):
@@ -1311,8 +1249,8 @@ async def test_channel_feed_metadata_lands_beside_its_items(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_CHANNEL_FEED)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
         result = await dq.add(
-            "https://example.com/@vanessa/videos", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
+            "https://example.com/@vanessa/videos",
+            DownloadOptions(auto_start=False),
         )
 
     assert result["status"] == "ok"
@@ -1329,10 +1267,7 @@ async def test_playlist_feed_metadata_uses_the_playlist_template(dq_env):
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        await dq.add(
-            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
-        )
+        await dq.add("https://example.com/playlist?list=PL123", DownloadOptions(auto_start=False))
 
     assert _written_files(dq_env.DOWNLOAD_DIR) == [
         os.path.join("My Playlist", "My Playlist.info.json")
@@ -1348,8 +1283,8 @@ async def test_feed_metadata_honours_custom_folder(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
         await dq.add(
-            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
-            "Music", "", 0, auto_start=False,
+            "https://example.com/playlist?list=PL123",
+            DownloadOptions(folder="Music", auto_start=False),
         )
 
     assert _written_files(dq_env.DOWNLOAD_DIR) == [
@@ -1365,10 +1300,7 @@ async def test_no_feed_metadata_without_writeinfojson(dq_env):
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        await dq.add(
-            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
-        )
+        await dq.add("https://example.com/playlist?list=PL123", DownloadOptions(auto_start=False))
 
     assert _written_files(dq_env.DOWNLOAD_DIR) == []
 
@@ -1380,10 +1312,7 @@ async def test_feed_metadata_can_be_turned_off_by_the_user(dq_env):
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        await dq.add(
-            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
-        )
+        await dq.add("https://example.com/playlist?list=PL123", DownloadOptions(auto_start=False))
 
     assert _written_files(dq_env.DOWNLOAD_DIR) == []
 
@@ -1400,8 +1329,8 @@ async def test_feed_metadata_failure_does_not_fail_the_add(dq_env):
              side_effect=OSError("read-only filesystem"),
          ):
         result = await dq.add(
-            "https://example.com/playlist?list=PL123", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
+            "https://example.com/playlist?list=PL123",
+            DownloadOptions(auto_start=False),
         )
 
     assert result["status"] == "ok"
@@ -1422,10 +1351,7 @@ async def test_feed_metadata_cannot_escape_the_download_directory(dq_env, feed, 
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(hostile)), \
          patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-        result = await dq.add(
-            hostile["webpage_url"], "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
-        )
+        result = await dq.add(hostile["webpage_url"], DownloadOptions(auto_start=False))
 
     assert result["status"] == "ok"
     assert [f for f in _written_files(parent) if f.endswith(".info.json")] == []
@@ -1469,10 +1395,7 @@ async def test_feed_thumbnail_cannot_reach_internal_hosts(dq_env, redirect):
         dq = DownloadQueue(dq_env, AsyncMock())
         with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(feed)), \
              patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
-            result = await dq.add(
-                feed["webpage_url"], "video", "auto", "any", "best",
-                "", "", 0, auto_start=False,
-            )
+            result = await dq.add(feed["webpage_url"], DownloadOptions(auto_start=False))
     finally:
         server.shutdown()
         server.server_close()
@@ -1499,10 +1422,7 @@ async def test_extraction_pass_never_writes_feed_metadata(dq_env):
 
     dq = DownloadQueue(dq_env, AsyncMock())
     with patch("ytdl.yt_dlp.YoutubeDL", FakeYoutubeDL):
-        await dq.add(
-            "https://example.com/watch?v=1", "video", "auto", "any", "best",
-            "", "", 0, auto_start=False,
-        )
+        await dq.add("https://example.com/watch?v=1", DownloadOptions(auto_start=False))
 
     assert captured[0]["allow_playlist_files"] is False
 
@@ -1524,16 +1444,7 @@ async def test_add_sets_clip_bounds_on_download_info(dq_env):
     with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
         result = await dq.add(
             "https://example.com/clip",
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=False,
-            clip_start=10.0,
-            clip_end=99.5,
+            DownloadOptions(auto_start=False, clip_start=10.0, clip_end=99.5),
         )
 
     assert result["status"] == "ok"
@@ -1562,17 +1473,7 @@ async def test_add_upcoming_stream_scheduled_without_starting(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        result = await dq.add_entry(
-            _upcoming_entry(url),
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-        )
+        result = await dq.add_entry(_upcoming_entry(url), DownloadOptions())
 
     assert result["status"] == "ok"
     assert dq.queue.exists(url)
@@ -1595,17 +1496,7 @@ async def test_probe_scheduled_starts_when_live(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        await dq.add_entry(
-            _upcoming_entry(url),
-            "video",
-            "auto",
-            "any",
-            "best",
-            "",
-            "",
-            0,
-            auto_start=True,
-        )
+        await dq.add_entry(_upcoming_entry(url), DownloadOptions())
 
     download = dq.queue.get(url)
 
@@ -1731,11 +1622,7 @@ async def test_probe_transient_error_retries_without_failing(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        await dq.add_entry(
-            _upcoming_entry(url),
-            "video", "auto", "any", "best", "", "", 0,
-            auto_start=True,
-        )
+        await dq.add_entry(_upcoming_entry(url), DownloadOptions())
     download = dq.queue.get(url)
 
     def boom(self, *args, **kwargs):
@@ -1763,11 +1650,7 @@ async def test_probe_gives_up_after_max_failures(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        await dq.add_entry(
-            _upcoming_entry(url),
-            "video", "auto", "any", "best", "", "", 0,
-            auto_start=True,
-        )
+        await dq.add_entry(_upcoming_entry(url), DownloadOptions())
     download = dq.queue.get(url)
 
     def boom(self, *args, **kwargs):
@@ -1795,11 +1678,7 @@ async def test_probe_recovers_after_transient_then_starts(dq_env):
 
     dq = DownloadQueue(dq_env, notifier)
     with patch.object(DownloadQueue, "_DownloadQueue__start_download", start_mock):
-        await dq.add_entry(
-            _upcoming_entry(url),
-            "video", "auto", "any", "best", "", "", 0,
-            auto_start=True,
-        )
+        await dq.add_entry(_upcoming_entry(url), DownloadOptions())
     download = dq.queue.get(url)
     # The scheduling placeholder error is set on add.
     assert download.info.error
@@ -2131,3 +2010,178 @@ async def test_clear_in_ask_mode_without_delete_files_kwarg_keeps_file(dq_env):
 
     assert os.path.exists(file_path)
     assert not dq.done.exists(download.info.url)
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("failure", ["extraction", "url_guard"])
+async def test_add_failure_record_keeps_the_options_retry_needs(dq_env, failure):
+    # The failed row is what Retry re-submits; it used to be built without
+    # these three, so a retry after a transient error silently dropped
+    # SponsorBlock, wrote a cover the user turned off, and lost the password.
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1" if failure == "extraction" else "http://127.0.0.1/x"
+
+    def boom(self, *_args, **_kwargs):
+        raise yt_dlp.utils.DownloadError("transient")
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", boom):
+        res = await dq.add(
+            url,
+            DownloadOptions(
+                download_type="audio",
+                format="mp3",
+                folder=None,
+                sponsorblock=True,
+                audio_tags="none",
+                video_password="pw",
+            ),
+        )
+
+    assert res["status"] == "error"
+    info = dq.done.get(url).info
+    assert info.sponsorblock is True
+    assert info.audio_tags == "none"
+    assert info.video_password == "pw"
+
+
+@pytest.mark.asyncio
+async def test_download_that_fails_to_start_becomes_a_failed_row(dq_env):
+    # A start failure used to escape __start_download before the cleanup ran,
+    # leaving the row at 'preparing' in the queue forever.
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    info = DownloadInfo(
+        id="vid1", title="Test Video", url=url, quality="best", download_type="video",
+        codec="auto", format="any", folder="", custom_name_prefix="", error=None, entry=None,
+        playlist_item_limit=0, split_by_chapters=False, chapter_template="",
+    )
+    download = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s",
+                        "%(title)s.%(ext)s", "best", "any", {}, info)
+    await dq.queue.put(download)
+
+    with patch.object(Download, "start", new=AsyncMock(side_effect=OSError("Resource temporarily unavailable"))):
+        await dq._DownloadQueue__start_download(download)
+
+    assert not dq.queue.exists(url)
+    failed = dq.done.get(url).info
+    assert failed.status == "error"
+    assert "Resource temporarily unavailable" in failed.msg
+
+
+@pytest.mark.asyncio
+async def test_a_worker_left_running_by_a_failed_start_is_stopped(dq_env):
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+    info = DownloadInfo(
+        id="vid1", title="Test Video", url=url, quality="best", download_type="video",
+        codec="auto", format="any", folder="", custom_name_prefix="", error=None, entry=None,
+        playlist_item_limit=0, split_by_chapters=False, chapter_template="",
+    )
+    download = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s",
+                        "%(title)s.%(ext)s", "best", "any", {}, info)
+    await dq.queue.put(download)
+
+    with patch.object(Download, "start", new=AsyncMock(side_effect=RuntimeError("notify failed"))), \
+            patch.object(Download, "_kill_if_alive") as kill:
+        await dq._DownloadQueue__start_download(download)
+
+    kill.assert_called_once()
+    assert dq.done.get(url).info.status == "error"
+
+
+def test_completed_record_with_a_format_no_longer_offered_still_loads(dq_env):
+    # Loading built a full Download per completed record, which runs the
+    # format mapping; one record with a retired format raised and stopped
+    # the server from starting at all.
+    rec = {
+        "id": "x", "title": "t", "url": "https://example.com/x", "quality": "best",
+        "download_type": "video", "codec": "auto", "format": "webm", "folder": "",
+        "custom_name_prefix": "", "status": "finished", "timestamp": 1,
+    }
+    with open(os.path.join(dq_env.STATE_DIR, "completed.json"), "w") as f:
+        json.dump({"schema_version": 2, "kind": "persistent_queue:completed",
+                   "items": [{"key": rec["url"], "info": rec}]}, f)
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+
+    assert dq.done.get("https://example.com/x").info.format == "webm"
+
+
+@pytest.mark.asyncio
+async def test_cancel_during_a_playlist_add_survives_another_add_starting(dq_env):
+    # Canceling an item while its playlist is still being added keeps it out
+    # of that playlist. Any other add starting meanwhile used to clear the
+    # record of that cancel, and the playlist then queued the item anyway.
+    import threading
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    playlist_url = "https://example.com/playlist"
+    canceled = "https://example.com/watch?v=1"
+    kept = "https://example.com/watch?v=2"
+    other = "https://example.com/watch?v=other"
+    release = threading.Event()
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        if url == playlist_url:
+            release.wait(5)
+            return {"_type": "playlist", "id": "PL1", "title": "List", "entries": [
+                {"_type": "url", "id": "1", "title": "One", "url": canceled, "webpage_url": canceled},
+                {"_type": "url", "id": "2", "title": "Two", "url": kept, "webpage_url": kept},
+            ]}
+        return {"_type": "video", "id": url[-5:], "title": "T", "url": url, "webpage_url": url}
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        playlist_add = asyncio.create_task(dq.add(playlist_url, DownloadOptions(auto_start=False)))
+        await asyncio.sleep(0.1)
+        await dq.cancel([canceled])
+        await dq.add(other, DownloadOptions(auto_start=False))
+        release.set()
+        await playlist_add
+
+    assert dq.pending.exists(other)
+    assert dq.pending.exists(kept)
+    assert not dq.pending.exists(canceled)
+
+
+@pytest.mark.asyncio
+async def test_cancel_outside_any_add_does_not_block_a_later_add(dq_env):
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {"_type": "video", "id": "1", "title": "T", "url": extracted_url, "webpage_url": extracted_url}
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        await dq.add(url, DownloadOptions(auto_start=False))
+        await dq.cancel([url])
+        assert not dq.pending.exists(url)
+        await dq.add_entry({"_type": "video", "id": "1", "title": "T", "url": url, "webpage_url": url},
+                           DownloadOptions(auto_start=False))
+
+    assert dq.pending.exists(url)
+
+
+def test_every_download_info_field_has_a_default_for_old_records():
+    # A field missing from _DOWNLOAD_INFO_DEFAULTS is simply absent on records
+    # written before it existed, and reading it then raises AttributeError.
+    from ytdl import _DOWNLOAD_INFO_DEFAULTS
+
+    always_stored = {"id", "title", "url", "quality", "download_type", "format", "timestamp",
+                     "ytdl_options_presets"}
+    info = DownloadInfo(id="i", title="t", url="u", quality="best", download_type="video", codec="auto",
+                        format="any", folder="", custom_name_prefix="", error=None, entry=None,
+                        playlist_item_limit=0, split_by_chapters=False, chapter_template="")
+    missing = set(info.__dict__) - set(_DOWNLOAD_INFO_DEFAULTS) - always_stored
+    assert not missing, f"add defaults for {sorted(missing)} to _DOWNLOAD_INFO_DEFAULTS"
+
+
+def test_record_from_an_old_version_gets_every_default():
+    from ytdl import _DOWNLOAD_INFO_DEFAULTS
+
+    info = _download_info_from_record({"id": "i", "title": "t", "url": "u", "quality": "best",
+                                       "download_type": "video", "format": "any", "timestamp": 1})
+    for name, default in _DOWNLOAD_INFO_DEFAULTS.items():
+        assert getattr(info, name) == default, name
+    info.subtitle_files.append("x")
+    assert _DOWNLOAD_INFO_DEFAULTS["subtitle_files"] == []

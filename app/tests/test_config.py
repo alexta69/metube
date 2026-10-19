@@ -143,6 +143,14 @@ class ConfigTests(unittest.TestCase):
             c = Config()
         self.assertEqual(c.YTDL_OPTIONS_PRESETS["Audio extras"]["embed_thumbnail"], True)
 
+    def test_blank_ytdl_options_and_presets_mean_none(self):
+        # A compose file often sets a variable to nothing; that used to be
+        # parsed as JSON and stop the server.
+        with patch.dict(os.environ, _base_env(YTDL_OPTIONS="", YTDL_OPTIONS_PRESETS="  "), clear=False):
+            c = Config()
+        self.assertEqual(c.YTDL_OPTIONS, {})
+        self.assertEqual(c.YTDL_OPTIONS_PRESETS, {})
+
     def test_invalid_ytdl_options_exits(self):
         with patch.dict(os.environ, _base_env(YTDL_OPTIONS="not-json"), clear=False):
             with self.assertRaises(SystemExit):
@@ -225,7 +233,7 @@ class ConfigTests(unittest.TestCase):
     def test_clear_completed_after_zero_allowed(self):
         with patch.dict(os.environ, _base_env(CLEAR_COMPLETED_AFTER="0"), clear=False):
             c = Config()
-        self.assertEqual(c.CLEAR_COMPLETED_AFTER, "0")
+        self.assertEqual(c.CLEAR_COMPLETED_AFTER, 0)
 
     def test_invalid_default_option_playlist_item_limit_exits(self):
         for bad in ("-1", "many"):
@@ -236,7 +244,7 @@ class ConfigTests(unittest.TestCase):
     def test_default_option_playlist_item_limit_zero_allowed(self):
         with patch.dict(os.environ, _base_env(DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT="0"), clear=False):
             c = Config()
-        self.assertEqual(c.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT, "0")
+        self.assertEqual(c.DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT, 0)
 
     def test_invalid_subscription_default_check_interval_exits(self):
         for bad in ("0", "-1", "often"):
@@ -255,6 +263,55 @@ class ConfigTests(unittest.TestCase):
             with patch.dict(os.environ, _base_env(SUBSCRIPTION_MAX_SEEN_IDS=bad), clear=False):
                 with self.assertRaises(SystemExit):
                     Config()
+
+    def test_validated_integers_are_stored_as_ints(self):
+        with patch.dict(os.environ, _base_env(MAX_CONCURRENT_DOWNLOADS="5", PORT="9000",
+                                              CLEAR_COMPLETED_AFTER="60"), clear=False):
+            c = Config()
+        for key, expected in (
+            ("MAX_CONCURRENT_DOWNLOADS", 5), ("PORT", 9000), ("CLEAR_COMPLETED_AFTER", 60),
+            ("DEFAULT_OPTION_PLAYLIST_ITEM_LIMIT", 0), ("SUBSCRIPTION_DEFAULT_CHECK_INTERVAL", 60),
+            ("SUBSCRIPTION_SCAN_PLAYLIST_END", 50), ("SUBSCRIPTION_MAX_SEEN_IDS", 50000),
+        ):
+            with self.subTest(key=key):
+                self.assertEqual(getattr(c, key), expected)
+                self.assertIs(type(getattr(c, key)), int)
+
+    def test_invalid_custom_dirs_exclude_regex_exits(self):
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX="("), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
+
+    def test_custom_dirs_exclude_regex_compiled(self):
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX="^tmp"), clear=False):
+            c = Config()
+        self.assertIsNotNone(c.CUSTOM_DIRS_EXCLUDE_RE.search("tmp/x"))
+        with patch.dict(os.environ, _base_env(CUSTOM_DIRS_EXCLUDE_REGEX=""), clear=False):
+            self.assertIsNone(Config().CUSTOM_DIRS_EXCLUDE_RE)
+
+    def test_invalid_loglevel_exits(self):
+        for raw in ("LOUD", "basic_format"):
+            with self.subTest(raw=raw):
+                with patch.dict(os.environ, _base_env(LOGLEVEL=raw), clear=False):
+                    with self.assertRaises(SystemExit):
+                        Config()
+
+    def test_blank_loglevel_and_theme_take_defaults(self):
+        with patch.dict(os.environ, _base_env(LOGLEVEL=" ", DEFAULT_THEME=""), clear=False):
+            c = Config()
+        self.assertEqual(c.LOGLEVEL, "INFO")
+        self.assertEqual(c.DEFAULT_THEME, "auto")
+
+    def test_loglevel_none_accepted(self):
+        with patch.dict(os.environ, _base_env(LOGLEVEL="NONE"), clear=False):
+            Config()
+
+    def test_default_theme_normalized_and_validated(self):
+        with patch.dict(os.environ, _base_env(DEFAULT_THEME=" Dark "), clear=False):
+            self.assertEqual(Config().DEFAULT_THEME, "dark")
+        with patch.dict(os.environ, _base_env(DEFAULT_THEME="purple"), clear=False):
+            with self.assertRaises(SystemExit):
+                Config()
 
     def test_runtime_override_roundtrip(self):
         with patch.dict(os.environ, _base_env(), clear=False):

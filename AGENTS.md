@@ -87,24 +87,15 @@ pnpm exec ng test --watch=false
 
 # Backend (run from repo root)
 uv sync --frozen --group dev
-python -m compileall app
+uv run python -m compileall -q app
 uv run pytest app/tests/
 ```
 
 All of these run in CI (`.github/workflows/main.yml`) on every push to master and must pass.
 
-Gotchas:
-
-- Backend tests must run **from the repo root**: `main.py` resolves the static-assets
-  path relative to the cwd, and several test modules import `main`. Running from
-  `app/` makes five test modules fail to import.
-- The frontend must be **built before** running backend tests (same reason — the
-  assets at `ui/dist/metube/browser` must exist). The command order above is
-  load-bearing.
-- `app/tests/test_ytdl_utils.py` stubs `yt_dlp` at import time. Run standalone,
-  two tests fail with `AttributeError: <module 'yt_dlp'> does not have the
-  attribute 'YoutubeDL'`; under the full suite the real module is imported first
-  and they pass. This is a known quirk, not a bug to fix in the code under test.
+The backend tests need no frontend build and can run from the repo root or
+from `app/`: `app/tests/conftest.py` points `BASE_DIR` at a stand-in UI
+directory before `main` is imported.
 
 Every non-markdown push to master builds multi-arch Docker images and cuts a dated
 release the same day. **Master is continuously released** — a PR must be
@@ -141,6 +132,7 @@ Frontend additionally uses ESLint (`ui/eslint.config.js`) and Prettier (config i
 ```
 app/main.py          — HTTP server, Socket.IO events, REST API routes, Config class
 app/ytdl.py          — Download queue logic, yt-dlp integration
+app/download_options.py — DownloadOptions: one request's options, passed whole through the queue
 app/subscriptions.py — Channel/playlist subscription manager
 app/state_store.py   — JSON-based persistent storage with atomic writes
 app/format_catalog.py — The download options (types, codecs, formats, qualities, labels, defaults)
@@ -166,16 +158,20 @@ ui/src/app/          — Angular standalone components (no NgModules)
 New options on the download form (the `split_by_chapters` pattern) need **all** of
 these pieces — the last three are the ones commonly missed:
 
-1. `parse_download_options` in `app/main.py`.
+1. A field on `DownloadOptions` in `app/download_options.py`, set by
+   `parse_download_options` in `app/main.py`. The queue's add, playlist,
+   failed-add and retry paths all carry that one value, so nothing else in
+   them needs touching.
 2. A field on `DownloadInfo` in `app/ytdl.py`.
-3. A `hasattr` backfill in `DownloadInfo.__setstate__` for old persisted records.
+3. A default in `_DOWNLOAD_INFO_DEFAULTS` in `app/ytdl.py`, which old persisted
+   records take (a test fails if a `DownloadInfo` field has none).
 4. The safe-deserialization field list in `app/ytdl.py`.
-5. UI form control + cookie persistence in `ui/src/app/app.ts` / `app.html`, and
+5. UI form control + `SettingsStore` persistence in `ui/src/app/app.ts` / `app.html`, and
    the payload in `downloads.service.ts` (plus its spec).
 6. The redownload path in `app.ts`, so retries carry the option.
 7. If the option makes sense for unattended downloads: threading through
    `app/subscriptions.py` (`SubscriptionInfo` field, serializer, add/update
-   routes, the enqueue call) — or a note in the PR that it's deliberately
+   routes, `SubscriptionInfo.download_options()`) — or a note in the PR that it's deliberately
    direct-downloads-only.
 
 ## Security invariants

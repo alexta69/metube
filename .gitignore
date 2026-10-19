@@ -45,10 +45,11 @@ testem.log
 .DS_Store
 Thumbs.db
 
-# MeTube runtime databases
-queue*
-completed*
-pending*
+# MeTube runtime databases, written to the working directory when STATE_DIR
+# is left at its default of "." (anchored, so source files are not caught)
+/queue*
+/completed*
+/pending*
 
 __pycache__
 .venv

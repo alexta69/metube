@@ -1,0 +1,180 @@
+<div class="metube-section-header">
+  <button type="button" class="metube-section-toggle" (click)="toggleCollapsed()" [attr.aria-expanded]="!collapsed">
+    <span>Subscriptions</span>
+    <fa-icon [icon]="collapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
+  </button>
+</div>
+@if (!collapsed) {
+  <div class="px-2 py-3 border-bottom">
+    @if (checkingAllSubscriptions) {
+      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
+        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check all now
+      </button>
+    } @else {
+      <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
+        (click)="checkAllSubscriptions()"
+        [disabled]="downloads.loading || cachedSubs.length === 0 || checkingSelectedSubscriptions">
+        <fa-icon [icon]="faRedoAlt" />&nbsp; Check all now
+      </button>
+    }
+    @if (checkingSelectedSubscriptions) {
+      <button type="button" class="btn btn-link text-decoration-none px-0 me-4" disabled>
+        <span class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>Check selected
+      </button>
+    } @else {
+      <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
+        (click)="checkSelectedSubscriptions()"
+        [disabled]="downloads.loading || selectedSubscriptionIds.size === 0 || checkingAllSubscriptions">
+        <fa-icon [icon]="faRedoAlt" />&nbsp; Check selected
+      </button>
+    }
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4"
+      (click)="deleteSelectedSubscriptions()"
+      [disabled]="downloads.loading || selectedSubscriptionIds.size === 0">
+      <fa-icon [icon]="faTrashAlt" />&nbsp; Delete selected
+    </button>
+  </div>
+  <div class="overflow-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col" style="width: 1rem;">
+            <input type="checkbox" class="form-check-input"
+              [checked]="allSubsSelected()"
+              (change)="toggleSubMaster($event)"
+              [disabled]="downloads.loading || cachedSubs.length === 0"
+              aria-label="Select all subscriptions" />
+          </th>
+          <th scope="col">Name</th>
+          <th scope="col">URL</th>
+          <th scope="col" class="text-nowrap"><span class="help-title" ngbPopover="Subscriptions only — which new video titles to queue when this feed is checked. Does not affect manual downloads." triggers="click" autoClose="outside" container="body">Filter</span></th>
+          <th scope="col" class="text-nowrap">Interval (min)</th>
+          <th scope="col" class="text-nowrap">Last checked</th>
+          <th scope="col">Status</th>
+          <th scope="col" style="width: 8rem;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (entry of cachedSubs; track entry[0]) {
+          <tr>
+            <td>
+              <input type="checkbox" class="form-check-input"
+                [checked]="isSubSelected(entry[0])"
+                (change)="toggleSubSelected(entry[0])"
+                [disabled]="downloads.loading"
+                [attr.aria-label]="'Select subscription ' + entry[1].name" />
+            </td>
+            <td>
+              @if (editingNameId === entry[0]) {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <input type="text"
+                    class="form-control form-control-sm flex-grow-1"
+                    [name]="'subName' + entry[0]"
+                    [(ngModel)]="nameEditDraft"
+                    [maxlength]="subscriptionNameMaxLength"
+                    [disabled]="downloads.loading"
+                    [attr.aria-label]="'Subscription name for ' + entry[1].name" />
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="saveName(entry[0])"
+                    [disabled]="downloads.loading">Save</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="cancelEditName()"
+                    [disabled]="downloads.loading">Cancel</button>
+                </div>
+              } @else {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <span class="text-break">{{ entry[1].name }}</span>
+                  <button type="button" class="btn btn-link btn-sm p-0"
+                    (click)="beginEditName(entry[0], entry[1].name)"
+                    [disabled]="downloads.loading"
+                    ngbTooltip="Rename this subscription (display name only; does not affect the download folder)">Edit</button>
+                </div>
+              }
+            </td>
+            <td class="text-break"><a [href]="entry[1].url" target="_blank" rel="noopener">{{ entry[1].url }}</a></td>
+            <td>
+              @if (editingTitleRegexId === entry[0]) {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <input type="text"
+                    class="form-control form-control-sm flex-grow-1"
+                    [name]="'subTitleRegex' + entry[0]"
+                    [(ngModel)]="titleRegexEditDraft"
+                    [disabled]="downloads.loading" />
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="saveTitleRegex(entry[0])"
+                    [disabled]="downloads.loading">Save</button>
+                  <button type="button" class="btn btn-sm btn-outline-secondary"
+                    (click)="cancelEditTitleRegex()"
+                    [disabled]="downloads.loading">Cancel</button>
+                </div>
+              } @else {
+                <div class="d-flex flex-wrap gap-1 align-items-center">
+                  <span class="text-muted small text-break"
+                    [class.text-secondary]="!entry[1].title_regex">{{ entry[1].title_regex || '—' }}</span>
+                  <button type="button" class="btn btn-link btn-sm p-0"
+                    (click)="beginEditTitleRegex(entry[0], entry[1].title_regex)"
+                    [disabled]="downloads.loading"
+                    ngbTooltip="Edit subscription title filter (subscriptions only; not for one-off downloads)">Edit</button>
+                </div>
+              }
+            </td>
+            <td>{{ entry[1].check_interval_minutes }}</td>
+            <td class="text-nowrap">
+              @if (entry[1].last_checked !== null) {
+                <span>{{ entry[1].last_checked! * 1000 | date:'yyyy-MM-dd HH:mm:ss' }}</span>
+              } @else {
+                <span class="text-muted">—</span>
+              }
+            </td>
+            <td>
+              @if (entry[1].error) {
+                <span class="text-danger small">{{ entry[1].error }}</span>
+              } @else if (entry[1].enabled) {
+                <span class="text-success">Active</span>
+              } @else {
+                <span class="text-secondary">Paused</span>
+              }
+            </td>
+            <td>
+              <div class="d-flex flex-wrap gap-1">
+                @if (isSubscriptionChecking(entry[0])) {
+                  <button type="button" class="btn btn-link btn-sm p-0 me-2"
+                    disabled
+                    [attr.aria-label]="'Checking ' + entry[1].name"
+                    ngbTooltip="Checking now">
+                    <span class="spinner-border spinner-border-sm" role="status" aria-hidden="true"></span>
+                  </button>
+                } @else {
+                  <button type="button" class="btn btn-link btn-sm p-0 me-2"
+                    (click)="checkSubscriptionNow(entry[0])"
+                    [disabled]="downloads.loading"
+                    [attr.aria-label]="'Check now ' + entry[1].name"
+                    ngbTooltip="Check now">
+                    <fa-icon [icon]="faRedoAlt" />
+                  </button>
+                }
+                <button type="button" class="btn btn-link btn-sm p-0 me-2"
+                  (click)="toggleSubscriptionEnabled(entry[1])"
+                  [disabled]="downloads.loading"
+                  [attr.aria-label]="(entry[1].enabled ? 'Pause ' : 'Resume ') + entry[1].name"
+                  [ngbTooltip]="entry[1].enabled ? 'Pause' : 'Resume'">
+                  @if (entry[1].enabled) {
+                    <fa-icon [icon]="faPause" />
+                  } @else {
+                    <fa-icon [icon]="faPlay" />
+                  }
+                </button>
+                <button type="button" class="btn btn-link btn-sm p-0 text-danger"
+                  (click)="deleteSubscription(entry[0])"
+                  [disabled]="downloads.loading"
+                  [attr.aria-label]="'Delete subscription ' + entry[1].name">
+                  <fa-icon [icon]="faTrashAlt" />
+                </button>
+              </div>
+            </td>
+          </tr>
+        }
+      </tbody>
+    </table>
+  </div>
+}
