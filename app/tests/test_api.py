@@ -626,6 +626,11 @@ async def test_download_blocks_state_dir_files(monkeypatch):
 
     monkeypatch.setattr(main.config, "STATE_DIR", str(state_dir))
     monkeypatch.setattr(main, "_STATE_DIR_REAL", os.path.realpath(str(state_dir)))
+    monkeypatch.setattr(
+        main.auth_manager,
+        "authenticate",
+        AsyncMock(return_value=main.AuthIdentity("u1", "admin", "admin", "session", "s1")),
+    )
 
     try:
         async with TestClient(TestServer(main.app)) as client:
@@ -1081,6 +1086,11 @@ async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, mon
     monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
     monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
     monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+    monkeypatch.setattr(
+        main.auth_manager,
+        'authenticate',
+        AsyncMock(return_value=main.AuthIdentity('u1', 'admin', 'admin', 'session', 's1')),
+    )
     await main.connect('sid-1', {})
 
     events = [e for e, _ in emitted]

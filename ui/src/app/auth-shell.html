@@ -1,0 +1,338 @@
+@if (loading) {
+  <div class="auth-stage">
+    <div class="auth-loading" role="status">
+      <span class="spinner-border spinner-border-sm"></span>
+      Securing MeTube…
+    </div>
+  </div>
+} @else if (view === 'app' && user) {
+  <app-download-app [currentUser]="user" (logoutRequested)="logout()" />
+} @else if (view === 'login' || view === 'onboarding' || view === 'invite') {
+  <main class="auth-stage">
+    <section class="auth-card">
+      <div class="auth-brand">
+        <img src="assets/icons/android-chrome-192x192.png" alt="" width="48" height="48">
+        <div>
+          <div class="eyebrow">MeTube access</div>
+          <h1>
+            @if (view === 'onboarding') {
+              Create the first account
+            } @else if (view === 'invite') {
+              Join this MeTube
+            } @else {
+              Welcome back
+            }
+          </h1>
+        </div>
+      </div>
+
+      @if (view === 'onboarding') {
+        <p class="auth-intro">
+          This first account becomes the administrator and can invite everyone else.
+        </p>
+      } @else if (view === 'invite' && invitation) {
+        <p class="auth-intro">
+          You were invited as <strong>{{ invitation.role }}</strong>. Choose your username and
+          password to continue.
+        </p>
+      } @else if (view === 'login') {
+        <p class="auth-intro">Sign in to access downloads, subscriptions and files.</p>
+      }
+
+      @if (error) {
+        <div class="alert alert-danger" role="alert">{{ error }}</div>
+      }
+
+      @if (view !== 'invite' || invitation) {
+        <form
+          (ngSubmit)="view === 'invite' ? acceptInvitation() : submitCredentials()"
+          class="auth-form"
+        >
+          <label for="auth-username" class="form-label">Username</label>
+          <input
+            id="auth-username"
+            class="form-control form-control-lg"
+            name="username"
+            [(ngModel)]="username"
+            autocomplete="username"
+            required
+            minlength="3"
+            maxlength="64"
+          >
+
+          <label for="auth-password" class="form-label">Password</label>
+          <input
+            id="auth-password"
+            class="form-control form-control-lg"
+            name="password"
+            [(ngModel)]="password"
+            type="password"
+            [autocomplete]="view === 'login' ? 'current-password' : 'new-password'"
+            required
+            minlength="12"
+          >
+
+          @if (view !== 'login') {
+            <label for="auth-password-confirmation" class="form-label">Confirm password</label>
+            <input
+              id="auth-password-confirmation"
+              class="form-control form-control-lg"
+              name="passwordConfirmation"
+              [(ngModel)]="passwordConfirmation"
+              type="password"
+              autocomplete="new-password"
+              required
+              minlength="12"
+            >
+            <div class="form-text">Use at least 12 characters.</div>
+          }
+
+          <button class="btn btn-primary btn-lg w-100" type="submit" [disabled]="submitting">
+            @if (submitting) {
+              <span class="spinner-border spinner-border-sm me-2"></span>
+            }
+            @if (view === 'login') {
+              Sign in
+            } @else {
+              Create account
+            }
+          </button>
+        </form>
+      }
+    </section>
+  </main>
+} @else if (view === 'users' && user) {
+  <main class="management-shell">
+    <header class="management-header">
+      <div>
+        <div class="eyebrow">Administration</div>
+        <h1>User access</h1>
+        <p>Invite people, assign roles and revoke access from one place.</p>
+      </div>
+      <a class="btn btn-outline-secondary" [href]="homeUrl">Back to MeTube</a>
+    </header>
+
+    @if (error) {
+      <div class="alert alert-danger">{{ error }}</div>
+    }
+    @if (success) {
+      <div class="alert alert-success">{{ success }}</div>
+    }
+
+    <section class="management-card invite-panel">
+      <div>
+        <h2>Create an invitation</h2>
+        <p>The link expires after seven days and can be used once.</p>
+      </div>
+      <div class="invite-controls">
+        <select class="form-select" [(ngModel)]="invitationRole" aria-label="Invitation role">
+          <option value="user">User</option>
+          <option value="admin">Administrator</option>
+        </select>
+        <button type="button" class="btn btn-primary" (click)="createInvitation()">
+          Create link
+        </button>
+      </div>
+      @if (createdInvitationLink) {
+        <div class="input-group invitation-link">
+          <input class="form-control" [value]="createdInvitationLink" readonly>
+          <button type="button" class="btn btn-outline-primary" (click)="copyInvitation()">
+            Copy
+          </button>
+        </div>
+      }
+    </section>
+
+    <section class="management-card">
+      <div class="section-heading">
+        <h2>Users</h2>
+        <span class="count">{{ users.length }}</span>
+      </div>
+      <div class="table-responsive">
+        <table class="table align-middle">
+          <thead>
+            <tr>
+              <th>Username</th>
+              <th>Role</th>
+              <th>Status</th>
+              <th>Created</th>
+              <th><span class="visually-hidden">Actions</span></th>
+            </tr>
+          </thead>
+          <tbody>
+            @for (managedUser of users; track managedUser.id) {
+              <tr>
+                <td>
+                  <input
+                    class="form-control"
+                    [(ngModel)]="managedUser.username"
+                    aria-label="Username"
+                  >
+                </td>
+                <td>
+                  <select
+                    class="form-select"
+                    [(ngModel)]="managedUser.role"
+                    [disabled]="managedUser.id === user.id"
+                    aria-label="Role"
+                  >
+                    <option value="user">User</option>
+                    <option value="admin">Administrator</option>
+                  </select>
+                </td>
+                <td>
+                  <div class="form-check form-switch">
+                    <input
+                      class="form-check-input"
+                      type="checkbox"
+                      [(ngModel)]="managedUser.active"
+                      [disabled]="managedUser.id === user.id"
+                      [attr.aria-label]="'Active account for ' + managedUser.username"
+                    >
+                    <span>{{ managedUser.active ? 'Active' : 'Disabled' }}</span>
+                  </div>
+                </td>
+                <td class="text-nowrap">
+                  {{ (managedUser.created_at ?? 0) * 1000 | date:'mediumDate' }}
+                </td>
+                <td>
+                  <div class="user-actions">
+                    <button type="button" class="btn btn-sm btn-primary" (click)="saveUser(managedUser)">
+                      Save
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-secondary"
+                      (click)="revokeUser(managedUser)"
+                    >
+                      Revoke access
+                    </button>
+                    <button
+                      type="button"
+                      class="btn btn-sm btn-outline-danger"
+                      (click)="deleteUser(managedUser)"
+                      [disabled]="managedUser.id === user.id"
+                    >
+                      Delete
+                    </button>
+                  </div>
+                </td>
+              </tr>
+            }
+          </tbody>
+        </table>
+      </div>
+    </section>
+
+    <section class="management-card">
+      <div class="section-heading">
+        <h2>Pending invitations</h2>
+        <span class="count">{{ invitations.length }}</span>
+      </div>
+      @if (invitations.length === 0) {
+        <p class="empty-state">No invitation is waiting to be accepted.</p>
+      } @else {
+        <div class="invitation-list">
+          @for (pending of invitations; track pending.id) {
+            <div class="invitation-row">
+              <div>
+                <strong>{{ pending.role === 'admin' ? 'Administrator' : 'User' }}</strong>
+                <span>Expires {{ pending.expires_at * 1000 | date:'medium' }}</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                (click)="revokeInvitation(pending)"
+              >
+                Revoke
+              </button>
+            </div>
+          }
+        </div>
+      }
+    </section>
+  </main>
+} @else if (view === 'profile' && user) {
+  <main class="management-shell profile-shell">
+    <header class="management-header">
+      <div>
+        <div class="eyebrow">Signed in as {{ user.username }}</div>
+        <h1>Account & API access</h1>
+        <p>Update your password and issue tokens for trusted scripts.</p>
+      </div>
+      <a class="btn btn-outline-secondary" [href]="homeUrl">Back to MeTube</a>
+    </header>
+
+    @if (error) {
+      <div class="alert alert-danger">{{ error }}</div>
+    }
+    @if (success) {
+      <div class="alert alert-success">{{ success }}</div>
+    }
+
+    <div class="profile-grid">
+      <section class="management-card">
+        <h2>Change password</h2>
+        <p>Changing it signs out other sessions and revokes every API token.</p>
+        <div class="stacked-form">
+          <input
+            class="form-control"
+            type="password"
+            placeholder="Current password"
+            [(ngModel)]="currentPassword"
+            autocomplete="current-password"
+          >
+          <input
+            class="form-control"
+            type="password"
+            placeholder="New password"
+            [(ngModel)]="newPassword"
+            autocomplete="new-password"
+          >
+          <input
+            class="form-control"
+            type="password"
+            placeholder="Confirm new password"
+            [(ngModel)]="newPasswordConfirmation"
+            autocomplete="new-password"
+          >
+          <button type="button" class="btn btn-primary" (click)="changePassword()">
+            Update password
+          </button>
+        </div>
+      </section>
+
+      <section class="management-card">
+        <h2>Personal API tokens</h2>
+        <p>Use a token as <code>Authorization: Bearer &lt;token&gt;</code>.</p>
+        <div class="input-group">
+          <input class="form-control" placeholder="Token name" [(ngModel)]="tokenName">
+          <button type="button" class="btn btn-primary" (click)="createToken()">Create</button>
+        </div>
+        @if (revealedToken) {
+          <div class="token-reveal">
+            <span>Copy this token now</span>
+            <code>{{ revealedToken }}</code>
+          </div>
+        }
+        <div class="token-list">
+          @for (token of tokens; track token.id) {
+            <div class="token-row">
+              <div>
+                <strong>{{ token.name }}</strong>
+                <span>{{ token.prefix }}… · created {{ token.created_at * 1000 | date:'mediumDate' }}</span>
+              </div>
+              <button
+                type="button"
+                class="btn btn-sm btn-outline-danger"
+                (click)="revokeToken(token)"
+              >
+                Revoke
+              </button>
+            </div>
+          }
+        </div>
+      </section>
+    </div>
+  </main>
+}

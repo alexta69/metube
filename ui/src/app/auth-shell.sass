@@ -1,0 +1,228 @@
+:host
+  display: block
+  min-height: 100vh
+
+.auth-stage
+  min-height: 100vh
+  display: grid
+  place-items: center
+  padding: 2rem
+  background: radial-gradient(circle at 20% 15%, rgba(13, 110, 253, 0.18), transparent 34%), radial-gradient(circle at 85% 80%, rgba(25, 135, 84, 0.12), transparent 30%), var(--bs-body-bg)
+
+.auth-stage::before
+  content: ""
+  position: fixed
+  inset: 0
+  pointer-events: none
+  opacity: 0.16
+  background-image: linear-gradient(var(--bs-border-color) 1px, transparent 1px), linear-gradient(90deg, var(--bs-border-color) 1px, transparent 1px)
+  background-size: 42px 42px
+  mask-image: linear-gradient(to bottom, black, transparent 75%)
+
+.auth-card
+  position: relative
+  width: min(100%, 30rem)
+  padding: clamp(1.5rem, 5vw, 2.75rem)
+  border: 1px solid var(--bs-border-color)
+  border-radius: 1.25rem
+  background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent)
+  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.16)
+  backdrop-filter: blur(18px)
+
+.auth-brand
+  display: flex
+  align-items: center
+  gap: 1rem
+  margin-bottom: 1.25rem
+
+  img
+    border-radius: 0.85rem
+    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18)
+
+  h1
+    margin: 0.15rem 0 0
+    font-size: clamp(1.55rem, 4vw, 2rem)
+    letter-spacing: -0.035em
+
+.eyebrow
+  color: var(--bs-primary)
+  font-size: 0.72rem
+  font-weight: 700
+  letter-spacing: 0.13em
+  text-transform: uppercase
+
+.auth-intro
+  margin-bottom: 1.5rem
+  color: var(--bs-secondary-color)
+
+.auth-form
+  display: grid
+  gap: 0.75rem
+
+  .form-label
+    margin: 0.35rem 0 -0.35rem
+    font-size: 0.82rem
+    font-weight: 650
+
+  .btn
+    margin-top: 0.75rem
+
+.auth-loading
+  position: relative
+  display: flex
+  align-items: center
+  gap: 0.75rem
+  color: var(--bs-secondary-color)
+
+.management-shell
+  width: min(100% - 2rem, 82rem)
+  margin: 0 auto
+  padding: clamp(2rem, 6vw, 5rem) 0
+
+.management-header
+  display: flex
+  justify-content: space-between
+  align-items: end
+  gap: 2rem
+  margin-bottom: 2.5rem
+
+  h1
+    margin: 0.25rem 0
+    font-size: clamp(2.2rem, 6vw, 4.2rem)
+    letter-spacing: -0.055em
+
+  p
+    margin: 0
+    color: var(--bs-secondary-color)
+
+.management-card
+  margin-bottom: 1.25rem
+  padding: clamp(1.25rem, 3vw, 2rem)
+  border: 1px solid var(--bs-border-color)
+  border-radius: 1rem
+  background: var(--bs-tertiary-bg)
+  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.06)
+
+  h2
+    margin-bottom: 0.35rem
+    font-size: 1.15rem
+
+  p
+    color: var(--bs-secondary-color)
+
+.invite-panel
+  display: grid
+  grid-template-columns: minmax(0, 1fr) auto
+  gap: 1rem 2rem
+  align-items: center
+
+.invite-controls
+  display: flex
+  gap: 0.75rem
+
+.invitation-link
+  grid-column: 1 / -1
+
+.section-heading
+  display: flex
+  align-items: center
+  gap: 0.65rem
+  margin-bottom: 1rem
+
+  h2
+    margin: 0
+
+.count
+  min-width: 1.7rem
+  padding: 0.15rem 0.45rem
+  border-radius: 999px
+  background: var(--bs-primary-bg-subtle)
+  color: var(--bs-primary-text-emphasis)
+  font-size: 0.75rem
+  font-weight: 700
+  text-align: center
+
+.user-actions
+  display: flex
+  justify-content: flex-end
+  gap: 0.4rem
+  white-space: nowrap
+
+.management-card table
+  .form-control
+    min-width: 8rem
+
+  .form-select
+    min-width: 8.5rem
+
+.invitation-list, .token-list
+  display: grid
+
+.invitation-row, .token-row
+  display: flex
+  align-items: center
+  justify-content: space-between
+  gap: 1rem
+  padding: 0.9rem 0
+  border-top: 1px solid var(--bs-border-color)
+
+  &:first-child
+    border-top: 0
+
+  div
+    display: grid
+
+  span
+    color: var(--bs-secondary-color)
+    font-size: 0.82rem
+
+.empty-state
+  margin: 1.5rem 0 0.5rem
+  text-align: center
+
+.profile-shell
+  max-width: 68rem
+
+.profile-grid
+  display: grid
+  grid-template-columns: repeat(2, minmax(0, 1fr))
+  gap: 1.25rem
+
+.stacked-form
+  display: grid
+  gap: 0.75rem
+
+.token-reveal
+  display: grid
+  gap: 0.35rem
+  margin-top: 1rem
+  padding: 1rem
+  border: 1px solid var(--bs-warning-border-subtle)
+  border-radius: 0.75rem
+  background: var(--bs-warning-bg-subtle)
+
+  span
+    color: var(--bs-warning-text-emphasis)
+    font-size: 0.75rem
+    font-weight: 700
+    text-transform: uppercase
+
+  code
+    overflow-wrap: anywhere
+    color: var(--bs-emphasis-color)
+
+@media (max-width: 767.98px)
+  .management-header
+    align-items: start
+    flex-direction: column
+
+  .invite-panel, .profile-grid
+    grid-template-columns: 1fr
+
+  .invite-controls
+    align-items: stretch
+    flex-direction: column
+
+  .user-actions
+    align-items: stretch
+    flex-direction: column

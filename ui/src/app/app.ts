@@ -1,13 +1,13 @@
 import { DatePipe, KeyValuePipe, NgTemplateOutlet } from '@angular/common';
 import { HttpClient } from '@angular/common/http';
-import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, OnDestroy, OnInit } from '@angular/core';
+import { AfterViewInit, ChangeDetectionStrategy, ChangeDetectorRef, Component, DestroyRef, ElementRef, viewChild, inject, input, output, OnDestroy, OnInit } from '@angular/core';
 import { Observable, OperatorFunction, Subject, Subscription, from, map, merge, debounceTime, distinctUntilChanged, filter, finalize, mergeMap, takeUntil, tap } from 'rxjs';
 import { FormsModule } from '@angular/forms';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 import { FontAwesomeModule } from '@fortawesome/angular-fontawesome';
 import { NgbModal, NgbModule, NgbTypeahead } from '@ng-bootstrap/ng-bootstrap';
 import { NgSelectModule } from '@ng-select/ng-select';
-import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes } from '@fortawesome/free-solid-svg-icons';
+import { faTrashAlt, faCheckCircle, faTimesCircle, faRedoAlt, faSun, faMoon, faCheck, faCircleHalfStroke, faDownload, faExternalLinkAlt, faFileImport, faFileExport, faCopy, faClock, faTachometerAlt, faSortAmountDown, faSortAmountUp, faChevronRight, faChevronDown, faUpload, faPause, faPlay, faShareNodes, faUser, faUsers, faSignOutAlt } from '@fortawesome/free-solid-svg-icons';
 import { faGithub } from '@fortawesome/free-brands-svg-icons';
 import { CookieService } from 'ngx-cookie-service';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
@@ -17,6 +17,7 @@ import { ToastService } from './services/toast.service';
 import { BatchUrlsService, BatchUrlFilter } from './services/batch-urls.service';
 import { SubscriptionRow } from './interfaces/subscription';
 import { Themes } from './theme';
+import { AuthUser, appUrl } from './services/auth.service';
 import {
   Download,
   Status,
@@ -37,7 +38,7 @@ import {
 } from './components/';
 
 @Component({
-  selector: 'app-root',
+  selector: 'app-download-app',
   changeDetection: ChangeDetectionStrategy.OnPush,
   imports: [
         FormsModule,
@@ -58,6 +59,8 @@ import {
   styleUrl: './app.sass',
 })
 export class App implements AfterViewInit, OnInit, OnDestroy {
+  currentUser = input<AuthUser | null>(null);
+  logoutRequested = output<void>();
   downloads = inject(DownloadsService);
   subscriptionsSvc = inject(SubscriptionsService);
   private toasts = inject(ToastService);
@@ -211,6 +214,9 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   faPause = faPause;
   faPlay = faPlay;
   faShareNodes = faShareNodes;
+  faUser = faUser;
+  faUsers = faUsers;
+  faSignOutAlt = faSignOutAlt;
   constructor() {
     // Remembered choices are checked against the catalog when it arrives.
     this.downloadType = this.cookieService.get('metube_download_type');
@@ -1707,6 +1713,14 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   toggleAdvanced() {
     this.isAdvancedOpen = !this.isAdvancedOpen;
+  }
+
+  openProfile() {
+    window.location.assign(appUrl('profile'));
+  }
+
+  openUsers() {
+    window.location.assign(appUrl('users'));
   }
 
   toggleSortOrder() {

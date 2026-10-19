@@ -49,6 +49,40 @@
     </div>
     -->
     <div class="navbar-nav ms-auto">
+      @if (currentUser(); as user) {
+        <div class="nav-item dropdown me-3" ngbDropdown placement="bottom-end">
+          <button
+            class="btn btn-link nav-link dropdown-toggle d-flex align-items-center gap-2"
+            type="button"
+            ngbDropdownToggle
+          >
+            <fa-icon [icon]="faUser" />
+            <span class="d-none d-sm-inline">{{ user.username }}</span>
+          </button>
+          <div class="dropdown-menu dropdown-menu-end position-absolute" ngbDropdownMenu>
+            <button type="button" class="dropdown-item" ngbDropdownItem (click)="openProfile()">
+              <fa-icon [icon]="faUser" class="me-2 opacity-50" />
+              Account & API tokens
+            </button>
+            @if (user.role === 'admin') {
+              <button type="button" class="dropdown-item" ngbDropdownItem (click)="openUsers()">
+                <fa-icon [icon]="faUsers" class="me-2 opacity-50" />
+                Manage users
+              </button>
+            }
+            <div class="dropdown-divider"></div>
+            <button
+              type="button"
+              class="dropdown-item text-danger"
+              ngbDropdownItem
+              (click)="logoutRequested.emit()"
+            >
+              <fa-icon [icon]="faSignOutAlt" class="me-2" />
+              Sign out
+            </button>
+          </div>
+        </div>
+      }
       <div class="nav-item dropdown" ngbDropdown placement="bottom-end">
         <button class="btn btn-link nav-link py-2 px-0 px-sm-2 dropdown-toggle d-flex align-items-center"
           id="theme-select"

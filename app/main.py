@@ -17,9 +17,17 @@ import json
 import pathlib
 import re
 import time
+from http.cookies import SimpleCookie
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import DefaultFilter, Change, awatch
 
+from auth import (
+    AuthError,
+    AuthIdentity,
+    AuthManager,
+    SESSION_COOKIE,
+    SESSION_TTL_SECONDS,
+)
 import bg_tasks
 import format_catalog
 from ytdl import DownloadQueueNotifier, DownloadQueue, Download
@@ -461,6 +469,60 @@ async def cross_origin_guard(request, handler):
     return await handler(request)
 
 
+_PUBLIC_ASSET_SUFFIXES = (
+    '.css', '.gif', '.ico', '.jpg', '.js', '.json', '.png', '.svg', '.webmanifest', '.webp', '.woff', '.woff2',
+)
+
+
+def _auth_public_path(request: web.Request) -> bool:
+    if request.method == 'OPTIONS':
+        return True
+    prefix = config.URL_PREFIX
+    if not request.path.startswith(prefix):
+        return False
+    relative = request.path[len(prefix):]
+    if relative in (
+        '',
+        'health',
+        'invite',
+        'login',
+        'onboarding',
+        'auth/status',
+        'auth/login',
+        'auth/onboarding',
+        'favicon.ico',
+        'manifest.webmanifest',
+        'ngsw-worker.js',
+        'custom-service-worker.js',
+    ):
+        return True
+    if relative.startswith(('assets/', 'invite/', 'auth/invite/', 'socket.io/')):
+        return True
+    return '/' not in relative and relative.endswith(_PUBLIC_ASSET_SUFFIXES)
+
+
+@web.middleware
+async def auth_guard(request: web.Request, handler):
+    try:
+        identity = await auth_manager.authenticate(
+            request.cookies.get(SESSION_COOKIE),
+            request.headers.get('Authorization'),
+        )
+        request['auth'] = identity
+        if identity is None and not _auth_public_path(request):
+            raise AuthError(401, 'Authentication required')
+        response = await handler(request)
+        if request.path.startswith(config.URL_PREFIX + 'auth/'):
+            response.headers.setdefault('Cache-Control', 'no-store')
+        return response
+    except AuthError as exc:
+        return web.json_response(
+            {'status': 'error', 'msg': exc.message},
+            status=exc.status,
+            headers={'Cache-Control': 'no-store'},
+        )
+
+
 def _socketio_origin_allowed(origin, environ):
     # Browsers apply no CORS to WebSockets, so this check is all that stops a
     # page on another site from connecting and reading the queue, history and
@@ -476,7 +538,8 @@ def _socketio_origin_allowed(origin, environ):
     return False
 
 
-app = web.Application(middlewares=[cross_origin_guard, state_dir_guard])
+auth_manager = AuthManager(config.STATE_DIR)
+app = web.Application(middlewares=[cross_origin_guard, auth_guard, state_dir_guard])
 _cors_origins = [o.strip() for o in config.CORS_ALLOWED_ORIGINS.split(',') if o.strip()] if config.CORS_ALLOWED_ORIGINS else []
 if '*' in _cors_origins and len(_cors_origins) > 1:
     log.warning(
@@ -855,6 +918,243 @@ async def _read_json_request(request: web.Request) -> dict:
     if not isinstance(post, dict):
         raise web.HTTPBadRequest(reason='JSON request body must be an object')
     return post
+
+
+def _request_identity(request: web.Request) -> AuthIdentity:
+    identity = request.get('auth')
+    if not isinstance(identity, AuthIdentity):
+        raise AuthError(401, 'Authentication required')
+    return identity
+
+
+def _admin_identity(request: web.Request) -> AuthIdentity:
+    identity = _request_identity(request)
+    if not identity.is_admin:
+        raise AuthError(403, 'Administrator access required')
+    return identity
+
+
+def _session_cookie_secure(request: web.Request) -> bool:
+    if request.secure:
+        return True
+    forwarded_proto = request.headers.get('X-Forwarded-Proto', '')
+    return forwarded_proto.split(',')[0].strip().lower() == 'https'
+
+
+def _set_session_cookie(response: web.StreamResponse, request: web.Request, raw_session: str) -> None:
+    response.set_cookie(
+        SESSION_COOKIE,
+        raw_session,
+        max_age=SESSION_TTL_SECONDS,
+        httponly=True,
+        secure=_session_cookie_secure(request),
+        samesite='Lax',
+        path=config.URL_PREFIX,
+    )
+
+
+def _clear_session_cookie(response: web.StreamResponse) -> None:
+    response.del_cookie(SESSION_COOKIE, path=config.URL_PREFIX)
+
+
+_socket_identities: dict[str, AuthIdentity] = {}
+
+
+async def _disconnect_credentials(
+    *,
+    user_id: str | None = None,
+    credential_hash: str | None = None,
+    except_credential_hash: str | None = None,
+) -> None:
+    targets = [
+        sid
+        for sid, identity in _socket_identities.items()
+        if (user_id is not None and identity.user_id == user_id)
+        or (credential_hash is not None and identity.credential_hash == credential_hash)
+        if identity.credential_hash != except_credential_hash
+    ]
+    for sid in targets:
+        await sio.disconnect(sid)
+
+
+@routes.get(config.URL_PREFIX + 'health')
+async def health(request):
+    return web.json_response({'status': 'ok'})
+
+
+@routes.get(config.URL_PREFIX + 'auth/status')
+async def auth_status(request):
+    identity = request.get('auth')
+    return web.json_response({
+        'setup_required': auth_manager.setup_required,
+        'authenticated': isinstance(identity, AuthIdentity),
+        'user': {
+            'id': identity.user_id,
+            'username': identity.username,
+            'role': identity.role,
+        } if isinstance(identity, AuthIdentity) else None,
+    }, headers={'Cache-Control': 'no-store'})
+
+
+@routes.post(config.URL_PREFIX + 'auth/onboarding')
+async def auth_onboarding(request):
+    post = await _read_json_request(request)
+    user, raw_session = await auth_manager.create_first_user(
+        post.get('username'),
+        post.get('password'),
+    )
+    response = web.json_response({'status': 'ok', 'user': user})
+    _set_session_cookie(response, request, raw_session)
+    return response
+
+
+@routes.post(config.URL_PREFIX + 'auth/login')
+async def auth_login(request):
+    post = await _read_json_request(request)
+    user, raw_session = await auth_manager.login(
+        post.get('username'),
+        post.get('password'),
+        request.remote or 'unknown',
+    )
+    response = web.json_response({'status': 'ok', 'user': user})
+    _set_session_cookie(response, request, raw_session)
+    return response
+
+
+@routes.post(config.URL_PREFIX + 'auth/logout')
+async def auth_logout(request):
+    session_hash = await auth_manager.logout(request.cookies.get(SESSION_COOKIE))
+    if session_hash:
+        await _disconnect_credentials(credential_hash=session_hash)
+    response = web.json_response({'status': 'ok'})
+    _clear_session_cookie(response)
+    return response
+
+
+@routes.get(config.URL_PREFIX + 'auth/me')
+async def auth_me(request):
+    identity = _request_identity(request)
+    return web.json_response({
+        'id': identity.user_id,
+        'username': identity.username,
+        'role': identity.role,
+    })
+
+
+@routes.post(config.URL_PREFIX + 'auth/password')
+async def auth_password(request):
+    identity = _request_identity(request)
+    post = await _read_json_request(request)
+    await auth_manager.change_password(
+        identity,
+        post.get('current_password'),
+        post.get('new_password'),
+    )
+    await _disconnect_credentials(
+        user_id=identity.user_id,
+        except_credential_hash=(
+            identity.credential_hash if identity.credential_type == 'session' else None
+        ),
+    )
+    return web.json_response({'status': 'ok'})
+
+
+@routes.get(config.URL_PREFIX + 'auth/tokens')
+async def auth_tokens_list(request):
+    identity = _request_identity(request)
+    return web.json_response(await auth_manager.list_api_tokens(identity.user_id))
+
+
+@routes.post(config.URL_PREFIX + 'auth/tokens')
+async def auth_tokens_create(request):
+    identity = _request_identity(request)
+    post = await _read_json_request(request)
+    token = await auth_manager.create_api_token(identity, post.get('name'))
+    return web.json_response({'status': 'ok', 'token': token})
+
+
+@routes.delete(config.URL_PREFIX + r'auth/tokens/{token_id:[a-f0-9]{32}}')
+async def auth_tokens_delete(request):
+    identity = _request_identity(request)
+    await auth_manager.revoke_api_token(identity.user_id, request.match_info['token_id'])
+    return web.json_response({'status': 'ok'})
+
+
+@routes.get(config.URL_PREFIX + 'auth/users')
+async def auth_users_list(request):
+    _admin_identity(request)
+    return web.json_response(await auth_manager.list_users())
+
+
+@routes.patch(config.URL_PREFIX + r'auth/users/{user_id:[a-f0-9]{32}}')
+async def auth_users_update(request):
+    identity = _admin_identity(request)
+    post = await _read_json_request(request)
+    user, revoked = await auth_manager.update_user(
+        identity,
+        request.match_info['user_id'],
+        post,
+    )
+    if revoked:
+        await _disconnect_credentials(user_id=user['id'])
+    return web.json_response({'status': 'ok', 'user': user})
+
+
+@routes.delete(config.URL_PREFIX + r'auth/users/{user_id:[a-f0-9]{32}}')
+async def auth_users_delete(request):
+    identity = _admin_identity(request)
+    user_id = request.match_info['user_id']
+    await auth_manager.delete_user(identity, user_id)
+    await _disconnect_credentials(user_id=user_id)
+    return web.json_response({'status': 'ok'})
+
+
+@routes.post(config.URL_PREFIX + r'auth/users/{user_id:[a-f0-9]{32}}/revoke')
+async def auth_users_revoke(request):
+    _admin_identity(request)
+    user_id = request.match_info['user_id']
+    await auth_manager.revoke_user_access(user_id)
+    await _disconnect_credentials(user_id=user_id)
+    return web.json_response({'status': 'ok'})
+
+
+@routes.get(config.URL_PREFIX + 'auth/invitations')
+async def auth_invitations_list(request):
+    _admin_identity(request)
+    return web.json_response(await auth_manager.list_invitations())
+
+
+@routes.post(config.URL_PREFIX + 'auth/invitations')
+async def auth_invitations_create(request):
+    identity = _admin_identity(request)
+    post = await _read_json_request(request)
+    invitation = await auth_manager.create_invitation(identity, post.get('role', 'user'))
+    return web.json_response({'status': 'ok', 'invitation': invitation})
+
+
+@routes.delete(config.URL_PREFIX + r'auth/invitations/{invitation_id:[a-f0-9]{32}}')
+async def auth_invitations_delete(request):
+    _admin_identity(request)
+    await auth_manager.revoke_invitation(request.match_info['invitation_id'])
+    return web.json_response({'status': 'ok'})
+
+
+@routes.get(config.URL_PREFIX + r'auth/invite/{token}')
+async def auth_invite_status(request):
+    return web.json_response(await auth_manager.inspect_invitation(request.match_info['token']))
+
+
+@routes.post(config.URL_PREFIX + r'auth/invite/{token}/accept')
+async def auth_invite_accept(request):
+    post = await _read_json_request(request)
+    user, raw_session = await auth_manager.accept_invitation(
+        request.match_info['token'],
+        post.get('username'),
+        post.get('password'),
+    )
+    response = web.json_response({'status': 'ok', 'user': user})
+    _set_session_cookie(response, request, raw_session)
+    return response
 
 
 def parse_download_options(post: dict) -> dict:
@@ -1343,6 +1643,20 @@ async def history(request):
 
 @sio.event
 async def connect(sid, environ):
+    request = environ.get('aiohttp.request')
+    identity = request.get('auth') if isinstance(request, web.Request) else None
+    if not isinstance(identity, AuthIdentity):
+        cookie = SimpleCookie()
+        cookie.load(environ.get('HTTP_COOKIE', ''))
+        morsel = cookie.get(SESSION_COOKIE)
+        identity = await auth_manager.authenticate(
+            morsel.value if morsel else None,
+            environ.get('HTTP_AUTHORIZATION'),
+        )
+    if not isinstance(identity, AuthIdentity):
+        log.warning("Refused unauthenticated Socket.IO connection")
+        return False
+    _socket_identities[sid] = identity
     log.info(f"Client connected: {sid}")
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
@@ -1356,6 +1670,13 @@ async def connect(sid, environ):
         await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
     if config.YTDL_OPTIONS_FILE:
         await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
+
+
+@sio.event
+async def disconnect(sid, reason=None):
+    _socket_identities.pop(sid, None)
+    log.info("Client disconnected: %s (%s)", sid, reason or "unknown")
+
 
 def get_custom_dirs():
     cache_ttl_seconds = 5
@@ -1421,10 +1742,36 @@ def get_custom_dirs():
 
 @routes.get(config.URL_PREFIX)
 async def index(request):
+    if auth_manager.setup_required:
+        raise web.HTTPFound(config.URL_PREFIX + 'onboarding')
+    if not isinstance(request.get('auth'), AuthIdentity):
+        raise web.HTTPFound(config.URL_PREFIX + 'login')
     response = web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/browser/index.html'))
     if 'metube_theme' not in request.cookies:
         response.set_cookie('metube_theme', config.DEFAULT_THEME)
     return response
+
+
+@routes.get(config.URL_PREFIX + 'login')
+@routes.get(config.URL_PREFIX + 'onboarding')
+@routes.get(config.URL_PREFIX + 'invite')
+@routes.get(config.URL_PREFIX + r'invite/{token}')
+@routes.get(config.URL_PREFIX + 'users')
+@routes.get(config.URL_PREFIX + 'profile')
+async def auth_spa(request):
+    relative = request.path[len(config.URL_PREFIX):]
+    identity = request.get('auth')
+    if relative.startswith('invite/'):
+        token = request.match_info.get('token', '')
+        raise web.HTTPFound(config.URL_PREFIX + 'invite?' + urlencode({'token': token}))
+    if relative == 'onboarding' and not auth_manager.setup_required:
+        raise web.HTTPFound(config.URL_PREFIX)
+    if relative == 'login' and isinstance(identity, AuthIdentity):
+        raise web.HTTPFound(config.URL_PREFIX)
+    if relative in ('users', 'profile') and not isinstance(identity, AuthIdentity):
+        raise web.HTTPFound(config.URL_PREFIX + 'login')
+    return web.FileResponse(os.path.join(config.BASE_DIR, 'ui/dist/metube/browser/index.html'))
+
 
 @routes.get(config.URL_PREFIX + 'robots.txt')
 async def robots(request):
@@ -1478,6 +1825,17 @@ app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/delete', add_
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'subscriptions/check', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'upload-cookies', add_cors)
 app.router.add_route('OPTIONS', config.URL_PREFIX + 'delete-cookies', add_cors)
+for auth_options_path in (
+    'auth/login',
+    'auth/logout',
+    'auth/onboarding',
+    'auth/password',
+    'auth/tokens',
+    'auth/users',
+    'auth/invitations',
+):
+    app.router.add_route('OPTIONS', config.URL_PREFIX + auth_options_path, add_cors)
+app.router.add_route('OPTIONS', config.URL_PREFIX + r'auth/{tail:.*}', add_cors)
 
 async def on_prepare(request, response):
     origin = request.headers.get('Origin')
