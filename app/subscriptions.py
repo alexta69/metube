@@ -64,8 +64,10 @@ def _build_ydl_params(
         "ignore_no_formats_error": True,
         "lazy_playlist": True,
         "paths": {"home": config.DOWNLOAD_DIR, "temp": config.TEMP_DIR},
-        **config.YTDL_OPTIONS,
-        **(extra_opts or {}),
+        # Copies: YoutubeDL fills its defaults into nested dicts (outtmpl) in
+        # place, which would otherwise rewrite YTDL_OPTIONS and the presets.
+        **copy.deepcopy(config.YTDL_OPTIONS),
+        **copy.deepcopy(extra_opts or {}),
         # A scan is a poll, not an add: it runs on a timer and queues items
         # through the download queue, which writes the feed metadata itself.
         # yt-dlp emits the playlist-level infojson/description/thumbnail

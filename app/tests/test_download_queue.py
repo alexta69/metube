@@ -16,6 +16,7 @@ import time
 
 import yt_dlp
 
+import subscriptions
 from download_options import DownloadOptions
 from ytdl import (
     Download,
@@ -1145,6 +1146,48 @@ async def test_extract_info_metube_extract_keys_win_over_preset(dq_env):
     assert result["status"] == "ok"
     assert captured_params[0]["extract_flat"] is True
     assert captured_params[0]["noplaylist"] is True
+
+
+# The two tests below construct a real YoutubeDL and stub only the network
+# call: what they check is what YoutubeDL's constructor does to the params it
+# is given, which no fake can show. It fills its own default templates into
+# the outtmpl dict in place, so params sharing that dict with YTDL_OPTIONS or a
+# preset rewrote the config, and from the first extraction on yt-dlp's
+# "%(title)s [%(id)s].%(ext)s" beat OUTPUT_TEMPLATE in every download.
+
+
+@pytest.mark.asyncio
+async def test_extraction_leaves_the_configured_outtmpl_alone(dq_env):
+    dq_env.YTDL_OPTIONS = {"outtmpl": {"thumbnail": "thumbs/%(title)s.%(ext)s"}}
+    dq_env.YTDL_OPTIONS_PRESETS = {"Covers": {"outtmpl": {"pl_thumbnail": "covers/%(title)s.%(ext)s"}}}
+    configured = copy.deepcopy((dq_env.YTDL_OPTIONS, dq_env.YTDL_OPTIONS_PRESETS))
+
+    def extract_info(self, url, download=False):
+        return {"_type": "video", "id": url[-1], "title": "Clip", "url": url, "webpage_url": url}
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(yt_dlp.YoutubeDL, "extract_info", extract_info):
+        for url in ("https://example.com/watch?v=1", "https://example.com/watch?v=2"):
+            result = await dq.add(url, DownloadOptions(auto_start=False, ytdl_options_presets=["Covers"]))
+            assert result["status"] == "ok"
+
+    assert (dq_env.YTDL_OPTIONS, dq_env.YTDL_OPTIONS_PRESETS) == configured
+    # The preset's outtmpl replaces the global one, as any preset key does, and
+    # nothing of yt-dlp's crept in, so the download's own merge still puts
+    # OUTPUT_TEMPLATE in as the default template.
+    assert dq.pending.get("https://example.com/watch?v=2").ytdl_opts["outtmpl"] == {
+        "pl_thumbnail": "covers/%(title)s.%(ext)s",
+    }
+
+
+def test_subscription_scan_leaves_the_configured_outtmpl_alone(dq_env):
+    dq_env.YTDL_OPTIONS = {"outtmpl": {"thumbnail": "thumbs/%(title)s.%(ext)s"}}
+    extra_opts = {"outtmpl": {"pl_thumbnail": "covers/%(title)s.%(ext)s"}}
+    configured = copy.deepcopy((dq_env.YTDL_OPTIONS, extra_opts))
+
+    yt_dlp.YoutubeDL(subscriptions._build_ydl_params(dq_env, extra_opts=extra_opts))
+
+    assert (dq_env.YTDL_OPTIONS, extra_opts) == configured
 
 
 def _feed_extract(feed):

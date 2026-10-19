@@ -1706,6 +1706,12 @@ class DownloadQueue:
         opts.update(merge_ytdl_option_layers(
             ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
         ))
+        # A deep copy: YoutubeDL writes its own defaults into nested option
+        # dicts such as outtmpl in place. Sharing them with the config let the
+        # first extraction plant yt-dlp's "%(title)s [%(id)s].%(ext)s" in
+        # YTDL_OPTIONS (or a preset), where it then beat OUTPUT_TEMPLATE in
+        # every later download.
+        opts = copy.deepcopy(opts)
         if video_password:
             # The dedicated field always wins over a "videopassword" that a
             # preset or override might also set — it's the only place this key
