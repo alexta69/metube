@@ -8,23 +8,25 @@
 } @else if (view === 'app' && user) {
   <app-download-app [currentUser]="user" (logoutRequested)="logout()" />
 } @else if (view === 'login' || view === 'onboarding' || view === 'invite') {
+  <nav class="navbar navbar-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" [href]="homeUrl">
+        <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
+        MeTube
+      </a>
+    </div>
+  </nav>
   <main class="auth-stage">
     <section class="auth-card">
-      <div class="auth-brand">
-        <img src="assets/icons/android-chrome-192x192.png" alt="" width="48" height="48">
-        <div>
-          <div class="eyebrow">MeTube access</div>
-          <h1>
-            @if (view === 'onboarding') {
-              Create the first account
-            } @else if (view === 'invite') {
-              Join this MeTube
-            } @else {
-              Welcome back
-            }
-          </h1>
-        </div>
-      </div>
+      <h1>
+        @if (view === 'onboarding') {
+          Create the first account
+        } @else if (view === 'invite') {
+          Join this MeTube
+        } @else {
+          Welcome back
+        }
+      </h1>
 
       @if (view === 'onboarding') {
         <p class="auth-intro">
@@ -102,10 +104,17 @@
     </section>
   </main>
 } @else if (view === 'users' && user) {
+  <nav class="navbar navbar-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" [href]="homeUrl">
+        <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
+        MeTube
+      </a>
+    </div>
+  </nav>
   <main class="management-shell">
     <header class="management-header">
       <div>
-        <div class="eyebrow">Administration</div>
         <h1>User access</h1>
         <p>Invite people, assign roles and revoke access from one place.</p>
       </div>
@@ -253,12 +262,22 @@
     </section>
   </main>
 } @else if (view === 'profile' && user) {
+  <nav class="navbar navbar-dark">
+    <div class="container-fluid">
+      <a class="navbar-brand d-flex align-items-center" [href]="homeUrl">
+        <img src="assets/icons/android-chrome-192x192.png" alt="MeTube Logo" height="32" class="me-2">
+        MeTube
+      </a>
+    </div>
+  </nav>
   <main class="management-shell profile-shell">
     <header class="management-header">
       <div>
-        <div class="eyebrow">Signed in as {{ user.username }}</div>
         <h1>Account & API access</h1>
-        <p>Update your password and issue tokens for trusted scripts.</p>
+        <p>
+          Signed in as {{ user.username }}. Update your password and issue tokens for trusted
+          scripts.
+        </p>
       </div>
       <a class="btn btn-outline-secondary" [href]="homeUrl">Back to MeTube</a>
     </header>

@@ -3,53 +3,22 @@
   min-height: 100vh
 
 .auth-stage
-  min-height: 100vh
+  min-height: calc(100vh - 56px)
   display: grid
   place-items: center
   padding: 2rem
-  background: radial-gradient(circle at 20% 15%, rgba(13, 110, 253, 0.18), transparent 34%), radial-gradient(circle at 85% 80%, rgba(25, 135, 84, 0.12), transparent 30%), var(--bs-body-bg)
-
-.auth-stage::before
-  content: ""
-  position: fixed
-  inset: 0
-  pointer-events: none
-  opacity: 0.16
-  background-image: linear-gradient(var(--bs-border-color) 1px, transparent 1px), linear-gradient(90deg, var(--bs-border-color) 1px, transparent 1px)
-  background-size: 42px 42px
-  mask-image: linear-gradient(to bottom, black, transparent 75%)
 
 .auth-card
-  position: relative
   width: min(100%, 30rem)
-  padding: clamp(1.5rem, 5vw, 2.75rem)
+  padding: 2rem
   border: 1px solid var(--bs-border-color)
-  border-radius: 1.25rem
-  background: color-mix(in srgb, var(--bs-body-bg) 92%, transparent)
-  box-shadow: 0 1.5rem 5rem rgba(0, 0, 0, 0.16)
-  backdrop-filter: blur(18px)
-
-.auth-brand
-  display: flex
-  align-items: center
-  gap: 1rem
-  margin-bottom: 1.25rem
-
-  img
-    border-radius: 0.85rem
-    box-shadow: 0 0.5rem 1.5rem rgba(0, 0, 0, 0.18)
+  border-radius: var(--bs-border-radius)
+  background: var(--bs-body-bg)
 
   h1
-    margin: 0.15rem 0 0
-    font-size: clamp(1.55rem, 4vw, 2rem)
-    letter-spacing: -0.035em
-
-.eyebrow
-  color: var(--bs-primary)
-  font-size: 0.72rem
-  font-weight: 700
-  letter-spacing: 0.13em
-  text-transform: uppercase
+    margin: 0 0 0.75rem
+    font-size: 1.8rem
+    font-weight: 300
 
 .auth-intro
   margin-bottom: 1.5rem
@@ -75,21 +44,21 @@
   color: var(--bs-secondary-color)
 
 .management-shell
-  width: min(100% - 2rem, 82rem)
+  width: min(100% - 2rem, 1140px)
   margin: 0 auto
-  padding: clamp(2rem, 6vw, 5rem) 0
+  padding: 3rem 0
 
 .management-header
   display: flex
   justify-content: space-between
-  align-items: end
+  align-items: center
   gap: 2rem
-  margin-bottom: 2.5rem
+  margin-bottom: 2rem
 
   h1
-    margin: 0.25rem 0
-    font-size: clamp(2.2rem, 6vw, 4.2rem)
-    letter-spacing: -0.055em
+    margin: 0 0 0.25rem
+    font-size: 2rem
+    font-weight: 300
 
   p
     margin: 0
@@ -97,11 +66,10 @@
 
 .management-card
   margin-bottom: 1.25rem
-  padding: clamp(1.25rem, 3vw, 2rem)
+  padding: 1.25rem
   border: 1px solid var(--bs-border-color)
-  border-radius: 1rem
-  background: var(--bs-tertiary-bg)
-  box-shadow: 0 0.75rem 2.5rem rgba(0, 0, 0, 0.06)
+  border-radius: var(--bs-border-radius)
+  background: var(--bs-body-bg)
 
   h2
     margin-bottom: 0.35rem
@@ -115,6 +83,7 @@
   grid-template-columns: minmax(0, 1fr) auto
   gap: 1rem 2rem
   align-items: center
+  background: var(--bs-secondary-bg)
 
 .invite-controls
   display: flex
@@ -136,8 +105,8 @@
   min-width: 1.7rem
   padding: 0.15rem 0.45rem
   border-radius: 999px
-  background: var(--bs-primary-bg-subtle)
-  color: var(--bs-primary-text-emphasis)
+  background: var(--bs-secondary-bg)
+  color: var(--bs-secondary-color)
   font-size: 0.75rem
   font-weight: 700
   text-align: center
@@ -198,7 +167,7 @@
   margin-top: 1rem
   padding: 1rem
   border: 1px solid var(--bs-warning-border-subtle)
-  border-radius: 0.75rem
+  border-radius: var(--bs-border-radius)
   background: var(--bs-warning-bg-subtle)
 
   span
