@@ -2,9 +2,13 @@
 
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
+import os
+import tempfile
 import unittest
+from unittest.mock import patch
 
 import main
 
@@ -67,6 +71,15 @@ class ParseLogLevelTests(unittest.TestCase):
     def test_invalid_returns_none(self):
         self.assertIsNone(main.parseLogLevel("not_a_level"))
         self.assertIsNone(main.parseLogLevel(123))
+        # Attributes of the logging module that are not levels.
+        self.assertIsNone(main.parseLogLevel("basic_format"))
+        self.assertIsNone(main.parseLogLevel("NOTSET"))
+
+    def test_none_silences_everything(self):
+        # Documented in the README since the variable was added, but used to
+        # fall back to INFO.
+        self.assertGreater(main.parseLogLevel("NONE"), logging.CRITICAL)
+        self.assertGreater(main.parseLogLevel("none"), logging.CRITICAL)
 
 
 class ObjectSerializerTests(unittest.TestCase):
@@ -122,13 +135,67 @@ class ParseYtdlOverridesTests(unittest.TestCase):
 
 
 class ParseDownloadOptionsTests(unittest.TestCase):
+    _BODY = {"url": "https://example.com/v", "download_type": "video", "format": "any", "quality": "best"}
+
+    def _parse(self, **fields):
+        return main.parse_download_options({**self._BODY, **fields})[1]
+
+    def _rejects(self, **fields):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            self._parse(**fields)
+
+    def test_string_and_numeric_booleans_are_coerced(self):
+        # 'false' used to pass through as a truthy string: split_by_chapters
+        # split anyway, and auto_start (tested with `is True`) parked even
+        # 'true' in Pending.
+        for raw, expected in (("true", True), ("false", False), ("1", True), ("0", False),
+                              (1, True), (0, False), (True, True), (False, False)):
+            with self.subTest(raw=raw):
+                parsed = self._parse(auto_start=raw, split_by_chapters=raw, sponsorblock=raw)
+                self.assertIs(parsed.auto_start, expected)
+                self.assertIs(parsed.split_by_chapters, expected)
+                self.assertIs(parsed.sponsorblock, expected)
+
+    def test_boolean_defaults(self):
+        parsed = self._parse()
+        self.assertIs(parsed.auto_start, True)
+        self.assertIs(parsed.split_by_chapters, False)
+        self.assertIs(parsed.sponsorblock, False)
+        parsed = self._parse(auto_start="", split_by_chapters=None)
+        self.assertIs(parsed.auto_start, True)
+        self.assertIs(parsed.split_by_chapters, False)
+
+    def test_unrecognised_booleans_are_refused(self):
+        for field in ("auto_start", "split_by_chapters", "sponsorblock"):
+            for raw in ("yes please", 2, [], {}):
+                with self.subTest(field=field, raw=raw):
+                    self._rejects(**{field: raw})
+
+    def test_playlist_item_limit(self):
+        self.assertEqual(self._parse(playlist_item_limit="5").playlist_item_limit, 5)
+        self.assertEqual(self._parse(playlist_item_limit=0).playlist_item_limit, 0)
+        for raw in (-1, "-5", "abc", True, [1]):
+            with self.subTest(raw=raw):
+                self._rejects(playlist_item_limit=raw)
+
+    def test_string_fields_must_be_strings(self):
+        # A non-string prefix reached DownloadInfo's len() and was a 500.
+        for field in ("folder", "custom_name_prefix", "chapter_template"):
+            for raw in (7, ["a"], {"a": 1}, True):
+                with self.subTest(field=field, raw=raw):
+                    self._rejects(**{field: raw})
+        parsed = self._parse(folder=None, custom_name_prefix=None, chapter_template=None)
+        self.assertIsNone(parsed.folder)
+        self.assertEqual(parsed.custom_name_prefix, "")
+        self.assertEqual(parsed.chapter_template, main.config.OUTPUT_TEMPLATE_CHAPTER)
+
     def test_accepts_known_preset_and_overrides(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
         previous_allow = main.config.ALLOW_YTDL_OPTIONS_OVERRIDES
         main.config.YTDL_OPTIONS_PRESETS = {"With subtitles": {"writesubtitles": True}}
         main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = True
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -140,8 +207,8 @@ class ParseDownloadOptionsTests(unittest.TestCase):
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
             main.config.ALLOW_YTDL_OPTIONS_OVERRIDES = previous_allow
-        self.assertEqual(parsed["ytdl_options_presets"], ["With subtitles"])
-        self.assertEqual(parsed["ytdl_options_overrides"], {"writesubtitles": True})
+        self.assertEqual(parsed.ytdl_options_presets, ("With subtitles",))
+        self.assertEqual(parsed.ytdl_options_overrides, {"writesubtitles": True})
 
     def test_accepts_multiple_presets_in_order(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
@@ -150,7 +217,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "B": {"writesubtitles": False},
         }
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -160,13 +227,13 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
-        self.assertEqual(parsed["ytdl_options_presets"], ["A", "B"])
+        self.assertEqual(parsed.ytdl_options_presets, ("A", "B"))
 
     def test_legacy_singular_preset_string_normalized_to_list(self):
         previous = dict(main.config.YTDL_OPTIONS_PRESETS)
         main.config.YTDL_OPTIONS_PRESETS = {"Solo": {}}
         try:
-            parsed = main.parse_download_options({
+            url, parsed = main.parse_download_options({
                 "url": "https://example.com/v",
                 "download_type": "video",
                 "codec": "auto",
@@ -176,7 +243,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             })
         finally:
             main.config.YTDL_OPTIONS_PRESETS = previous
-        self.assertEqual(parsed["ytdl_options_presets"], ["Solo"])
+        self.assertEqual(parsed.ytdl_options_presets, ("Solo",))
 
     def test_rejects_unknown_preset(self):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -206,7 +273,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             main.config.YTDL_OPTIONS_PRESETS = previous
 
     def test_clip_start_end_seconds_and_clock(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -215,23 +282,23 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "clip_start": "2:26",
             "clip_end": "3:24",
         })
-        self.assertEqual(parsed["clip_start"], 146.0)
-        self.assertEqual(parsed["clip_end"], 204.0)
+        self.assertEqual(parsed.clip_start, 146.0)
+        self.assertEqual(parsed.clip_end, 204.0)
 
     def test_clip_url_t_param_strips_query_and_sets_start(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=855s",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 855.0)
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 855.0)
+        self.assertIsNone(parsed.clip_end)
 
     def test_clip_explicit_start_wins_over_url_t(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=100",
             "download_type": "video",
             "codec": "auto",
@@ -239,12 +306,12 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "clip_start": "50",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 50.0)
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 50.0)
+        self.assertIsNone(parsed.clip_end)
 
     def test_clip_end_only_sets_start_zero_and_strips_url_t(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=999",
             "download_type": "video",
             "codec": "auto",
@@ -252,23 +319,23 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "clip_end": "60",
         })
-        self.assertEqual(parsed["url"], "https://www.youtube.com/watch?v=1")
-        self.assertEqual(parsed["clip_start"], 0.0)
-        self.assertEqual(parsed["clip_end"], 60.0)
+        self.assertEqual(url, "https://www.youtube.com/watch?v=1")
+        self.assertEqual(parsed.clip_start, 0.0)
+        self.assertEqual(parsed.clip_end, 60.0)
 
     def test_clip_url_t_param_ignored_on_non_youtube_host(self):
         # 't' is a generic query param name; only rewrite it on YouTube hosts
         # so an unrelated site's URL isn't silently mutated with a bogus clip.
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1&t=855s",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertEqual(parsed["url"], "https://example.com/watch?v=1&t=855s")
-        self.assertIsNone(parsed["clip_start"])
-        self.assertIsNone(parsed["clip_end"])
+        self.assertEqual(url, "https://example.com/watch?v=1&t=855s")
+        self.assertIsNone(parsed.clip_start)
+        self.assertIsNone(parsed.clip_end)
 
     def test_extract_t_query_youtu_be_short_host(self):
         cleaned, start = main._extract_t_query_from_url("https://youtu.be/abc123?t=90")
@@ -300,7 +367,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
 
     def test_video_password_passed_through_unchanged(self):
         # Not stripped: leading/trailing spaces may be part of the password.
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -308,20 +375,20 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "video_password": "  s3cret pw  ",
         })
-        self.assertEqual(parsed["video_password"], "  s3cret pw  ")
+        self.assertEqual(parsed.video_password, "  s3cret pw  ")
 
     def test_video_password_missing_defaults_to_none(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
             "format": "any",
             "quality": "best",
         })
-        self.assertIsNone(parsed["video_password"])
+        self.assertIsNone(parsed.video_password)
 
     def test_video_password_empty_string_becomes_none(self):
-        parsed = main.parse_download_options({
+        url, parsed = main.parse_download_options({
             "url": "https://example.com/watch?v=1",
             "download_type": "video",
             "codec": "auto",
@@ -329,7 +396,7 @@ class ParseDownloadOptionsTests(unittest.TestCase):
             "quality": "best",
             "video_password": "",
         })
-        self.assertIsNone(parsed["video_password"])
+        self.assertIsNone(parsed.video_password)
 
     def test_video_password_rejects_non_string(self):
         with self.assertRaises(main.web.HTTPBadRequest):
@@ -353,6 +420,25 @@ class GetCustomDirsTests(unittest.TestCase):
         self.assertIn("download_dir", result)
         self.assertIn("audio_download_dir", result)
         self.assertIn("", result["download_dir"])
+
+    def test_lists_subdirectories_relative_to_the_base_minus_excluded_ones(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            for d in ("Music/Albums", ".hidden", "@eaDir", "Shows"):
+                os.makedirs(os.path.join(tmp, d))
+            dirs = main._list_subdirs(tmp)
+            self.assertEqual(dirs[0], "")
+            self.assertEqual(sorted(dirs), ["", "Music", "Music/Albums", "Shows"])
+            # The default DOWNLOAD_DIR is '.', and stripping it as a string
+            # prefix used to list '.hidden' as 'hidden', past the exclusion.
+            cwd = os.getcwd()
+            os.chdir(tmp)
+            try:
+                self.assertEqual(sorted(main._list_subdirs(".")), ["", "Music", "Music/Albums", "Shows"])
+            finally:
+                os.chdir(cwd)
+
+    def test_missing_base_still_offers_the_base_itself(self):
+        self.assertEqual(main._list_subdirs("/nonexistent/metube-test"), [""])
 
 
 if __name__ == "__main__":
@@ -394,3 +480,69 @@ class WarnIfCookiefileShadowedTests(unittest.TestCase):
             main.config.YTDL_OPTIONS["cookiefile"] = value
             with self.assertNoLogs("main", level="WARNING"):
                 main.warn_if_cookiefile_shadowed()
+
+
+class WatchOptionsFileTests(unittest.IsolatedAsyncioTestCase):
+    """The hot reload has to survive the file being replaced, which is how
+    editors, `sed -i` and config tools save it."""
+
+    async def _wait_for(self, predicate, timeout=10.0):
+        deadline = asyncio.get_running_loop().time() + timeout
+        while not predicate():
+            if asyncio.get_running_loop().time() > deadline:
+                return False
+            await asyncio.sleep(0.05)
+        return True
+
+    async def test_reloads_after_every_atomic_replace(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'opts.json')
+            with open(path, 'w') as f:
+                f.write('{}')
+            calls = []
+
+            async def on_change():
+                calls.append(1)
+
+            stop = asyncio.Event()
+            with patch.object(main.config, 'YTDL_OPTIONS_FILE', path):
+                task = asyncio.create_task(main._watch_options_file(on_change, debounce=50, stop_event=stop))
+                try:
+                    await asyncio.sleep(0.5)  # let the watcher attach
+                    for expected, body in enumerate(('{"a": 1}', '{"a": 22}'), start=1):
+                        tmp_path = path + '.tmp'
+                        with open(tmp_path, 'w') as f:
+                            f.write(body)
+                        os.replace(tmp_path, path)
+                        self.assertTrue(await self._wait_for(lambda: len(calls) >= expected),
+                                        f'replace #{expected} was not noticed')
+                    with open(path, 'a') as f:
+                        f.write(' ')
+                    self.assertTrue(await self._wait_for(lambda: len(calls) >= 3),
+                                    'an in-place edit after the replaces was not noticed')
+                finally:
+                    stop.set()
+                    await asyncio.wait_for(task, timeout=5)
+
+    async def test_ignores_other_files_in_the_directory(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, 'opts.json')
+            with open(path, 'w') as f:
+                f.write('{}')
+            calls = []
+
+            async def on_change():
+                calls.append(1)
+
+            stop = asyncio.Event()
+            with patch.object(main.config, 'YTDL_OPTIONS_FILE', path):
+                task = asyncio.create_task(main._watch_options_file(on_change, debounce=50, stop_event=stop))
+                try:
+                    await asyncio.sleep(0.5)
+                    with open(os.path.join(tmp, 'other.txt'), 'w') as f:
+                        f.write('x')
+                    await asyncio.sleep(1.0)
+                    self.assertEqual(calls, [])
+                finally:
+                    stop.set()
+                    await asyncio.wait_for(task, timeout=5)

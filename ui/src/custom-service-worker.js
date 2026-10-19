@@ -7,8 +7,14 @@ self.addEventListener("fetch", (event) => {
 
     if (url.pathname.endsWith("/share-target")) {
       const urlRegExp = new RegExp(URL_PATTERN);
-      const sharedText = url.searchParams.get("text");
-      const matches = [...sharedText.matchAll(urlRegExp)].map((m) => m[0]);
+      // Apps share a link in "url", in "text", or in both (often with a
+      // title or a comment around it), and any of them can be missing:
+      // reading only "text" threw on a share without one.
+      const sharedText = ["url", "text", "title"]
+        .map((name) => url.searchParams.get(name))
+        .filter(Boolean)
+        .join(" ");
+      const matches = [...new Set([...sharedText.matchAll(urlRegExp)].map((m) => m[0]))];
       const basePath = url.pathname.split("/").slice(0, -1).join("/");
 
       event.respondWith(

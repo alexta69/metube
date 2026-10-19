@@ -1,0 +1,66 @@
+// Shared by the root component and the section components split out of it:
+// the collapsible section headers, the download/subscription tables and the
+// help labels. A partial rather than global styles, so each component keeps
+// its own emulated scope and tables elsewhere (modals) are left alone.
+
+.metube-section-header
+    font-size: 1.8rem
+    font-weight: 300
+    position: relative
+    background: var(--bs-secondary-bg)
+    padding: 0.5rem 0
+    margin-top: 3.5rem
+
+.metube-section-toggle
+    // Positioned so it paints above the header's full-bleed :before overlay.
+    position: relative
+    display: flex
+    align-items: center
+    // Title left, chevron against the right edge, so all three section titles
+    // stay on the same left margin whether or not a chevron is present.
+    justify-content: space-between
+    gap: 0.75rem
+    width: 100%
+    padding: 0
+    border: 0
+    background: none
+    color: inherit
+    font: inherit
+    text-align: left
+
+.metube-section-chevron
+    font-size: 1.1rem
+    width: 1.1rem
+    color: var(--bs-secondary-color)
+
+.metube-section-header:before
+    content: ""
+    position: absolute
+    top: 0
+    bottom: 0
+    left: -9999px
+    right: 0
+    border-left: 9999px solid var(--bs-secondary-bg)
+    box-shadow: 9999px 0 0 var(--bs-secondary-bg)
+
+button:hover
+    text-decoration: none
+
+th
+    border-top: 0
+    border-bottom-width: 3px !important
+    vertical-align: middle !important
+    white-space: nowrap
+
+td
+    vertical-align: middle
+
+.disabled
+    opacity: 0.5
+    pointer-events: none
+
+.help-title
+  cursor: help
+
+  &:focus
+    outline: none

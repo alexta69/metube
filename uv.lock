@@ -604,8 +604,6 @@ version = "0.1.0"
 source = { virtual = "." }
 dependencies = [
     { name = "aiohttp" },
-    { name = "curl-cffi" },
-    { name = "mutagen" },
     { name = "python-socketio" },
     { name = "watchfiles" },
     { name = "yt-dlp", extra = ["curl-cffi", "default", "deno"] },
@@ -622,8 +620,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "aiohttp" },
-    { name = "curl-cffi" },
-    { name = "mutagen" },
     { name = "python-socketio", specifier = ">=5.0,<6.0" },
     { name = "watchfiles" },
     { name = "yt-dlp", extras = ["default", "curl-cffi", "deno"] },

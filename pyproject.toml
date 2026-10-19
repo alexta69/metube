@@ -6,9 +6,8 @@ requires-python = ">=3.13"
 dependencies = [
     "aiohttp",
     "python-socketio>=5.0,<6.0",
+    # mutagen and curl-cffi come with the default and curl-cffi extras.
     "yt-dlp[default,curl-cffi,deno]",
-    "mutagen",
-    "curl-cffi",
     "watchfiles",
 ]
 

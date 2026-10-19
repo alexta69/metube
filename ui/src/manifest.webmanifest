@@ -22,7 +22,9 @@
     "action": "./share-target",
     "method": "GET",
     "params": {
-      "text": "text"
+      "title": "title",
+      "text": "text",
+      "url": "url"
     }
   }
 }

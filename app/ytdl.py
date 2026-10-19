@@ -4,7 +4,6 @@ import yt_dlp
 import collections
 import collections.abc
 import copy
-import pickle
 from collections import OrderedDict
 import time
 import asyncio
@@ -23,6 +22,7 @@ from yt_dlp.postprocessor.common import PostProcessor
 from yt_dlp.utils import STR_FORMAT_RE_TMPL, STR_FORMAT_TYPES
 import bg_tasks
 from dl_formats import get_format, get_opts, merge_ytdl_option_layers
+from download_options import DownloadOptions
 import format_catalog
 from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
@@ -221,6 +221,24 @@ class _AlbumArtistPostProcessor(PostProcessor):
         return [], info
 
 
+def _merge_option_dict(ours: dict, theirs: Any, *, str_key: Optional[str] = None) -> dict:
+    """Overlay a user-supplied yt-dlp dict option onto MeTube's own.
+
+    User keys win, so a deliberate override still takes effect. yt-dlp also
+    accepts a bare string for some of these options (``outtmpl``), meaning the
+    *str_key* entry; anything else unusable is ignored with a warning rather
+    than passed on to fail inside yt-dlp.
+    """
+    if theirs is None:
+        return dict(ours)
+    if isinstance(theirs, dict):
+        return {**ours, **theirs}
+    if str_key is not None and isinstance(theirs, str):
+        return {**ours, str_key: theirs}
+    log.warning(f'Ignoring a yt-dlp option that should be a dict, got {theirs!r}')
+    return dict(ours)
+
+
 def _is_within_directory(real_base: str, real_target: str) -> bool:
     """True if ``real_target`` is inside (or equal to) ``real_base``.
 
@@ -389,36 +407,39 @@ def _resolve_outtmpl_fields(template: str, info_dict: dict, prefixes: tuple[str,
 _MAX_ENTRY_SANITIZE_DEPTH = 64
 
 
-def _sanitize_entry_for_pickle(obj, _depth=0):
-    """Recursively normalize yt-dlp ``info_dict`` data so it can be stored in shelve/pickle.
+def _sanitize_entry(obj, _depth=0):
+    """Recursively normalize yt-dlp ``info_dict`` data so it can be persisted.
 
     Live streams and newer yt-dlp versions may nest generators, iterators, sets, or
-    non-serializable objects (e.g. locks) inside the extracted metadata. The previous
-    helper only walked plain dict/list/tuple and only expanded ``types.GeneratorType``.
+    objects that cannot be stored (e.g. locks) inside the extracted metadata.
+    Containers become lists and dicts; a leaf the JSON state store cannot
+    encode becomes None. (This used to test leaves with pickle, from when the
+    queues were shelves: a value that pickled but was not JSON then failed the
+    state write, and with it the add.)
     """
     if _depth > _MAX_ENTRY_SANITIZE_DEPTH:
         return None
     if obj is None or isinstance(obj, (bool, int, float, str, bytes)):
         return obj
     if isinstance(obj, types.GeneratorType):
-        return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+        return _sanitize_entry(list(obj), _depth + 1)
     if isinstance(obj, collections.abc.Mapping):
-        return {k: _sanitize_entry_for_pickle(v, _depth + 1) for k, v in obj.items()}
+        return {k: _sanitize_entry(v, _depth + 1) for k, v in obj.items()}
     if isinstance(obj, (list, tuple)):
-        return type(obj)(_sanitize_entry_for_pickle(x, _depth + 1) for x in obj)
+        return type(obj)(_sanitize_entry(x, _depth + 1) for x in obj)
     if isinstance(obj, (set, frozenset)):
-        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+        return [_sanitize_entry(x, _depth + 1) for x in obj]
     if isinstance(obj, collections.deque):
-        return [_sanitize_entry_for_pickle(x, _depth + 1) for x in obj]
+        return [_sanitize_entry(x, _depth + 1) for x in obj]
     if isinstance(obj, collections.abc.Iterator):
         try:
-            return _sanitize_entry_for_pickle(list(obj), _depth + 1)
+            return _sanitize_entry(list(obj), _depth + 1)
         except Exception:
             return None
     try:
-        pickle.dumps(obj, protocol=pickle.HIGHEST_PROTOCOL)
+        to_json_compatible(obj)
         return obj
-    except Exception:
+    except TypeError:
         return None
 
 
@@ -494,6 +515,39 @@ class DownloadQueueNotifier:
     async def cleared(self, id):
         raise NotImplementedError
 
+# What a stored DownloadInfo gets for a field it does not carry: records
+# written before the field existed, and the progress fields a compact record
+# leaves out. Adding a field to DownloadInfo means adding its default here.
+_DOWNLOAD_INFO_DEFAULTS: dict[str, Any] = {
+    "codec": "auto",
+    "folder": "",
+    "custom_name_prefix": "",
+    "playlist_item_limit": 0,
+    "split_by_chapters": False,
+    "sponsorblock": False,
+    "audio_tags": "with_cover",
+    "video_password": None,
+    "chapter_template": "",
+    "subtitle_language": "en",
+    "subtitle_mode": "prefer_manual",
+    "ytdl_options_overrides": {},
+    "entry": None,
+    "subtitle_files": [],
+    "chapter_files": [],
+    "clip_start": None,
+    "clip_end": None,
+    "live_status": None,
+    "live_release_timestamp": None,
+    "status": "pending",
+    "msg": None,
+    "percent": None,
+    "speed": None,
+    "eta": None,
+    "size": None,
+    "error": None,
+}
+
+
 class DownloadInfo:
     def __init__(
         self,
@@ -543,8 +597,8 @@ class DownloadInfo:
         self.size = None
         self.timestamp = time.time_ns()
         self.error = error
-        # Strip non-pickleable values (generators, iterators, locks, etc.) for shelve
-        self.entry = _sanitize_entry_for_pickle(entry) if entry is not None else None
+        # Strip values the state store cannot hold (generators, iterators, locks, etc.)
+        self.entry = _sanitize_entry(entry) if entry is not None else None
         self.playlist_item_limit = playlist_item_limit
         self.split_by_chapters = split_by_chapters
         self.sponsorblock = sponsorblock
@@ -611,28 +665,12 @@ class DownloadInfo:
             self.__dict__.pop('video_codec', None)
             self.__dict__.pop('subtitle_format', None)
 
-        if not getattr(self, "codec", None):
+        for name, default in _DOWNLOAD_INFO_DEFAULTS.items():
+            if name not in self.__dict__:
+                # A copy, so records never share one mutable default.
+                setattr(self, name, copy.copy(default))
+        if not self.codec:
             self.codec = "auto"
-        if not hasattr(self, "folder"):
-            self.folder = ""
-        if not hasattr(self, "custom_name_prefix"):
-            self.custom_name_prefix = ""
-        if not hasattr(self, "playlist_item_limit"):
-            self.playlist_item_limit = 0
-        if not hasattr(self, "split_by_chapters"):
-            self.split_by_chapters = False
-        if not hasattr(self, "sponsorblock"):
-            self.sponsorblock = False
-        if not hasattr(self, "audio_tags"):
-            self.audio_tags = "with_cover"
-        if not hasattr(self, "video_password"):
-            self.video_password = None
-        if not hasattr(self, "chapter_template"):
-            self.chapter_template = ""
-        if not hasattr(self, "subtitle_language"):
-            self.subtitle_language = "en"
-        if not hasattr(self, "subtitle_mode"):
-            self.subtitle_mode = "prefer_manual"
         legacy_preset = self.__dict__.pop("ytdl_options_preset", None)
         if "ytdl_options_presets" not in self.__dict__:
             if isinstance(legacy_preset, str) and legacy_preset.strip():
@@ -641,22 +679,6 @@ class DownloadInfo:
                 self.ytdl_options_presets = [str(x).strip() for x in legacy_preset if str(x).strip()]
             else:
                 self.ytdl_options_presets = []
-        if not hasattr(self, "ytdl_options_overrides"):
-            self.ytdl_options_overrides = {}
-        if not hasattr(self, "entry"):
-            self.entry = None
-        if not hasattr(self, "subtitle_files"):
-            self.subtitle_files = []
-        if not hasattr(self, "chapter_files"):
-            self.chapter_files = []
-        if not hasattr(self, "clip_start"):
-            self.clip_start = None
-        if not hasattr(self, "clip_end"):
-            self.clip_end = None
-        if not hasattr(self, "live_status"):
-            self.live_status = None
-        if not hasattr(self, "live_release_timestamp"):
-            self.live_release_timestamp = None
 
 
 # "video_password" is deliberately excluded: it's a secret and must never be
@@ -742,20 +764,6 @@ def _download_info_to_record(
 def _download_info_from_record(record: dict[str, Any]) -> DownloadInfo:
     info = DownloadInfo.__new__(DownloadInfo)
     info.__setstate__({key: from_json_compatible(value) for key, value in record.items()})
-    if not hasattr(info, "msg"):
-        info.msg = None
-    if not hasattr(info, "percent"):
-        info.percent = None
-    if not hasattr(info, "speed"):
-        info.speed = None
-    if not hasattr(info, "eta"):
-        info.eta = None
-    if not hasattr(info, "status"):
-        info.status = "pending"
-    if not hasattr(info, "size"):
-        info.size = None
-    if not hasattr(info, "error"):
-        info.error = None
     return info
 
 class Download:
@@ -768,12 +776,12 @@ class Download:
             cls.manager = None
 
     def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info, allow_private=False):
+        self._init_state(info)
         self.download_dir = download_dir
         self.temp_dir = temp_dir
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
         self.allow_private = allow_private
-        self.info = info
         self.format = get_format(
             getattr(info, 'download_type', 'video'),
             getattr(info, 'codec', 'auto'),
@@ -792,6 +800,14 @@ class Download:
         )
         if "impersonate" in self.ytdl_opts:
             self.ytdl_opts["impersonate"] = yt_dlp.networking.impersonate.ImpersonateTarget.from_str(self.ytdl_opts["impersonate"])
+
+    def _init_state(self, info):
+        self.info = info
+        self.download_dir = self.temp_dir = None
+        self.output_template = self.output_template_chapter = None
+        self.allow_private = False
+        self.format = None
+        self.ytdl_opts = {}
         self.canceled = False
         self.tmpfilename = None
         self.status_queue = None
@@ -799,6 +815,19 @@ class Download:
         self.loop = None
         self.notifier = None
         self._executor = None
+
+    @classmethod
+    def record(cls, info):
+        """A download that is not going to run: a completed or failed row.
+
+        Skips the yt-dlp format mapping, which only a run needs. Building it
+        for every completed record at startup meant a single record whose
+        format the catalog no longer offers raised there and took the whole
+        server down. A retry goes back through add(), which validates afresh.
+        """
+        download = cls.__new__(cls)
+        download._init_state(info)
+        return download
 
     # Minimum interval between forwarded 'downloading' progress ticks. yt-dlp
     # emits these many times per second; without throttling, each active
@@ -942,17 +971,25 @@ class Download:
                 'quiet': not debug_logging,
                 'verbose': debug_logging,
                 'no_color': True,
-                'paths': {"home": self.download_dir, "temp": self.temp_dir},
-                'outtmpl': { "default": self.output_template, "chapter": self.output_template_chapter },
                 'format': self.format,
                 'socket_timeout': 30,
                 'ignore_no_formats_error': True,
-                'progress_hooks': [put_status],
-                'postprocessor_hooks': [put_status_postprocessor],
                 **self.ytdl_opts,
+                # paths and outtmpl are dicts of independent keys. A user value
+                # (YTDL_OPTIONS, a preset, an override) is merged into MeTube's
+                # rather than replacing it, so {"outtmpl": {"thumbnail": ...}}
+                # changes the thumbnail name without also throwing away
+                # OUTPUT_TEMPLATE, the chapter template and the download folder.
+                'paths': _merge_option_dict(
+                    {"home": self.download_dir, "temp": self.temp_dir}, self.ytdl_opts.get('paths')),
+                'outtmpl': _merge_option_dict(
+                    {"default": self.output_template, "chapter": self.output_template_chapter},
+                    self.ytdl_opts.get('outtmpl'), str_key='default'),
             }
-            # Set after the ytdl_opts merge: the failure messages below depend on
-            # this logger, so a user-supplied one must not replace it.
+            # Set after the ytdl_opts merge: the status reporting and failure
+            # messages depend on these, so user options must not replace them.
+            ytdl_params['progress_hooks'] = [put_status]
+            ytdl_params['postprocessor_hooks'] = [put_status_postprocessor]
             ytdl_params['logger'] = ytdl_logger
 
             # SponsorBlock: mark sponsor segments and cut them out, the same
@@ -1085,6 +1122,11 @@ class Download:
         try:
             if self.started():
                 self.proc.close()
+        except ValueError:
+            # Process.close() refuses a process that is still running, which
+            # only happens when start() failed part-way through. Leave it to
+            # be reaped rather than abort the cleanup that records the error.
+            log.warning(f"Download process for {self.info.title} was still running at close")
         finally:
             self.status_queue = None
 
@@ -1235,7 +1277,7 @@ class PersistentQueue:
 
     def load(self):
         for k, v in self.saved_items():
-            self.dict[k] = Download(None, None, None, None, getattr(v, 'quality', 'best'), getattr(v, 'format', 'any'), {}, v)
+            self.dict[k] = Download.record(v)
 
     def exists(self, key):
         return key in self.dict
@@ -1361,17 +1403,23 @@ class DownloadQueue:
         self.done = PersistentQueue("completed", self.config.STATE_DIR + '/completed')
         self.pending = PersistentQueue("pending", self.config.STATE_DIR + '/pending')
         self.active_downloads = set()
-        self.semaphore = asyncio.Semaphore(int(self.config.MAX_CONCURRENT_DOWNLOADS))
+        self.semaphore = asyncio.Semaphore(self.config.MAX_CONCURRENT_DOWNLOADS)
         # Each active download parks two threads for its whole duration
         # (proc.join + status_queue.get). A dedicated pool keeps those from
         # starving the default executor, which extract_info/live-probes also use.
         self._download_executor = ThreadPoolExecutor(
-            max_workers=2 * int(self.config.MAX_CONCURRENT_DOWNLOADS) + 2,
+            max_workers=2 * self.config.MAX_CONCURRENT_DOWNLOADS + 2,
             thread_name_prefix="dl",
         )
         self.done.load()
         self._add_generation = 0
-        self._canceled_urls = set()  # URLs canceled during current playlist add
+        # URLs canceled while a top-level add was in flight, so a playlist
+        # still being expanded skips them. Kept until the last in-flight add
+        # finishes, not cleared when the next one starts: adds overlap (two
+        # browser tabs, a batch import, a retry), and clearing it there let
+        # a playlist re-queue an item the user had just canceled.
+        self._canceled_urls = set()
+        self._adds_in_flight = 0
         self._scheduled_probe_at: dict[str, float] = {}
         self._scheduled_probe_failures: dict[str, int] = {}
         self._live_monitor_task: Optional[asyncio.Task] = None
@@ -1429,7 +1477,7 @@ class DownloadQueue:
             log.warning(f'could not restore download {info.url}: {error["msg"]}')
             info.status = 'error'
             info.msg = error['msg']
-            await self.done.put(Download(None, None, None, None, info.quality, info.format, {}, info))
+            await self.done.put(Download.record(info))
             await self.notifier.completed(info)
 
     async def initialize(self):
@@ -1598,7 +1646,18 @@ class DownloadQueue:
             if download.canceled:
                 log.info(f"Download {download.info.title} was canceled, skipping start.")
                 return
-            await download.start(self.notifier, self._download_executor)
+            try:
+                await download.start(self.notifier, self._download_executor)
+            except Exception as exc:
+                # Starting can fail before yt-dlp runs at all: the Manager or
+                # the worker process cannot be created (out of memory, a pid
+                # limit), or the first notify fails. Without this the row
+                # stayed at 'preparing' forever, with no way to retry it.
+                log.exception(f"Could not start download {download.info.title}")
+                download.info.msg = f'Could not start the download: {exc}'
+                # If the worker did come up, nothing is reading its status any
+                # more: stop it rather than let it download unseen.
+                download._kill_if_alive()
             await self._post_download_cleanup(download)
 
     async def _post_download_cleanup(self, download):
@@ -1627,11 +1686,7 @@ class DownloadQueue:
             else:
                 await self.done.put(download)
                 bg_tasks.create_task(self.notifier.completed(download.info), name="notify_completed")
-                try:
-                    clear_after = int(self.config.CLEAR_COMPLETED_AFTER)
-                except ValueError:
-                    log.error(f'CLEAR_COMPLETED_AFTER is set to an invalid value "{self.config.CLEAR_COMPLETED_AFTER}", expected an integer number of seconds')
-                    clear_after = 0
+                clear_after = self.config.CLEAR_COMPLETED_AFTER
                 if clear_after > 0:
                     # bg_tasks.create_task already logs unexpected task failures.
                     bg_tasks.create_task(
@@ -1651,6 +1706,12 @@ class DownloadQueue:
         opts.update(merge_ytdl_option_layers(
             ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
         ))
+        # A deep copy: YoutubeDL writes its own defaults into nested option
+        # dicts such as outtmpl in place. Sharing them with the config let the
+        # first extraction plant yt-dlp's "%(title)s [%(id)s].%(ext)s" in
+        # YTDL_OPTIONS (or a preset), where it then beat OUTPUT_TEMPLATE in
+        # every later download.
+        opts = copy.deepcopy(opts)
         if video_password:
             # The dedicated field always wins over a "videopassword" that a
             # preset or override might also set — it's the only place this key
@@ -1823,46 +1884,20 @@ class DownloadQueue:
                 params=params, allowed_roots=(dldirectory, self.config.TEMP_DIR),
             ).process_ie_result(feed, download=False)
 
-    async def __write_feed_metadata(self, entry, etype, download_type, folder,
-                                    ytdl_options_presets, ytdl_options_overrides, video_password=None):
+    async def __write_feed_metadata(self, entry, etype, options: DownloadOptions):
         try:
             await asyncio.get_running_loop().run_in_executor(
                 None,
                 partial(
-                    self.__write_feed_metadata_sync, entry, etype, download_type, folder,
-                    ytdl_options_presets, ytdl_options_overrides, video_password,
+                    self.__write_feed_metadata_sync, entry, etype, options.download_type, options.folder,
+                    options.ytdl_options_presets, options.ytdl_options_overrides, options.video_password,
                 ),
             )
         except Exception as exc:
             # Supplemental output must never fail the add.
             log.warning(f'Could not write {etype} metadata files: {exc}')
 
-    async def __add_entry(
-        self,
-        entry,
-        download_type,
-        codec,
-        format,
-        quality,
-        folder,
-        custom_name_prefix,
-        playlist_item_limit,
-        auto_start,
-        split_by_chapters,
-        chapter_template,
-        subtitle_language,
-        subtitle_mode,
-        ytdl_options_presets,
-        ytdl_options_overrides,
-        clip_start,
-        clip_end,
-        already,
-        _add_gen=None,
-        retry_entry=None,
-        sponsorblock=False,
-        audio_tags='with_cover',
-        video_password=None,
-    ):
+    async def __add_entry(self, entry, options: DownloadOptions, already, _add_gen=None, retry_entry=None):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -1884,31 +1919,8 @@ class DownloadQueue:
             # unprocessed url/url_transparent result, and dropping the retry
             # context here would send the retried item back to the root
             # directory instead of its original playlist folder.
-            return await self.add(
-                entry['url'],
-                download_type,
-                codec,
-                format,
-                quality,
-                folder,
-                custom_name_prefix,
-                playlist_item_limit,
-                auto_start,
-                split_by_chapters,
-                chapter_template,
-                subtitle_language,
-                subtitle_mode,
-                ytdl_options_presets,
-                ytdl_options_overrides,
-                clip_start,
-                clip_end,
-                already,
-                _add_gen,
-                retry_entry,
-                sponsorblock=sponsorblock,
-                audio_tags=audio_tags,
-                video_password=video_password,
-            )
+            return await self.add(entry['url'], options, already=already, _add_gen=_add_gen,
+                                  retry_entry=retry_entry)
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
                 etype = 'channel'
@@ -1919,12 +1931,10 @@ class DownloadQueue:
                 entries = list(entries)
             total_entries = len(entries)
             log.info(f'{etype} detected with {total_entries} entries')
-            await self.__write_feed_metadata(
-                entry, etype, download_type, folder,
-                ytdl_options_presets, ytdl_options_overrides, video_password,
-            )
+            await self.__write_feed_metadata(entry, etype, options)
             index_digits = len(str(total_entries))
             results = []
+            playlist_item_limit = options.playlist_item_limit
             if playlist_item_limit > 0:
                 log.info(f'Item limit is set. Processing only first {playlist_item_limit} entries')
                 entries = entries[:playlist_item_limit]
@@ -1954,32 +1964,7 @@ class DownloadQueue:
                 for property in ("id", "title", "uploader", "uploader_id"):
                     if property in entry:
                         etr[f"{etype}_{property}"] = entry[property]
-                results.append(
-                    await self.__add_entry(
-                        etr,
-                        download_type,
-                        codec,
-                        format,
-                        quality,
-                        folder,
-                        custom_name_prefix,
-                        playlist_item_limit,
-                        auto_start,
-                        split_by_chapters,
-                        chapter_template,
-                        subtitle_language,
-                        subtitle_mode,
-                        ytdl_options_presets,
-                        ytdl_options_overrides,
-                        clip_start,
-                        clip_end,
-                        already,
-                        _add_gen,
-                        sponsorblock=sponsorblock,
-                        audio_tags=audio_tags,
-                        video_password=video_password,
-                    )
-                )
+                results.append(await self.__add_entry(etr, options, already, _add_gen))
             if any(res['status'] == 'error' for res in results):
                 # Deduplicated: a folder error repeats identically for every item.
                 msgs = dict.fromkeys(res['msg'] for res in results if res['status'] == 'error' and 'msg' in res)
@@ -2001,30 +1986,13 @@ class DownloadQueue:
                 id=entry['id'],
                 title=entry.get('title') or entry['id'],
                 url=key,
-                quality=quality,
-                download_type=download_type,
-                codec=codec,
-                format=format,
-                folder=folder,
-                custom_name_prefix=custom_name_prefix,
                 error=error,
                 entry=entry,
-                playlist_item_limit=playlist_item_limit,
-                split_by_chapters=split_by_chapters,
-                chapter_template=chapter_template,
-                subtitle_language=subtitle_language,
-                subtitle_mode=subtitle_mode,
-                ytdl_options_presets=ytdl_options_presets,
-                ytdl_options_overrides=ytdl_options_overrides,
-                clip_start=clip_start,
-                clip_end=clip_end,
                 live_status=entry.get('live_status'),
                 live_release_timestamp=entry.get('release_timestamp'),
-                sponsorblock=sponsorblock,
-                audio_tags=audio_tags,
-                video_password=video_password,
+                **options.download_info_fields(),
             )
-            error = await self.__add_download(dl, auto_start)
+            error = await self.__add_download(dl, options.auto_start)
             if error is not None:
                 # Must not read as success: a subscription marks an entry seen
                 # when its add succeeds, and would never offer it again.
@@ -2032,27 +2000,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def __record_add_failure(
-        self,
-        url,
-        msg,
-        download_type,
-        codec,
-        format,
-        quality,
-        folder,
-        custom_name_prefix,
-        playlist_item_limit,
-        split_by_chapters,
-        chapter_template,
-        subtitle_language,
-        subtitle_mode,
-        ytdl_options_presets,
-        ytdl_options_overrides,
-        clip_start,
-        clip_end,
-        entry=None,
-    ):
+    async def __record_add_failure(self, url, msg, options: DownloadOptions, entry=None):
         """Surface a URL that failed before a DownloadInfo could be created (unsupported
         URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
         frontend shows it with the same red-cross/retry/error-detail treatment as a
@@ -2061,67 +2009,33 @@ class DownloadQueue:
             id=url,
             title=_short_title_for_failed_url(url),
             url=url,
-            quality=quality,
-            download_type=download_type,
-            codec=codec,
-            format=format,
-            folder=folder,
-            custom_name_prefix=custom_name_prefix,
             error=msg,
             entry=entry,
-            playlist_item_limit=playlist_item_limit,
-            split_by_chapters=split_by_chapters,
-            chapter_template=chapter_template,
-            subtitle_language=subtitle_language,
-            subtitle_mode=subtitle_mode,
-            ytdl_options_presets=ytdl_options_presets,
-            ytdl_options_overrides=ytdl_options_overrides,
-            clip_start=clip_start,
-            clip_end=clip_end,
+            **options.download_info_fields(),
         )
         info.status = 'error'
         info.msg = msg
-        download = Download(None, None, None, None, quality, format, {}, info)
+        download = Download.record(info)
         await self.done.put(download)
         await self.notifier.completed(info)
 
-    async def add(
-        self,
-        url,
-        download_type,
-        codec,
-        format,
-        quality,
-        folder,
-        custom_name_prefix,
-        playlist_item_limit,
-        auto_start=True,
-        split_by_chapters=False,
-        chapter_template=None,
-        subtitle_language="en",
-        subtitle_mode="prefer_manual",
-        ytdl_options_presets=None,
-        ytdl_options_overrides=None,
-        clip_start=None,
-        clip_end=None,
-        already=None,
-        _add_gen=None,
-        retry_entry=None,
-        sponsorblock=False,
-        audio_tags='with_cover',
-        video_password=None,
-    ):
-        if ytdl_options_presets is None:
-            ytdl_options_presets = []
-        log.info(
-            f'adding {url}: {download_type=} {codec=} {format=} {quality=} {already=} {folder=} {custom_name_prefix=} '
-            f'{playlist_item_limit=} {auto_start=} {split_by_chapters=} {chapter_template=} '
-            f'{subtitle_language=} {subtitle_mode=} {ytdl_options_presets=} {clip_start=} {clip_end=} {sponsorblock=} {audio_tags=}'
-        )
-        if already is None:
-            _add_gen = self._add_generation
-            self._canceled_urls.clear()
-        already = set() if already is None else already
+    async def add(self, url, options: DownloadOptions, *, already=None, _add_gen=None, retry_entry=None):
+        if already is not None:
+            # A URL a playlist or a url-type result led to.
+            return await self.__add(url, options, already, _add_gen, retry_entry)
+        self._adds_in_flight += 1
+        # Asking for a URL again is a fresh request for it, even if it was
+        # canceled out of an add that is still running.
+        self._canceled_urls.discard(url)
+        try:
+            return await self.__add(url, options, set(), self._add_generation, retry_entry)
+        finally:
+            self._adds_in_flight -= 1
+            if self._adds_in_flight == 0:
+                self._canceled_urls.clear()
+
+    async def __add(self, url, options: DownloadOptions, already, _add_gen, retry_entry):
+        log.info(f'adding {url}: {options} {already=}')
         if url in already:
             log.info('recursion detected, skipping')
             return {'status': 'ok'}
@@ -2133,36 +2047,27 @@ class DownloadQueue:
         # The merged options decide the proxy, same as the connect-time guard
         # reads `proxy` from them — a proxied fetch resolves at the proxy, so
         # the address check is skipped rather than leaking the hostname here.
-        proxies = download_proxies(
-            self._build_ytdl_options(ytdl_options_presets, ytdl_options_overrides, video_password))
+        proxies = download_proxies(self._build_ytdl_options(
+            options.ytdl_options_presets, options.ytdl_options_overrides, options.video_password))
         url_error = await asyncio.get_running_loop().run_in_executor(
             None, partial(validate_url, url,
                           allow_private=self.config.ALLOW_PRIVATE_ADDRESSES,
                           proxies=proxies))
         if url_error is not None:
             log.warning('Rejected URL "%s": %s', url, url_error)
-            await self.__record_add_failure(
-                url, url_error, download_type, codec, format, quality, folder,
-                custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
-                subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end, retry_entry,
-            )
+            await self.__record_add_failure(url, url_error, options, retry_entry)
             return {'status': 'error', 'msg': url_error}
         extract_logger = _ExtractYtdlLogger()
         try:
             entry = await asyncio.get_running_loop().run_in_executor(
                 None,
-                partial(self.__extract_info, url, ytdl_options_presets, ytdl_options_overrides,
-                        extract_logger, video_password=video_password),
+                partial(self.__extract_info, url, options.ytdl_options_presets,
+                        options.ytdl_options_overrides, extract_logger,
+                        video_password=options.video_password),
             )
         except yt_dlp.utils.YoutubeDLError as exc:
             msg = str(exc)
-            await self.__record_add_failure(
-                url, msg, download_type, codec, format, quality, folder,
-                custom_name_prefix, playlist_item_limit, split_by_chapters, chapter_template,
-                subtitle_language, subtitle_mode, ytdl_options_presets, ytdl_options_overrides,
-                clip_start, clip_end, retry_entry,
-            )
+            await self.__record_add_failure(url, msg, options, retry_entry)
             return {'status': 'error', 'msg': msg}
         if entry is None:
             # Not a failure to record: nothing was attempted (#691).
@@ -2172,31 +2077,7 @@ class DownloadQueue:
         retry_context = _compact_persisted_entry(retry_entry)
         if isinstance(entry, dict) and retry_context is not None:
             entry = {**entry, **copy.deepcopy(retry_context)}
-        return await self.__add_entry(
-            entry,
-            download_type,
-            codec,
-            format,
-            quality,
-            folder,
-            custom_name_prefix,
-            playlist_item_limit,
-            auto_start,
-            split_by_chapters,
-            chapter_template,
-            subtitle_language,
-            subtitle_mode,
-            ytdl_options_presets,
-            ytdl_options_overrides,
-            clip_start,
-            clip_end,
-            already,
-            _add_gen,
-            retry_entry,
-            sponsorblock=sponsorblock,
-            audio_tags=audio_tags,
-            video_password=video_password,
-        )
+        return await self.__add_entry(entry, options, already, _add_gen, retry_entry)
 
     async def retry(self, id):
         if not self.done.exists(id):
@@ -2210,82 +2091,21 @@ class DownloadQueue:
         # download was first submitted, but the configuration can have changed
         # since. Re-apply the same gates here so a retry can't resurrect
         # overrides or presets the current configuration no longer allows.
-        overrides = info.ytdl_options_overrides if self.config.ALLOW_YTDL_OPTIONS_OVERRIDES else {}
-        presets = [p for p in info.ytdl_options_presets if p in self.config.YTDL_OPTIONS_PRESETS]
-
-        return await self.add(
-            info.url,
-            info.download_type,
-            info.codec,
-            info.format,
-            info.quality,
-            info.folder,
-            info.custom_name_prefix,
-            info.playlist_item_limit,
-            True,
-            info.split_by_chapters,
-            info.chapter_template,
-            info.subtitle_language,
-            info.subtitle_mode,
-            presets,
-            overrides,
-            info.clip_start,
-            info.clip_end,
-            retry_entry=info.entry,
-            sponsorblock=info.sponsorblock,
-            audio_tags=info.audio_tags,
-            video_password=getattr(info, 'video_password', None),
+        options = DownloadOptions.from_info(
+            info,
+            auto_start=True,
+            ytdl_options_overrides=(
+                info.ytdl_options_overrides if self.config.ALLOW_YTDL_OPTIONS_OVERRIDES else {}
+            ),
+            ytdl_options_presets=[
+                p for p in info.ytdl_options_presets if p in self.config.YTDL_OPTIONS_PRESETS
+            ],
         )
+        return await self.add(info.url, options, retry_entry=info.entry)
 
-    async def add_entry(
-        self,
-        entry,
-        download_type,
-        codec,
-        format,
-        quality,
-        folder,
-        custom_name_prefix,
-        playlist_item_limit,
-        auto_start=True,
-        split_by_chapters=False,
-        chapter_template=None,
-        subtitle_language="en",
-        subtitle_mode="prefer_manual",
-        ytdl_options_presets=None,
-        ytdl_options_overrides=None,
-        clip_start=None,
-        clip_end=None,
-        sponsorblock=False,
-        audio_tags='with_cover',
-    ):
-        if ytdl_options_presets is None:
-            ytdl_options_presets = []
+    async def add_entry(self, entry, options: DownloadOptions):
         normalized_entry = copy.deepcopy(entry) if isinstance(entry, dict) else entry
-        already = set()
-        return await self.__add_entry(
-            normalized_entry,
-            download_type,
-            codec,
-            format,
-            quality,
-            folder,
-            custom_name_prefix,
-            playlist_item_limit,
-            auto_start,
-            split_by_chapters,
-            chapter_template,
-            subtitle_language,
-            subtitle_mode,
-            ytdl_options_presets,
-            ytdl_options_overrides,
-            clip_start,
-            clip_end,
-            already,
-            None,
-            sponsorblock=sponsorblock,
-            audio_tags=audio_tags,
-        )
+        return await self.__add_entry(normalized_entry, options, set(), None)
 
     async def start_pending(self, ids):
         for id in ids:
@@ -2314,8 +2134,12 @@ class DownloadQueue:
 
     async def cancel(self, ids):
         for id in ids:
-            # Track URL so playlist add loop won't re-queue it
-            self._canceled_urls.add(id)
+            # Track URL so an add still expanding a playlist won't re-queue it.
+            # Only while one is running: with none in flight there is nothing
+            # to protect, and the URL would linger and silently swallow the
+            # next time a subscription or an add offered it.
+            if self._adds_in_flight:
+                self._canceled_urls.add(id)
             if self.pending.exists(id):
                 await self.pending.delete(id)
                 await self.notifier.canceled(id)

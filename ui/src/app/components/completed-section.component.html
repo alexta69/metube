@@ -1,0 +1,161 @@
+<div class="metube-section-header">
+  <button type="button" class="metube-section-toggle" (click)="toggleCollapsed()" [attr.aria-expanded]="!collapsed">
+    <span>Completed</span>
+    <fa-icon [icon]="collapsed ? faChevronRight : faChevronDown" class="metube-section-chevron" />
+  </button>
+</div>
+@if (!collapsed) {
+  <div class="px-2 py-3 border-bottom">
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" (click)="toggleSortOrder()" ngbTooltip="{{ sortAscending ? 'Oldest first' : 'Newest first' }}"><fa-icon [icon]="sortAscending ? faSortAmountUp : faSortAmountDown" />&nbsp; {{ sortAscending ? 'Oldest first' : 'Newest first' }}</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="selectedCount === 0" (click)="delSelectedDownloads()"><fa-icon [icon]="faTrashAlt" />&nbsp; Clear selected</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasCompletedDone" (click)="clearCompletedDownloads()"><fa-icon [icon]="faCheckCircle" />&nbsp; Clear completed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="clearFailedDownloads()"><fa-icon [icon]="faTimesCircle" />&nbsp; Clear failed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="!hasFailedDone" (click)="retryFailedDownloads()"><fa-icon [icon]="faRedoAlt" />&nbsp; Retry failed</button>
+    <button type="button" class="btn btn-link text-decoration-none px-0 me-4" [disabled]="selectedCount === 0" (click)="downloadSelectedFiles()"><fa-icon [icon]="faDownload" />&nbsp; Download Selected</button>
+  </div>
+  <div class="overflow-auto">
+    <table class="table">
+      <thead>
+        <tr>
+          <th scope="col" style="width: 1rem;">
+            <app-select-all-checkbox #doneMasterCheckboxRef [id]="'done'" [list]="downloads.done" [orderedIds]="cachedSortedDoneIds" (changed)="selectionChanged($event)" />
+          </th>
+          <th scope="col">Video</th>
+          <th scope="col">Type</th>
+          <th scope="col">Quality</th>
+          <th scope="col">Codec / Format</th>
+          <th scope="col">File Size</th>
+          <th scope="col">Downloaded</th>
+          <th scope="col" style="width: 8rem;"></th>
+        </tr>
+      </thead>
+      <tbody>
+        @for (entry of cachedSortedDone; track entry[0]) {
+          <tr [class.disabled]='entry[1].deleting'>
+            <td>
+              <app-item-checkbox [id]="entry[0]" [master]="doneMasterCheckboxRef" [checkable]="entry[1]" />
+            </td>
+            <td>
+              <div style="display: inline-block; width: 1.5rem;">
+                @if (entry[1].status === 'finished') {
+                  <fa-icon [icon]="faCheckCircle" class="text-success" />
+                }
+                @if (entry[1].status === 'error') {
+                  <button type="button" class="btn btn-link p-0"
+                    (click)="toggleErrorDetail(entry[0])"
+                    [attr.aria-label]="'Toggle error details for ' + entry[1].title"
+                    [attr.aria-expanded]="isErrorExpanded(entry[0])">
+                    <fa-icon [icon]="faTimesCircle" class="text-danger" />
+                  </button>
+                }
+              </div>
+              <span ngbTooltip="{{buildResultItemTooltip(entry[1])}}">@if (!!entry[1].filename) {
+                <a href="{{buildDownloadLink(entry[1])}}" target="_blank">{{ entry[1].title }}</a>
+              } @else {
+                @if (entry[1].status === 'error') {
+                  <button type="button" class="btn btn-link p-0 text-start align-baseline" (click)="toggleErrorDetail(entry[0])">
+                    {{entry[1].title}}
+                    @if (!isErrorExpanded(entry[0])) {
+                      <small class="text-danger ms-2">
+                        <fa-icon [icon]="faChevronRight" size="xs" class="me-1" />Click for details
+                      </small>
+                    }
+                  </button>
+                } @else {
+                  <span>{{entry[1].title}}</span>
+                }
+              }</span>
+              @if (entry[1].status === 'error' && isErrorExpanded(entry[0])) {
+                <div class="alert alert-danger py-2 px-3 mt-2 mb-0 small" style="border-left: 4px solid var(--bs-danger);">
+                  <div class="d-flex justify-content-between align-items-start">
+                    <div class="flex-grow-1">
+                      @if (entry[1].msg) {
+                        <div class="mb-1"><strong>Message:</strong> {{entry[1].msg}}</div>
+                      }
+                      @if (entry[1].error) {
+                        <div class="mb-1"><strong>Error:</strong> {{entry[1].error}}</div>
+                      }
+                      <div class="text-muted" style="word-break: break-all;"><strong>URL:</strong> {{entry[1].url}}</div>
+                    </div>
+                    <button type="button" class="btn btn-sm btn-outline-danger ms-2 flex-shrink-0"
+                      (click)="copyErrorMessage(entry[0], entry[1]); $event.stopPropagation()"
+                      ngbTooltip="Copy error details to clipboard">
+                      @if (lastCopiedErrorId === entry[0]) {
+                        <span class="text-success">Copied!</span>
+                      } @else {
+                        <fa-icon [icon]="faCopy" />
+                      }
+                    </button>
+                  </div>
+                </div>
+              }
+            </td>
+            <td class="text-nowrap">
+              {{ downloadTypeLabel(entry[1]) }}
+            </td>
+            <td class="text-nowrap">
+              {{ formatQualityLabel(entry[1]) }}
+            </td>
+            <td class="text-nowrap">
+              {{ formatCodecLabel(entry[1]) }}
+            </td>
+            <td>
+              @if (entry[1].size) {
+                <span>{{ entry[1].size | fileSize }}</span>
+              }
+            </td>
+            <td class="text-nowrap">
+              @if (entry[1].timestamp) {
+                <span>{{ entry[1].timestamp / 1000000 | date:'yyyy-MM-dd HH:mm' }}</span>
+              }
+            </td>
+            <td>
+              <div class="d-flex justify-content-end">
+                @if (entry[1].status === 'error') {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Retry download for ' + entry[1].title" (click)="retryDownload(entry[0], entry[1])"><fa-icon [icon]="faRedoAlt" /></button>
+                }
+                @if (entry[1].filename) {
+                  <a href="{{buildDownloadLink(entry[1])}}" download class="btn btn-link" [attr.aria-label]="'Download result file for ' + entry[1].title"><fa-icon [icon]="faDownload" /></a>
+                }
+                @if (entry[1].filename && canShareDownloads()) {
+                  <button type="button" class="btn btn-link" [attr.aria-label]="'Share result file for ' + entry[1].title" (click)="shareDownload(entry[1])"><fa-icon [icon]="faShareNodes" /></button>
+                }
+                <a href="{{entry[1].url}}" target="_blank" class="btn btn-link" [attr.aria-label]="'Open source URL for ' + entry[1].title"><fa-icon [icon]="faExternalLinkAlt" /></a>
+                <button type="button" class="btn btn-link" [attr.aria-label]="'Delete completed item ' + entry[1].title" (click)="delDownload(entry[0])"><fa-icon [icon]="faTrashAlt" /></button>
+              </div>
+            </td>
+          </tr>
+        @if (entry[1].chapter_files && entry[1].chapter_files.length > 0) {
+          @for (chapterFile of entry[1].chapter_files; track chapterFile.filename) {
+            <tr [class.disabled]='entry[1].deleting'>
+              <td></td>
+              <td>
+                <div style="padding-left: 2rem;">
+              <fa-icon [icon]="faCheckCircle" class="text-success me-2" />
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" target="_blank" [attr.aria-label]="'Open chapter file ' + getChapterFileName(chapterFile.filename)">{{
+                getChapterFileName(chapterFile.filename) }}</a>
+            </div>
+          </td>
+          <td></td>
+          <td></td>
+          <td></td>
+          <td>
+            @if (chapterFile.size) {
+            <span>{{ chapterFile.size | fileSize }}</span>
+            }
+          </td>
+          <td></td>
+          <td>
+            <div class="d-flex">
+              <a href="{{buildChapterDownloadLink(entry[1], chapterFile.filename)}}" download [attr.aria-label]="'Download chapter file ' + getChapterFileName(chapterFile.filename)"
+                class="btn btn-link"><fa-icon [icon]="faDownload" /></a>
+            </div>
+          </td>
+        </tr>
+        }
+      }
+    }
+      </tbody>
+    </table>
+  </div>
+}

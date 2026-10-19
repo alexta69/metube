@@ -1,3 +1,4 @@
+import { ChangeDetectorRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Subject, of } from 'rxjs';
@@ -6,8 +7,20 @@ import { NgbModal, NgbModalRef } from '@ng-bootstrap/ng-bootstrap';
 import { AddDownloadPayload, DownloadsService } from './services/downloads.service';
 import { SubscriptionsService } from './services/subscriptions.service';
 import { ToastService } from './services/toast.service';
+import { SettingsStore } from './services/settings-store.service';
 import { CookieService } from 'ngx-cookie-service';
 import { Download, FormatCatalog } from './interfaces';
+import { catalogTypes, formatLabel } from './catalog-labels';
+import { CompletedSectionComponent, DownloadingSectionComponent } from './components';
+import { ComponentFixture } from '@angular/core/testing';
+import { Type } from '@angular/core';
+import { By } from '@angular/platform-browser';
+
+// A section component rendered inside the page.
+function child<T>(fixture: ComponentFixture<unknown>, type: Type<T>): T {
+  fixture.detectChanges();
+  return fixture.debugElement.query(By.directive(type)).componentInstance as T;
+}
 
 const choice = (def: string, ...pairs: [string, string][]) => ({
   default: def,
@@ -79,7 +92,6 @@ class DownloadsServiceStub {
   configurationChanged = new Subject<Record<string, unknown>>();
   formats: FormatCatalog | null = testCatalog();
   formatsChanged = new Subject<FormatCatalog>();
-  customDirsChanged = new Subject<Record<string, string[]>>();
   ytdlOptionsChanged = new Subject<Record<string, unknown>>();
   updated = new Subject<void>();
   retryCalls: string[] = [];
@@ -171,12 +183,17 @@ class CookieServiceStub {
   check(name: string) {
     return this.cookies.has(name);
   }
+
+  delete(name: string) {
+    this.cookies.delete(name);
+  }
 }
 
 describe('App', () => {
   let downloads: DownloadsServiceStub;
 
   beforeEach(async () => {
+    localStorage.clear();
     Object.defineProperty(window, 'matchMedia', {
       writable: true,
       enumerable: true,
@@ -234,32 +251,184 @@ describe('App', () => {
   it('collapses each section independently and remembers it (#1070)', () => {
     const fixture = TestBed.createComponent(App);
     fixture.detectChanges();
-    const app = fixture.componentInstance;
-    const cookies = TestBed.inject(CookieService);
+    const settings = TestBed.inject(SettingsStore);
+    const downloading = child(fixture, DownloadingSectionComponent);
 
-    expect(app.downloadingCollapsed).toBe(false);
-    expect(app.completedCollapsed).toBe(false);
-    expect(app.subscriptionsCollapsed).toBe(false);
+    const completed = child(fixture, CompletedSectionComponent);
 
-    app.toggleCompletedCollapsed();
+    expect(downloading.collapsed).toBe(false);
+    expect(completed.collapsed).toBe(false);
 
-    expect(app.completedCollapsed).toBe(true);
-    expect(app.downloadingCollapsed).toBe(false);
-    expect(app.subscriptionsCollapsed).toBe(false);
-    expect(cookies.get('metube_completed_collapsed')).toBe('true');
+    completed.toggleCollapsed();
 
-    // A fresh component picks the state back up from the cookie.
+    expect(completed.collapsed).toBe(true);
+    expect(downloading.collapsed).toBe(false);
+    expect(settings.get('metube_completed_collapsed')).toBe('true');
+
+    downloading.toggleCollapsed();
+    expect(settings.get('metube_downloading_collapsed')).toBe('true');
+
+    // A fresh component picks the state back up.
     const restored = TestBed.createComponent(App);
     restored.detectChanges();
-    expect(restored.componentInstance.completedCollapsed).toBe(true);
-    expect(restored.componentInstance.downloadingCollapsed).toBe(false);
-    expect(restored.componentInstance.subscriptionsCollapsed).toBe(false);
+    expect(child(restored, CompletedSectionComponent).collapsed).toBe(true);
+    expect(child(restored, DownloadingSectionComponent).collapsed).toBe(true);
+  });
+
+  it('enables Clear completed and Clear/Retry failed from the done list', () => {
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    const app = child(fixture, CompletedSectionComponent);
+    expect(app.hasCompletedDone).toBe(false);
+    expect(app.hasFailedDone).toBe(false);
+
+    downloads.done.set('a', { url: 'a', status: 'finished' } as Download);
+    downloads.doneChanged.next();
+    expect(app.hasCompletedDone).toBe(true);
+    expect(app.hasFailedDone).toBe(false);
+
+    downloads.done.set('b', { url: 'b', status: 'error' } as Download);
+    downloads.done.delete('a');
+    downloads.doneChanged.next();
+    expect(app.hasCompletedDone).toBe(false);
+    expect(app.hasFailedDone).toBe(true);
+  });
+
+  it('Retry failed sends at most four retries at a time', () => {
+    const pending: Subject<{ status: 'ok' }>[] = [];
+    downloads.retry = (id: string) => {
+      downloads.retryCalls.push(id);
+      const result = new Subject<{ status: 'ok' }>();
+      pending.push(result);
+      return result;
+    };
+    for (let i = 0; i < 10; i++) {
+      downloads.done.set(`u${i}`, { url: `u${i}`, title: `t${i}`, status: 'error' } as Download);
+    }
+    downloads.done.set('ok', { url: 'ok', status: 'finished' } as Download);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+
+    child(fixture, CompletedSectionComponent).retryFailedDownloads();
+    expect(downloads.retryCalls).toHaveLength(4);
+
+    pending[0].next({ status: 'ok' });
+    pending[0].complete();
+    expect(downloads.retryCalls).toHaveLength(5);
+
+    for (let i = 1; i < 10; i++) {
+      pending[i]?.next({ status: 'ok' });
+      pending[i]?.complete();
+    }
+    expect(downloads.retryCalls).toEqual([...Array(10).keys()].map((i) => `u${i}`));
+  });
+
+  describe('digitsOnly', () => {
+    const press = (key: string, mods: Partial<KeyboardEventInit> = {}) => {
+      const fixture = TestBed.createComponent(App);
+      const event = new KeyboardEvent('keydown', { key, cancelable: true, ...mods });
+      fixture.componentInstance.digitsOnly(event);
+      return event.defaultPrevented;
+    };
+
+    it('blocks typed characters other than digits', () => {
+      for (const key of ['a', '-', '.', 'e', ' ']) {
+        expect(press(key)).toBe(true);
+      }
+      expect(press('7')).toBe(false);
+    });
+
+    it('lets shortcuts and named keys through', () => {
+      expect(press('v', { ctrlKey: true })).toBe(false);
+      expect(press('a', { metaKey: true })).toBe(false);
+      expect(press('c', { ctrlKey: true })).toBe(false);
+      for (const key of ['Enter', 'Escape', 'Tab', 'ArrowUp', 'ArrowDown', 'Backspace', 'F5']) {
+        expect(press(key)).toBe(false);
+      }
+    });
+  });
+
+  describe('OnPush rendering of asynchronous results', () => {
+    // The root component is OnPush: state set from an HTTP callback or a timer
+    // is not rendered unless the callback marks the view. These go through
+    // the DOM rather than the fields, which update either way.
+    const cookieStatusText = (fixture: { nativeElement: HTMLElement }) =>
+      fixture.nativeElement.querySelector('.cookie-status')?.textContent?.trim();
+
+    it('renders the cookie upload result when the upload completes', () => {
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      const result = new Subject<{ status: string; msg?: string }>();
+      downloads.uploadCookies = () => result;
+      const input = { files: [new File(['x'], 'cookies.txt')], value: 'cookies.txt' };
+
+      fixture.componentInstance.onCookieFileSelect({ target: input } as unknown as Event);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('label[for="cookie-upload"] .spinner-border')).not.toBeNull();
+
+      result.next({ status: 'ok' });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('label[for="cookie-upload"] .spinner-border')).toBeNull();
+      expect(cookieStatusText(fixture)).toBe('Cookies active');
+    });
+
+    it('renders the cookie status after deleting cookies', () => {
+      let hasCookies = true;
+      downloads.getCookieStatus = () => of({ status: 'ok', has_cookies: hasCookies });
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      expect(cookieStatusText(fixture)).toBe('Cookies active');
+
+      hasCookies = false;
+      fixture.componentInstance.deleteCookies();
+      fixture.detectChanges();
+      expect(cookieStatusText(fixture)).toBe('No cookies configured');
+    });
+
+    it('renders the version footer once the version arrives', () => {
+      const version = new Subject<{ 'yt-dlp': string; version: string }>();
+      (TestBed.inject(HttpClient).get as ReturnType<typeof vi.fn>).mockReturnValue(version);
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.footer-content')).toBeNull();
+
+      expect(TestBed.inject(HttpClient).get).toHaveBeenCalledWith('version');
+      version.next({ 'yt-dlp': '2026.10.01', version: '2026.10.18' });
+      fixture.detectChanges();
+      expect(fixture.nativeElement.querySelector('.footer-content')?.textContent).toContain('2026.10.18');
+    });
+
+    it('marks the view when the copied confirmation is set and when it clears', async () => {
+      vi.useFakeTimers();
+      try {
+        Object.defineProperty(navigator, 'clipboard', {
+          configurable: true,
+          value: { writeText: vi.fn().mockResolvedValue(undefined) },
+        });
+        const fixture = TestBed.createComponent(App);
+        fixture.detectChanges();
+        const app = child(fixture, CompletedSectionComponent);
+        const cdr = (app as unknown as { cdr: ChangeDetectorRef }).cdr;
+        const markForCheck = vi.spyOn(cdr, 'markForCheck');
+
+        app.copyErrorMessage('id1', { title: 't', url: 'u', error: 'e' } as Download);
+        await vi.runAllTicks();
+        await Promise.resolve();
+        expect(app.lastCopiedErrorId).toBe('id1');
+        const callsAfterCopy = markForCheck.mock.calls.length;
+        expect(callsAfterCopy).toBeGreaterThan(0);
+
+        vi.advanceTimersByTime(1500);
+        expect(app.lastCopiedErrorId).toBeNull();
+        expect(markForCheck.mock.calls.length).toBeGreaterThan(callsAfterCopy);
+      } finally {
+        vi.useRealTimers();
+      }
+    });
   });
 
   it('asIsOrder returns a stable comparator value (insertion order preserved)', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    expect(app.asIsOrder()).toBe(0);
+    expect(child(TestBed.createComponent(App), DownloadingSectionComponent).asIsOrder()).toBe(0);
   });
 
   it('hides manual override input when disabled', () => {
@@ -471,6 +640,40 @@ describe('App', () => {
     expect(root.textContent).toContain('starts in');
   });
 
+  it('enables the Downloading toolbar once a row is ticked', async () => {
+    downloads.queue.set('u1', { url: 'u1', title: 'One', status: 'pending', checked: false } as Download);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    // ngModel writes the checkbox's initial state asynchronously.
+    await new Promise((resolve) => setTimeout(resolve));
+    const root = fixture.nativeElement as HTMLElement;
+    const cancelSelected = () =>
+      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes('Cancel selected'))!;
+    expect(cancelSelected().disabled).toBe(true);
+
+    const box = root.querySelector<HTMLInputElement>('app-downloading-section tbody input[type=checkbox]')!;
+    box.click();
+    fixture.detectChanges();
+
+    expect(cancelSelected().disabled).toBe(false);
+  });
+
+  it('enables the Completed toolbar once a row is ticked', async () => {
+    downloads.done.set('d1', { url: 'd1', title: 'Done', status: 'finished', checked: false } as Download);
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    await new Promise((resolve) => setTimeout(resolve));
+    const root = fixture.nativeElement as HTMLElement;
+    const clearSelected = () =>
+      Array.from(root.querySelectorAll('button')).find((b) => b.textContent?.includes('Clear selected'))!;
+    expect(clearSelected().disabled).toBe(true);
+
+    root.querySelector<HTMLInputElement>('app-completed-section tbody input[type=checkbox]')!.click();
+    fixture.detectChanges();
+
+    expect(clearSelected().disabled).toBe(false);
+  });
+
   it('shows the queued format in the Downloading table', () => {
     downloads.queue.set('https://example.com/v', {
       id: 'v1',
@@ -500,15 +703,15 @@ describe('App', () => {
   });
 
   it('labels formats the way the form does, and copes with an unknown one', () => {
-    const app = TestBed.createComponent(App).componentInstance;
+    const types = catalogTypes(testCatalog());
     const base = { format: '' } as Download;
 
-    expect(app.formatLabel({ ...base, format: 'any' })).toBe('Auto');
-    expect(app.formatLabel({ ...base, format: 'mp4' })).toBe('MP4');
-    expect(app.formatLabel({ ...base, format: 'srt' })).toBe('SRT');
+    expect(formatLabel({ ...base, format: 'any' }, types)).toBe('Auto');
+    expect(formatLabel({ ...base, format: 'mp4' }, types)).toBe('MP4');
+    expect(formatLabel({ ...base, format: 'srt' }, types)).toBe('SRT');
     // A format from a record older than the option list still reads sensibly.
-    expect(app.formatLabel({ ...base, format: 'mkv' })).toBe('MKV');
-    expect(app.formatLabel(base)).toBe('-');
+    expect(formatLabel({ ...base, format: 'mkv' }, types)).toBe('MKV');
+    expect(formatLabel(base, types)).toBe('-');
   });
 
   describe('download options come from the server catalog', () => {
@@ -561,7 +764,7 @@ describe('App', () => {
         .toEqual(['m4a', 'best', 'with_cover', 'prefer_manual']);
       expect(app.subtitleLanguage).toBe('en');
 
-      TestBed.inject(CookieService).set('metube_download_type', 'gif');
+      TestBed.inject(SettingsStore).set('metube_download_type', 'gif');
       expect(TestBed.createComponent(App).componentInstance.downloadType).toBe('video');
     });
 
@@ -659,7 +862,7 @@ describe('App', () => {
     });
 
     it('labels queued downloads from the catalog, under their own type', () => {
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       const dl = (fields: Partial<Download>) => ({ format: '', quality: '', ...fields }) as Download;
 
       expect(app.formatQualityLabel(dl({ download_type: 'video', format: 'any', quality: '1080' }))).toBe('1080p');
@@ -668,8 +871,9 @@ describe('App', () => {
       expect(app.formatCodecLabel(dl({ download_type: 'video', codec: 'h265' }))).toBe('H.265 (HEVC)');
       expect(app.formatCodecLabel(dl({ download_type: 'audio', format: 'flac' }))).toBe('FLAC');
       expect(app.downloadTypeLabel(dl({ download_type: 'captions' }))).toBe('Captions');
-      expect(app.formatLabel(dl({ download_type: 'audio', format: 'auto' }))).toBe('Auto');
-      expect(app.formatLabel(dl({ download_type: 'captions', format: 'dfxp' }))).toBe('DFXP');
+      const types = catalogTypes(testCatalog());
+      expect(formatLabel(dl({ download_type: 'audio', format: 'auto' }), types)).toBe('Auto');
+      expect(formatLabel(dl({ download_type: 'captions', format: 'dfxp' }), types)).toBe('DFXP');
     });
   });
 
@@ -777,7 +981,7 @@ describe('App', () => {
 
   it('retries a failed download by its server-side queue id', () => {
     const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
+    const app = child(fixture, CompletedSectionComponent);
     const download = {
       id: 'vid1',
       title: 'Test Video',
@@ -816,38 +1020,6 @@ describe('App', () => {
     errorSpy.mockRestore();
   });
 
-  it('renames a subscription and closes the inline editor', () => {
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
-
-    app.beginEditName('sub1', 'Videos');
-    expect(app.editingNameId).toBe('sub1');
-    expect(app.nameEditDraft).toBe('Videos');
-
-    app.nameEditDraft = '  Jane uploads  ';
-    app.saveName('sub1');
-
-    expect(subs.updateCalls).toEqual([['sub1', { name: 'Jane uploads' }]]);
-    expect(app.editingNameId).toBeNull();
-  });
-
-  it('blocks renaming a subscription to an empty name', () => {
-    const toasts = TestBed.inject(ToastService);
-    const errorSpy = vi.spyOn(toasts, 'error').mockImplementation(() => undefined);
-    const fixture = TestBed.createComponent(App);
-    const app = fixture.componentInstance;
-    const subs = TestBed.inject(SubscriptionsService) as unknown as SubscriptionsServiceStub;
-
-    app.beginEditName('sub1', 'Videos');
-    app.nameEditDraft = '   ';
-    app.saveName('sub1');
-
-    expect(subs.updateCalls.length).toBe(0);
-    expect(app.editingNameId).toBe('sub1');
-    expect(errorSpy).toHaveBeenCalledWith('Subscription name must not be empty');
-    errorSpy.mockRestore();
-  });
   // Issue #533: the server picks AUDIO_DOWNLOAD_DIR on download_type alone
   // (ytdl.py), so the UI's choice of URL base has to use the same rule. It used
   // to also treat any .mp3 as audio, which pointed the link at audio_download/
@@ -875,7 +1047,7 @@ describe('App', () => {
 
     const appWithDirs = () => {
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const downloads = TestBed.inject(DownloadsService) as unknown as DownloadsServiceStub;
       downloads.configuration['PUBLIC_HOST_URL'] = 'download/';
       downloads.configuration['PUBLIC_HOST_AUDIO_URL'] = 'audio_download/';
@@ -933,11 +1105,11 @@ describe('App', () => {
     } as Download);
 
     it('runs the bar indeterminate while preparing or post-processing', () => {
-      const app = TestBed.createComponent(App).componentInstance;
-      expect(app.isIndeterminate(queueEntry('preparing'))).toBe(true);
-      expect(app.isIndeterminate(queueEntry('postprocessing'))).toBe(true);
-      expect(app.isIndeterminate(queueEntry('downloading'))).toBe(false);
-      expect(app.isIndeterminate(queueEntry('pending'))).toBe(false);
+      const downloading = child(TestBed.createComponent(App), DownloadingSectionComponent);
+      expect(downloading.isIndeterminate(queueEntry('preparing'))).toBe(true);
+      expect(downloading.isIndeterminate(queueEntry('postprocessing'))).toBe(true);
+      expect(downloading.isIndeterminate(queueEntry('downloading'))).toBe(false);
+      expect(downloading.isIndeterminate(queueEntry('pending'))).toBe(false);
     });
 
     it('labels the bar and counts the item as active', () => {
@@ -1019,7 +1191,7 @@ describe('App', () => {
 
     it('clears nothing when cancelled', async () => {
       downloads.done.set('u1', failed('u1'));
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(false);
       const delSpy = vi.spyOn(downloads, 'delById');
 
@@ -1032,7 +1204,7 @@ describe('App', () => {
       downloads.done.set('u1', failed('u1'));
       downloads.done.set('u2', failed('u2'));
       downloads.done.set('ok', { ...failed('ok'), status: 'finished' });
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(true);
       const delSpy = vi.spyOn(downloads, 'delById');
 
@@ -1048,7 +1220,7 @@ describe('App', () => {
 
     it('words the question for a single row', async () => {
       downloads.done.set('u1', failed('u1'));
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm').mockResolvedValue(false);
 
       await app.clearFailedDownloads();
@@ -1057,7 +1229,7 @@ describe('App', () => {
     });
 
     it('asks nothing when there is nothing to clear', async () => {
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm');
 
       await app.clearFailedDownloads();
@@ -1067,7 +1239,7 @@ describe('App', () => {
 
     it('leaves Clear completed unprompted', async () => {
       downloads.done.set('ok', { ...failed('ok'), status: 'finished' });
-      const app = TestBed.createComponent(App).componentInstance;
+      const app = child(TestBed.createComponent(App), CompletedSectionComponent);
       const confirmSpy = vi.spyOn(TestBed.inject(ToastService), 'confirm');
       const delSpy = vi.spyOn(downloads, 'delById');
 
@@ -1103,12 +1275,12 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('done', 'u1');
+      await app.delDownload('u1');
 
       expect(chooseSpy).toHaveBeenCalledTimes(1);
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], true);
@@ -1118,12 +1290,12 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       vi.spyOn(toasts, 'choose').mockResolvedValue(false);
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('done', 'u1');
+      await app.delDownload('u1');
 
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], false);
     });
@@ -1132,12 +1304,12 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       vi.spyOn(toasts, 'choose').mockResolvedValue(null);
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('done', 'u1');
+      await app.delDownload('u1');
 
       expect(delSpy).not.toHaveBeenCalled();
     });
@@ -1146,12 +1318,12 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'true';
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('done', 'u1');
+      await app.delDownload('u1');
 
       expect(chooseSpy).not.toHaveBeenCalled();
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], undefined);
@@ -1161,12 +1333,12 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'false';
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('done', 'u1');
+      await app.delDownload('u1');
 
       expect(chooseSpy).not.toHaveBeenCalled();
       expect(delSpy).toHaveBeenCalledWith('done', ['u1'], undefined);
@@ -1176,7 +1348,7 @@ describe('App', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.done.set('u1', doneEntry({ url: 'u1', status: 'error', filename: '' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       // Clear failed's own confirmation (#1094), answered yes.
       const confirmSpy = vi.spyOn(toasts, 'confirm').mockResolvedValue(true);
@@ -1199,7 +1371,7 @@ describe('App', () => {
         chapter_files: [{ filename: 'ch1.mp4', size: 1 }],
       }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const confirmSpy = vi.spyOn(toasts, 'confirm');
       const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
@@ -1216,22 +1388,21 @@ describe('App', () => {
     it('does not prompt for queue deletions', async () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       downloads.queue.set('u1', doneEntry({ url: 'u1', status: 'downloading' }));
-      const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const downloading = child(TestBed.createComponent(App), DownloadingSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
 
-      await app.delDownload('queue', 'u1');
+      downloading.delDownload('u1');
 
       expect(chooseSpy).not.toHaveBeenCalled();
-      expect(delSpy).toHaveBeenCalledWith('queue', ['u1'], undefined);
+      expect(delSpy).toHaveBeenCalledWith('queue', ['u1']);
     });
 
     it('retryDownload does not prompt even in ask mode, and sends no flag', () => {
       downloads.configuration['DELETE_FILE_ON_TRASHCAN'] = 'ask';
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose');
       const delSpy = vi.spyOn(downloads, 'delById');
@@ -1248,7 +1419,7 @@ describe('App', () => {
       downloads.done.set('u1', doneEntry({ url: 'u1' }));
       downloads.done.set('u2', doneEntry({ url: 'u2', title: 'Second video' }));
       const fixture = TestBed.createComponent(App);
-      const app = fixture.componentInstance;
+      const app = child(fixture, CompletedSectionComponent);
       const toasts = TestBed.inject(ToastService);
       const chooseSpy = vi.spyOn(toasts, 'choose').mockResolvedValue(true);
       const delSpy = vi.spyOn(downloads, 'delById');
