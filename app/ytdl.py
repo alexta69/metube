@@ -1334,34 +1334,6 @@ class PersistentQueue:
                     self.dict[key] = old
                 raise
 
-    async def bulk_put(self, values):
-        # Insert a batch of downloads and persist the dict ONCE, so a startup
-        # import of thousands of items is O(n) total instead of O(n^2) (one
-        # full-dict serialize per put). The batch is written atomically: if the
-        # save fails, every entry added by this call is rolled back, matching
-        # put()'s mutate-write-rollback contract.
-        if not values:
-            return
-        async with self._lock:
-            added = []
-            old = {}
-            for value in values:
-                key = value.info.url
-                if key not in old:
-                    old[key] = self.dict.get(key)
-                self.dict[key] = value
-                added.append(key)
-            try:
-                await self._save_dict_async()
-            except Exception:
-                for key in added:
-                    prev = old[key]
-                    if prev is None:
-                        del self.dict[key]
-                    else:
-                        self.dict[key] = prev
-                raise
-
     async def delete(self, key):
         async with self._lock:
             if key in self.dict:
@@ -1439,64 +1411,26 @@ class DownloadQueue:
         entry_id = entry_id.casefold()
         return handle in (entry_id, f'@{entry_id}')
 
-    # Items prepared and persisted per bulk_put during a startup import. A queue
-    # of thousands of items is re-imported across many batches, each persisting
-    # once and yielding to the event loop between them, so aiohttp can service
-    # the engine.io ping/pong the whole time (the 45s WS drop, issue #359).
-    _IMPORT_BATCH_SIZE = 200
-
-    async def __import_batch(self, infos, auto_start):
-        queued = []
-        pending = []
-        added = []
-        for info in infos:
-            result = self.__prepare_download(info, auto_start)
-            if isinstance(result, dict):
-                # A saved download can stop being addable across a restart (its
-                # folder was removed, or CUSTOM_DIRS was switched off). Dropping
-                # it would lose it without a trace, so keep it as a failed entry
-                # the user can see and retry once the folder is usable again.
-                log.warning(f'could not restore download {info.url}: {result["msg"]}')
-                info.status = 'error'
-                info.msg = result['msg']
-                await self.done.put(Download(None, None, None, None, info.quality, info.format, {}, info))
-                await self.notifier.completed(info)
-                continue
-            download, route = result
-            if route == 'pending':
-                pending.append(download)
-            else:
-                # 'queued' and 'scheduled' both land in self.queue.
-                queued.append(download)
-            added.append(info)
-        if queued:
-            await self.queue.bulk_put(queued)
-        if pending:
-            await self.pending.bulk_put(pending)
-        for download in queued:
-            if download.info.status == 'scheduled':
-                self._register_scheduled(download)
-            else:
-                bg_tasks.create_task(self.__start_download(download), name="start_download")
-        for info in added:
-            await self.notifier.added(info)
-
-    async def __import_saved(self, saved_items, auto_start):
-        # ``saved_items`` is a list of ``(key, DownloadInfo)`` tuples. The value
-        # is what gets re-hydrated; the key only keeps the restored item's
-        # original id stable, so it is dropped here.
-        values = [value for _, value in saved_items]
-        for start in range(0, len(values), self._IMPORT_BATCH_SIZE):
-            await self.__import_batch(values[start:start + self._IMPORT_BATCH_SIZE], auto_start)
-            # Yield to the event loop between batches so aiohttp can service the
-            # engine.io ping/pong while the queue re-imports.
-            await asyncio.sleep(0)
-
     async def __import_queue(self):
-        await self.__import_saved(self.queue.saved_items(), True)
+        for k, v in self.queue.saved_items():
+            await self.__import_saved(v, True)
 
     async def __import_pending(self):
-        await self.__import_saved(self.pending.saved_items(), False)
+        for k, v in self.pending.saved_items():
+            await self.__import_saved(v, False)
+
+    async def __import_saved(self, info, auto_start):
+        # A saved download can stop being addable across a restart (its folder
+        # was removed, or CUSTOM_DIRS was switched off). Dropping it would lose
+        # it without a trace, so keep it as a failed entry the user can see
+        # and retry once the folder is usable again.
+        error = await self.__add_download(info, auto_start)
+        if error is not None:
+            log.warning(f'could not restore download {info.url}: {error["msg"]}')
+            info.status = 'error'
+            info.msg = error['msg']
+            await self.done.put(Download(None, None, None, None, info.quality, info.format, {}, info))
+            await self.notifier.completed(info)
 
     async def initialize(self):
         log.info("Initializing DownloadQueue")
@@ -1774,19 +1708,7 @@ class DownloadQueue:
             dldirectory = base_directory
         return dldirectory, None
 
-    def __prepare_download(self, dl, auto_start):
-        """Build a ``Download`` from saved info and decide where it lands, without
-        persisting.
-
-        Returns an error dict when the item can no longer be added (its folder
-        was removed, CUSTOM_DIRS switched off, ...), else ``(download, route)``
-        with ``route`` one of ``'queued'``, ``'scheduled'`` or ``'pending'``.
-
-        Splitting the pure preparation from the write is what lets the startup
-        import batch its persistence through :meth:`PersistentQueue.bulk_put`
-        instead of paying a full dict-serialize per item -- the O(n^2) that
-        stalled the event loop for 15-45s at startup (issue #359).
-        """
+    async def __add_download(self, dl, auto_start):
         dldirectory, error_message = self.__calc_download_path(dl.download_type, dl.folder)
         if error_message is not None:
             return error_message
@@ -1819,22 +1741,11 @@ class DownloadQueue:
         )
         if auto_start is True:
             if is_upcoming:
-                download.info.status = 'scheduled'
-                return download, 'scheduled'
-            download.info.status = 'queued'
-            return download, 'queued'
-        return download, 'pending'
-
-    async def __add_download(self, dl, auto_start):
-        result = self.__prepare_download(dl, auto_start)
-        if isinstance(result, dict):
-            return result
-        download, route = result
-        if route == 'scheduled':
-            await self._schedule_upcoming_download(download)
-        elif route == 'queued':
-            await self.queue.put(download)
-            bg_tasks.create_task(self.__start_download(download), name="start_download")
+                await self._schedule_upcoming_download(download)
+            else:
+                download.info.status = 'queued'
+                await self.queue.put(download)
+                bg_tasks.create_task(self.__start_download(download), name="start_download")
         else:
             await self.pending.put(download)
         await self.notifier.added(dl)

@@ -1091,12 +1091,14 @@ async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, mon
 
 
 @pytest.mark.asyncio
-async def test_connect_offloads_payload_build_to_the_executor(mock_dqueue, monkeypatch):
-    """The connect handler must not run the blocking gather+serialize inline on
-    the event loop. It routes ``_build_connect_payload`` through
-    ``run_in_executor`` so a client's connect cannot stall the loop."""
-    import asyncio as aio
-
+async def test_connect_builds_payload_on_the_event_loop(mock_dqueue, monkeypatch):
+    """The connect handler must run ``dqueue.get()`` and the serializer inline
+    on the event loop, not in a worker thread. A thread would iterate the queue
+    dicts while the loop mutates them (``RuntimeError: dictionary changed size
+    during iteration`` -> the client gets no ``all`` event), and the encoder
+    reads ``DownloadInfo`` objects the progress hooks are updating.
+    ``_save_dict_async`` serializes on the loop for exactly this reason; the
+    connect payload follows that pattern."""
     emitted = []
 
     async def fake_emit(event, data=None, to=None):
@@ -1107,7 +1109,7 @@ async def test_connect_offloads_payload_build_to_the_executor(mock_dqueue, monke
     monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
     monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
 
-    loop = aio.get_running_loop()
+    loop = asyncio.get_running_loop()
     offloaded = []
     original_run_in_executor = loop.run_in_executor
 
@@ -1119,9 +1121,10 @@ async def test_connect_offloads_payload_build_to_the_executor(mock_dqueue, monke
 
     await main.connect('sid-1', {})
 
-    # The blocking payload builder was dispatched to the executor, not called
-    # inline on the loop.
-    assert main._build_connect_payload in offloaded
+    # Nothing was dispatched to a worker thread: the payload gather+serialize
+    # ran on the loop (and with CUSTOM_DIRS / YTDL_OPTIONS_FILE off, the
+    # background finish task has no work either).
+    assert offloaded == []
     # ...and the connect still delivered its catalog to the client.
     assert 'configuration' in [e for e, _ in emitted]
 

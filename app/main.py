@@ -1341,28 +1341,6 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
-def _build_connect_payload():
-    """Gather and serialize the socket.io connect-handshake payloads.
-
-    Runs off the event loop (via ``run_in_executor``) so a client's connect
-    does not stall the loop while the download queue, subscription list, and
-    options are read and serialized. A large library makes ``dqueue.get()``
-    and the ``serializer.encode`` calls do real work; doing that inline on
-    the loop froze every other client while a single one connected.
-
-    The ``'all'`` payload keeps its exact historical shape -- a 2-tuple of
-    ``[queue + pending, done]`` -- because the UI's ``'all'`` handler indexes
-    ``data[0]`` (in-flight) and ``data[1]`` (history) and depends on that
-    order.
-    """
-    return {
-        'all': serializer.encode(dqueue.get()),
-        'subscriptions_all': serializer.encode([s.to_public_dict() for s in submgr.list_all()]),
-        'formats': serializer.encode(format_catalog.public_catalog()),
-        'configuration': serializer.encode(config.frontend_safe()),
-    }
-
-
 async def _emit_connect_finish(sid):
     """Slow connect-finish events, dispatched off the connect-ACK path.
 
@@ -1386,15 +1364,18 @@ async def _emit_connect_finish(sid):
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
-    # Offload the blocking gather+serialize to the default executor so the
-    # connect handshake never stalls the event loop (see _build_connect_payload).
-    payload = await asyncio.get_running_loop().run_in_executor(None, _build_connect_payload)
-    # 'all' must go out first: the UI populates its state from it before the
-    # finer-grained events that may follow.
-    await sio.emit('all', payload['all'], to=sid)
-    await sio.emit('subscriptions_all', payload['subscriptions_all'], to=sid)
-    await sio.emit('formats', payload['formats'], to=sid)
-    await sio.emit('configuration', payload['configuration'], to=sid)
+    # Gather + serialize on the event loop: ``dqueue.get()`` iterates the queue
+    # dicts and the encoder reads ``DownloadInfo`` objects the progress hooks
+    # are updating, so a worker thread risks ``RuntimeError: dictionary changed
+    # size during iteration`` (the client would get no ``all`` event). A ~53 KB
+    # payload serializes in milliseconds, so this costs nothing on the
+    # handshake -- ``_save_dict_async`` serializes on the loop for the same
+    # reason. 'all' goes out first: the UI populates its state from it before
+    # the finer-grained events that may follow.
+    await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
+    await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
+    await sio.emit('formats', serializer.encode(format_catalog.public_catalog()), to=sid)
+    await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
     # The slow directory / ytdl-options emits must NOT be awaited here: the
     # connect ACK is sent only when this handler returns, so awaiting them
     # would delay the handshake past the engine.io ping window. Dispatch them
