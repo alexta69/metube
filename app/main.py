@@ -1401,21 +1401,47 @@ async def history(request):
     log.info("Sending download history")
     return web.Response(text=serializer.encode(history))
 
+async def _emit_connect_finish(sid):
+    """Slow connect-finish events, dispatched off the connect-ACK path.
+
+    The socket.io connect ACK is sent only after the ``connect`` handler
+    returns, so any work awaited there delays the handshake. ``get_custom_dirs()``
+    runs ``path.glob('**/')`` over the whole download tree (over 100s on a
+    large library) and ``get_options_update_time()`` touches the filesystem;
+    emitting them inline kept the client stuck on "Connecting..." long past the
+    engine.io ping window. Both are therefore dispatched as a background task
+    after the handler has returned, so the ACK is immediate and the client
+    connects instantly, receiving the directory list a moment later.
+    """
+    loop = asyncio.get_running_loop()
+    if config.CUSTOM_DIRS:
+        dirs = await loop.run_in_executor(None, get_custom_dirs)
+        await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
+    if config.YTDL_OPTIONS_FILE:
+        options_update = await loop.run_in_executor(None, get_options_update_time)
+        await sio.emit('ytdl_options_changed', serializer.encode(options_update), to=sid)
+
 @sio.event
 async def connect(sid, environ):
     log.info(f"Client connected: {sid}")
+    # Gather + serialize on the event loop: ``dqueue.get()`` iterates the queue
+    # dicts and the encoder reads ``DownloadInfo`` objects the progress hooks
+    # are updating, so a worker thread risks ``RuntimeError: dictionary changed
+    # size during iteration`` (the client would get no ``all`` event). A ~53 KB
+    # payload serializes in milliseconds, so this costs nothing on the
+    # handshake -- ``_save_dict_async`` serializes on the loop for the same
+    # reason. 'all' goes out first: the UI populates its state from it before
+    # the finer-grained events that may follow.
     await sio.emit('all', serializer.encode(dqueue.get()), to=sid)
     await sio.emit('subscriptions_all', serializer.encode([s.to_public_dict() for s in submgr.list_all()]), to=sid)
     await sio.emit('formats', serializer.encode(format_catalog.public_catalog()), to=sid)
     await sio.emit('configuration', serializer.encode(config.frontend_safe()), to=sid)
-    if config.CUSTOM_DIRS:
-        # get_custom_dirs() can walk the whole download tree on a cache miss;
-        # keep that off the event loop so a large library doesn't stall every
-        # client's connect handshake.
-        dirs = await asyncio.get_running_loop().run_in_executor(None, get_custom_dirs)
-        await sio.emit('custom_dirs', serializer.encode(dirs), to=sid)
-    if config.YTDL_OPTIONS_FILE:
-        await sio.emit('ytdl_options_changed', serializer.encode(get_options_update_time()), to=sid)
+    # The slow directory / ytdl-options emits must NOT be awaited here: the
+    # connect ACK is sent only when this handler returns, so awaiting them
+    # would delay the handshake past the engine.io ping window. Dispatch them
+    # as a background task (strong-referenced, failures logged) so the ACK
+    # goes out immediately.
+    bg_tasks.create_task(_emit_connect_finish(sid), name=f"connect_finish_{sid}")
 
 _CUSTOM_DIRS_CACHE_TTL_SECONDS = 5
 # (key, time, value) of the last listing; a connect storm reuses it.

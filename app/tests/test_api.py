@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import json
 import os
+import asyncio
 from pathlib import Path
 from unittest.mock import AsyncMock, MagicMock
 from urllib.parse import quote
@@ -1091,6 +1092,128 @@ async def test_connect_sends_the_catalog_with_the_configuration(mock_dqueue, mon
     assert 'formats' in events and 'configuration' in events
     assert events.index('formats') < events.index('configuration')
     assert json.loads(dict(emitted)['formats']) == format_catalog.CATALOG
+
+
+@pytest.mark.asyncio
+async def test_connect_builds_payload_on_the_event_loop(mock_dqueue, monkeypatch):
+    """The connect handler must run ``dqueue.get()`` and the serializer inline
+    on the event loop, not in a worker thread. A thread would iterate the queue
+    dicts while the loop mutates them (``RuntimeError: dictionary changed size
+    during iteration`` -> the client gets no ``all`` event), and the encoder
+    reads ``DownloadInfo`` objects the progress hooks are updating.
+    ``_save_dict_async`` serializes on the loop for exactly this reason; the
+    connect payload follows that pattern."""
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+
+    loop = asyncio.get_running_loop()
+    offloaded = []
+    original_run_in_executor = loop.run_in_executor
+
+    async def spy_run_in_executor(executor, func, *args):
+        offloaded.append(func)
+        return await original_run_in_executor(executor, func, *args)
+
+    monkeypatch.setattr(loop, 'run_in_executor', spy_run_in_executor)
+
+    await main.connect('sid-1', {})
+
+    # Nothing was dispatched to a worker thread: the payload gather+serialize
+    # ran on the loop (and with CUSTOM_DIRS / YTDL_OPTIONS_FILE off, the
+    # background finish task has no work either).
+    assert offloaded == []
+    # ...and the connect still delivered its catalog to the client.
+    assert 'configuration' in [e for e, _ in emitted]
+
+
+@pytest.mark.asyncio
+async def test_connect_emits_all_first_and_preserves_the_two_tuple_payload(mock_dqueue, monkeypatch):
+    """The UI's ``'all'`` handler indexes ``data[0]`` (in-flight) and
+    ``data[1]`` (history); the 2-tuple shape is load-bearing. ``'all'`` also
+    has to lead, so the client's state is populated before any event that
+    depends on it."""
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    # One in-flight and one finished entry so the 2-tuple is observable.
+    mock_dqueue.get = MagicMock(return_value=([{"id": "q"}], [{"id": "d"}]))
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', False)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+
+    await main.connect('sid-1', {})
+
+    events = [e for e, _ in emitted]
+    assert events[0] == 'all'
+    all_payload = json.loads(dict(emitted)['all'])
+    # [[in-flight], [history]] -- exactly the historical shape.
+    assert list(all_payload) == [[{"id": "q"}], [{"id": "d"}]]
+
+
+@pytest.mark.asyncio
+async def test_connect_dispatches_slow_finish_events_off_the_ack_path(mock_dqueue, monkeypatch):
+    """The socket.io connect ACK is sent only when the ``connect`` handler
+    returns, so the slow ``custom_dirs`` / ``ytdl_options_changed`` emits must
+    not be awaited inline -- on a large library ``get_custom_dirs()`` globs the
+    whole download tree for over 100s, which would delay the handshake past the
+    engine.io ping window. They are dispatched as a background task instead; the
+    handler returns right after the four fast events and the dir list arrives a
+    moment later."""
+    emitted = []
+
+    async def fake_emit(event, data=None, to=None):
+        emitted.append((event, data))
+
+    slow = {}
+
+    # A directory walk (invoked via run_in_executor, so sync), so we can assert
+    # it ran off the handler and that its event is emitted once the background
+    # task finishes.
+    def slow_get_custom_dirs():
+        slow['called'] = True
+        return {"download_dir": ["", "a"], "audio_download_dir": ["", "a"]}
+
+    created = []
+
+    def spy_create_task(coro, *, name=None):
+        created.append(name)
+        return asyncio.ensure_future(coro)
+
+    monkeypatch.setattr(main.sio, 'emit', fake_emit)
+    monkeypatch.setattr(main.bg_tasks, 'create_task', spy_create_task)
+    monkeypatch.setattr(main, 'submgr', MagicMock(list_all=MagicMock(return_value=[])))
+    monkeypatch.setattr(main.config, 'CUSTOM_DIRS', True)
+    monkeypatch.setattr(main.config, 'YTDL_OPTIONS_FILE', '')
+    monkeypatch.setattr(main, 'get_custom_dirs', slow_get_custom_dirs)
+
+    await main.connect('sid-1', {})
+
+    # The handler returned without waiting on the slow walk (ACK went out first).
+    assert 'called' not in slow
+    # ...and it was dispatched as a background task.
+    assert any(n and n.startswith('connect_finish_') for n in created)
+    # Fast events are already out; the slow one is not (yet).
+    fast = [e for e, _ in emitted]
+    assert 'configuration' in fast and 'custom_dirs' not in fast
+
+    # Let the background task run (executor round-trip needs a real time slice):
+    # the dir list arrives after the handshake.
+    await asyncio.sleep(0.05)
+    slow_events = [e for e, _ in emitted]
+    assert slow.get('called') is True
+    assert 'custom_dirs' in slow_events
+    # ...and only after the four fast events.
+    assert slow_events.index('custom_dirs') > slow_events.index('configuration')
 
 
 @pytest.mark.asyncio
