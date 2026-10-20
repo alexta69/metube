@@ -23,7 +23,10 @@ _DATETIME_MARKER = "__metube_datetime__"
 # mkstemp). These are safe to fall back on because they mean the atomic
 # mechanism is unavailable, not that the data write itself failed. Errors like
 # ENOSPC/EIO are deliberately excluded so a genuine storage failure surfaces
-# instead of silently truncating an existing good state file.
+# instead of silently truncating an existing good state file. ENOENT is
+# excluded too: a temp file that vanishes at os.replace is retried below, and
+# every other ENOENT must surface the same way rather than truncate a good
+# state file through the direct-write fallback.
 _ATOMIC_UNSUPPORTED_ERRNOS = frozenset(
     e
     for e in (
@@ -36,6 +39,14 @@ _ATOMIC_UNSUPPORTED_ERRNOS = frozenset(
     )
     if e is not None
 )
+
+# os.replace can raise ENOENT when the temp file just written disappears before
+# the rename (seen while expanding a large playlist onto a bind-mounted state
+# dir). Rewrite a fresh temp in the same directory and try again. Three
+# attempts total, counting the first. This is only the replacement step, and
+# only when the parent directory is still there and the source pathname is
+# gone — not a claim that the mount itself has been diagnosed.
+_MISSING_TEMP_REPLACE_ATTEMPTS = 3
 
 
 def to_json_compatible(value: Any) -> Any:
@@ -128,25 +139,57 @@ class AtomicJsonStore:
     def _atomic_write(self, payload: dict[str, Any]) -> None:
         text = self._serialize(payload)
         parent = os.path.dirname(self.path) or "."
-        fd, tmp_path = tempfile.mkstemp(
-            prefix=f".{os.path.basename(self.path)}.",
-            suffix=".tmp",
-            dir=parent,
-            text=True,
-        )
-        try:
-            with os.fdopen(fd, "w", encoding="utf-8") as f:
-                f.write(text)
-                f.flush()
-                self._best_effort_fsync(f.fileno())
-            os.replace(tmp_path, self.path)
-            self._fsync_directory(parent)
-        except Exception:
+        for attempt in range(_MISSING_TEMP_REPLACE_ATTEMPTS):
+            fd, tmp_path = tempfile.mkstemp(
+                prefix=f".{os.path.basename(self.path)}.",
+                suffix=".tmp",
+                dir=parent,
+                text=True,
+            )
             try:
-                os.remove(tmp_path)
-            except OSError:
-                pass
-            raise
+                with os.fdopen(fd, "w", encoding="utf-8") as f:
+                    f.write(text)
+                    f.flush()
+                    self._best_effort_fsync(f.fileno())
+                try:
+                    os.replace(tmp_path, self.path)
+                except FileNotFoundError as exc:
+                    # Checked before cleanup: a source that is still present, or
+                    # a parent that is already gone, must not look retryable.
+                    if (
+                        attempt + 1 < _MISSING_TEMP_REPLACE_ATTEMPTS
+                        and self._is_missing_temp_replace(exc, parent, tmp_path)
+                    ):
+                        self._discard_temp(tmp_path)
+                        log.warning(
+                            "Temporary state file disappeared before replace for %s; "
+                            "retrying atomic write (attempt %s of %s)",
+                            self.path,
+                            attempt + 1,
+                            _MISSING_TEMP_REPLACE_ATTEMPTS,
+                        )
+                        continue
+                    raise
+                self._fsync_directory(parent)
+                return
+            except Exception:
+                self._discard_temp(tmp_path)
+                raise
+
+    @staticmethod
+    def _is_missing_temp_replace(exc: FileNotFoundError, parent: str, tmp_path: str) -> bool:
+        return (
+            exc.errno == errno.ENOENT
+            and os.path.isdir(parent)
+            and not os.path.exists(tmp_path)
+        )
+
+    @staticmethod
+    def _discard_temp(tmp_path: str) -> None:
+        try:
+            os.remove(tmp_path)
+        except OSError:
+            pass
 
     def _direct_write(self, payload: dict[str, Any]) -> None:
         # Serialize before truncating so a serialization failure never destroys
