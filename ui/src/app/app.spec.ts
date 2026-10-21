@@ -979,6 +979,22 @@ describe('App', () => {
     expect(payload.clipEnd).toBe('1:20');
   });
 
+  it('buildAddPayload includes multiple clip ranges', () => {
+    const fixture = TestBed.createComponent(App);
+    const app = fixture.componentInstance;
+    app.clipRanges = [
+      { start: '0:10', end: '1:20' },
+      { start: 120, end: 150 },
+    ];
+
+    const payload = app['buildAddPayload']();
+
+    expect(payload.clipRanges).toEqual([
+      { start: '0:10', end: '1:20' },
+      { start: 120, end: 150 },
+    ]);
+  });
+
   it('retries a failed download by its server-side queue id', () => {
     const fixture = TestBed.createComponent(App);
     const app = child(fixture, CompletedSectionComponent);

@@ -1,3 +1,14 @@
+export interface ClipRange {
+  start: number | string;
+  end: number | string;
+}
+
+export interface ClipFile {
+  filename: string;
+  start: number;
+  end: number;
+  size: number | null;
+}
 
 export interface Download {
   id: string;
@@ -20,6 +31,8 @@ export interface Download {
   ytdl_options_overrides?: Record<string, unknown>;
   clip_start?: number;
   clip_end?: number;
+  clip_ranges?: ClipRange[];
+  clip_files?: ClipFile[];
   live_status?: string;
   live_release_timestamp?: number;
   status: string;
@@ -33,5 +46,5 @@ export interface Download {
   size?: number;
   error?: string;
   deleting?: boolean;
-  chapter_files?: { filename: string, size: number }[];
+  chapter_files?: { filename: string, size: number | null }[];
 }

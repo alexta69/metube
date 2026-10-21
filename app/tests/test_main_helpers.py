@@ -285,6 +285,66 @@ class ParseDownloadOptionsTests(unittest.TestCase):
         self.assertEqual(parsed.clip_start, 146.0)
         self.assertEqual(parsed.clip_end, 204.0)
 
+    def test_clip_ranges_parse_into_multiple_seconds_pairs(self):
+        url, parsed = main.parse_download_options({
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+            "clip_ranges": [
+                {"start": 1159, "end": 1195},
+                {"start": "22:00", "end": "22:30"},
+            ],
+        })
+        self.assertEqual(url, "https://example.com/watch?v=1")
+        self.assertEqual(parsed.clip_ranges, ((1159.0, 1195.0), (1320.0, 1350.0)))
+        self.assertIsNone(parsed.clip_start)
+        self.assertIsNone(parsed.clip_end)
+
+    def test_clip_ranges_reject_invalid_order_and_too_many_items(self):
+        body = {
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+        }
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main.parse_download_options({**body, "clip_ranges": [{"start": 5, "end": 5}]})
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main.parse_download_options({
+                **body,
+                "clip_ranges": [{"start": index, "end": index + 1} for index in range(51)],
+            })
+
+    def test_clip_ranges_reject_non_finite_clock_segments(self):
+        body = {
+            "url": "https://example.com/watch?v=1",
+            "download_type": "video",
+            "codec": "auto",
+            "format": "any",
+            "quality": "best",
+        }
+        for value in ("nan:0", "inf:0"):
+            with self.subTest(value=value), self.assertRaises(main.web.HTTPBadRequest):
+                main.parse_download_options({
+                    **body,
+                    "clip_ranges": [{"start": value, "end": "1:00"}],
+                })
+
+    def test_clip_ranges_cannot_be_combined_with_legacy_clip_fields(self):
+        with self.assertRaises(main.web.HTTPBadRequest):
+            main.parse_download_options({
+                "url": "https://example.com/watch?v=1",
+                "download_type": "video",
+                "codec": "auto",
+                "format": "any",
+                "quality": "best",
+                "clip_start": "1",
+                "clip_ranges": [{"start": 5, "end": 10}],
+            })
+
     def test_clip_url_t_param_strips_query_and_sets_start(self):
         url, parsed = main.parse_download_options({
             "url": "https://www.youtube.com/watch?v=1&t=855s",

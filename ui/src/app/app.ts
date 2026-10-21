@@ -25,6 +25,7 @@ import {
   DownloadTypeOption,
   FormatCatalog,
   FormatOption,
+  ClipRange,
 } from './interfaces';
 import { SpeedPipe } from './pipes';
 import {
@@ -55,6 +56,8 @@ import {
   styleUrl: './app.sass',
 })
 export class App implements AfterViewInit, OnInit, OnDestroy {
+  private static readonly MAX_CLIP_RANGES = 50;
+
   downloads = inject(DownloadsService);
   subscriptionsSvc = inject(SubscriptionsService);
   private toasts = inject(ToastService);
@@ -93,6 +96,8 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
   chapterTemplate: string;
   clipStart = '';
   clipEnd = '';
+  clipRanges: ClipRange[] = [];
+  readonly maxClipRanges = App.MAX_CLIP_RANGES;
   videoPassword = '';
   subtitleLanguage: string;
   subtitleMode: string;
@@ -172,6 +177,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     this.chapterTemplate = this.settings.get('metube_chapter_template') || '';
     this.clipStart = this.settings.get('metube_clip_start') || '';
     this.clipEnd = this.settings.get('metube_clip_end') || '';
+    this.clipRanges = this.loadStoredClipRanges();
     this.subtitleLanguage = this.settings.get('metube_subtitle_language');
     this.subtitleMode = this.settings.get('metube_subtitle_mode');
     this.ytdlOptionsPresets = this.loadStoredYtdlOptionsPresets();
@@ -361,6 +367,30 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     return legacy ? [legacy] : [];
   }
 
+  private loadStoredClipRanges(): ClipRange[] {
+    const stored = this.settings.get('metube_clip_ranges');
+    if (!stored) {
+      return [];
+    }
+    try {
+      const parsed = JSON.parse(stored) as unknown;
+      if (!Array.isArray(parsed)) {
+        return [];
+      }
+      return parsed
+        .filter((range): range is Record<string, unknown> => (
+          !!range && typeof range === 'object' && 'start' in range && 'end' in range
+        ))
+        .map(range => ({
+          start: typeof range['start'] === 'number' ? range['start'] : String(range['start']),
+          end: typeof range['end'] === 'number' ? range['end'] : String(range['end']),
+        }))
+        .slice(0, App.MAX_CLIP_RANGES);
+    } catch {
+      return [];
+    }
+  }
+
   private validateYtdlOptionsOverrides(value: string): boolean {
     if (!this.allowYtdlOptionsOverrides()) {
       return true;
@@ -393,6 +423,13 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
     const payload = this.buildAddPayload();
     if (!payload.url?.trim()) {
       this.toasts.error('Please enter a URL');
+      return;
+    }
+    if (!this.validateClipRanges(payload)) {
+      return;
+    }
+    if (payload.clipRanges.length > 0) {
+      this.toasts.error('Multiple clips are only available for direct downloads');
       return;
     }
     const tr = (this.titleRegex || '').trim();
@@ -512,6 +549,23 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   clipEndChanged() {
     this.settings.set('metube_clip_end', this.clipEnd);
+  }
+
+  clipRangesChanged() {
+    this.settings.set('metube_clip_ranges', JSON.stringify(this.clipRanges));
+  }
+
+  addClipRange() {
+    if (this.clipRanges.length >= App.MAX_CLIP_RANGES) {
+      return;
+    }
+    this.clipRanges = [...this.clipRanges, { start: '', end: '' }];
+    this.clipRangesChanged();
+  }
+
+  removeClipRange(index: number) {
+    this.clipRanges = this.clipRanges.filter((_, rangeIndex) => rangeIndex !== index);
+    this.clipRangesChanged();
   }
 
   subtitleLanguageChanged() {
@@ -725,6 +779,7 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
         : '',
       clipStart: overrides.clipStart ?? this.clipStart,
       clipEnd: overrides.clipEnd ?? this.clipEnd,
+      clipRanges: overrides.clipRanges ?? this.clipRanges.map(range => ({ ...range })),
       videoPassword: overrides.videoPassword ?? this.videoPassword,
     };
   }
@@ -755,12 +810,68 @@ export class App implements AfterViewInit, OnInit, OnDestroy {
 
   // Settings checks shared by every path that queues downloads from the form.
   private validateAddSettings(payload: AddDownloadPayload): boolean {
+    if (!this.validateClipRanges(payload)) {
+      return false;
+    }
     // Validate chapter template if chapter splitting is enabled
     if (payload.splitByChapters && !payload.chapterTemplate.includes('%(section_number)')) {
       this.toasts.error('Chapter template must include %(section_number)');
       return false;
     }
     return this.validateYtdlOptionsOverrides(payload.ytdlOptionsOverrides);
+  }
+
+  private validateClipRanges(payload: AddDownloadPayload): boolean {
+    const ranges = payload.clipRanges ?? [];
+    if (ranges.length === 0) {
+      return true;
+    }
+    if (ranges.length > App.MAX_CLIP_RANGES) {
+      this.toasts.error(`You can add at most ${App.MAX_CLIP_RANGES} clips`);
+      return false;
+    }
+    if (payload.clipStart?.trim() || payload.clipEnd?.trim()) {
+      this.toasts.error('Use either one clip range or multiple clip ranges, not both');
+      return false;
+    }
+    for (const [index, range] of ranges.entries()) {
+      const start = this.parseClipTimestamp(range.start);
+      const end = this.parseClipTimestamp(range.end);
+      if (start === null || end === null || end <= start) {
+        this.toasts.error(`Clip ${index + 1} must have an end time greater than its start time`);
+        return false;
+      }
+    }
+    return true;
+  }
+
+  private parseClipTimestamp(value: number | string): number | null {
+    if (typeof value === 'number') {
+      return Number.isFinite(value) && value >= 0 ? value : null;
+    }
+    const text = value.trim();
+    if (!text) {
+      return null;
+    }
+    if (/^\d+(?:\.\d+)?$/.test(text)) {
+      const seconds = Number(text);
+      return Number.isFinite(seconds) ? seconds : null;
+    }
+    const parts = text.split(':');
+    if (parts.length > 3 || parts.some(part => !/^\d+(?:\.\d+)?$/.test(part))) {
+      return null;
+    }
+    const numbers = parts.map(Number);
+    if (numbers.some(number => !Number.isFinite(number) || number < 0)) {
+      return null;
+    }
+    if (numbers.length === 2) {
+      return numbers[0] * 60 + numbers[1];
+    }
+    if (numbers.length === 3) {
+      return numbers[0] * 3600 + numbers[1] * 60 + numbers[2];
+    }
+    return numbers[0];
   }
 
   // Probe a playlist or channel URL and let the user pick which entries to

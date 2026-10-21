@@ -415,6 +415,24 @@ async def test_add_passes_clip_bounds_to_queue(mock_dqueue):
 
 
 @pytest.mark.asyncio
+async def test_add_passes_clip_ranges_to_queue(mock_dqueue):
+    req = _json_request(
+        _valid_video_add_body(
+            clip_ranges=[
+                {"start": 1159, "end": 1195},
+                {"start": "22:00", "end": "22:30"},
+            ],
+        ),
+    )
+    resp = await main.add(req)
+    assert resp.status == 200
+    options = mock_dqueue.add.await_args.args[1]
+    assert options.clip_ranges == ((1159.0, 1195.0), (1320.0, 1350.0))
+    assert options.clip_start is None
+    assert options.clip_end is None
+
+
+@pytest.mark.asyncio
 async def test_subscribe_passes_clip_bounds(mock_dqueue, monkeypatch):
     """Issue #1049: a subscription's options apply to every future download, and
     clip bounds were the one option carved out of that."""
@@ -430,6 +448,18 @@ async def test_subscribe_passes_clip_bounds(mock_dqueue, monkeypatch):
     kwargs = main.submgr.add_subscription.await_args.kwargs
     assert kwargs["clip_start"] == pytest.approx(146.0)
     assert kwargs["clip_end"] == pytest.approx(204.0)
+
+
+@pytest.mark.asyncio
+async def test_subscribe_rejects_multiple_clip_ranges(mock_dqueue, monkeypatch):
+    monkeypatch.setattr(main.submgr, "add_subscription", AsyncMock(return_value={"status": "ok"}))
+    req = _json_request({
+        **_valid_video_add_body(clip_ranges=[{"start": 10, "end": 20}]),
+        "check_interval_minutes": 60,
+    })
+    with pytest.raises(web.HTTPBadRequest):
+        await main.subscribe(req)
+    main.submgr.add_subscription.assert_not_awaited()
 
 
 @pytest.mark.asyncio

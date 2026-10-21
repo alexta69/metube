@@ -34,12 +34,15 @@ def test_is_immutable():
 
 def test_download_info_fields_build_a_download_info():
     options = DownloadOptions(download_type="audio", format="mp3", sponsorblock=True, audio_tags="none",
-                              video_password="pw", clip_start=1.0, auto_start=False)
+                              video_password="pw", clip_start=1.0,
+                              clip_ranges=[(10, 20)], auto_start=False)
     fields = options.download_info_fields()
     assert "auto_start" not in fields
     info = DownloadInfo(id="i", title="t", url="u", error=None, entry=None, **fields)
     assert (info.download_type, info.format, info.sponsorblock, info.audio_tags, info.video_password,
-            info.clip_start) == ("audio", "mp3", True, "none", "pw", 1.0)
+            info.clip_start, info.clip_ranges) == (
+                "audio", "mp3", True, "none", "pw", 1.0, [{"start": 10.0, "end": 20.0}],
+            )
 
 
 def test_round_trips_through_a_stored_download():

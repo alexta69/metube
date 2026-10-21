@@ -9,6 +9,7 @@ import asyncio
 import multiprocessing
 import json
 import os
+import queue
 import signal
 import tempfile
 import threading
@@ -32,6 +33,7 @@ from ytdl import (
     _convert_srt_to_txt_file,
     _pot_provider_urls,
     _AlbumArtistPostProcessor,
+    _clip_output_template,
     _resolve_outtmpl_fields,
     _sanitize_entry,
     _sanitize_path_component,
@@ -275,6 +277,17 @@ class ResolveOuttmplFieldsTests(unittest.TestCase):
         self.assertNotIn('..', literal_prefix)
         self.assertFalse(literal_prefix.startswith('/'))
         self.assertFalse(literal_prefix.startswith('\\'))
+
+
+class ClipOutputTemplateTests(unittest.TestCase):
+    def test_suffix_is_inserted_before_extension_field(self):
+        self.assertEqual(
+            _clip_output_template("%(title)s.%(ext)s", 1),
+            "%(title)s - clip-01.%(ext)s",
+        )
+
+    def test_suffix_preserves_literal_extension(self):
+        self.assertEqual(_clip_output_template("video.mp4", 2), "video - clip-02.mp4")
 
 
 class ConfinedYoutubeDLTests(unittest.TestCase):
@@ -642,6 +655,73 @@ def _capture_ytdl_params(download: Download) -> dict:
 
     params, = make.call_args.args
     return params
+
+
+class MultiClipDownloadTests(unittest.TestCase):
+    def _run_multi_clip_download(self, results):
+        download = _make_test_download()
+        download.info.clip_ranges = [
+            {"start": 10.0, "end": 20.0},
+            {"start": 30.0, "end": 40.0},
+        ]
+        statuses = []
+        captured = []
+        download.status_queue = types.SimpleNamespace(put=statuses.append)
+
+        class FakeYoutubeDL:
+            def __init__(self, result):
+                self.result = result
+
+            def download(self, urls):
+                self.urls = urls
+                return self.result
+
+        def make_youtube_dl(params):
+            captured.append(params)
+            return FakeYoutubeDL(results[len(captured) - 1])
+
+        with patch.object(download, '_make_youtube_dl', side_effect=make_youtube_dl), \
+                patch('ytdl.install_socket_guard'), \
+                patch('ytdl.os.setpgrp'):
+            download._download()
+        return download, statuses, captured
+
+    def test_downloads_each_range_with_unique_output_templates(self):
+        _, statuses, params = self._run_multi_clip_download([0, 0])
+
+        self.assertEqual(len(params), 2)
+        self.assertEqual(
+            [p['outtmpl']['default'] for p in params],
+            ["%(title)s - clip-01.%(ext)s", "%(title)s - clip-02.%(ext)s"],
+        )
+        self.assertTrue(all('download_ranges' in p for p in params))
+        self.assertEqual(statuses[-1], {'status': 'finished'})
+
+    def test_clip_completion_is_not_terminal_between_ranges(self):
+        download = _make_test_download()
+        statuses = []
+        download.status_queue = types.SimpleNamespace(put=statuses.append)
+
+        download._make_progress_hook(0)({
+            'status': 'finished',
+            'filename': '/tmp/video - clip-01.mp4',
+        })
+        download._make_postprocessor_hook(0)({
+            'postprocessor': 'MoveFiles',
+            'status': 'finished',
+            'info_dict': {'filepath': '/tmp/video - clip-01.mp4'},
+        })
+
+        self.assertEqual([status['status'] for status in statuses], [
+            'postprocessing',
+            'postprocessing',
+        ])
+
+    def test_stops_after_the_first_failed_range(self):
+        _, statuses, params = self._run_multi_clip_download([0, 1, 0])
+
+        self.assertEqual(len(params), 2)
+        self.assertEqual(statuses[-1]['status'], 'error')
 
 
 class SponsorBlockPostprocessorTests(unittest.TestCase):
@@ -1343,6 +1423,37 @@ class UpdateStatusFileStatTests(unittest.IsolatedAsyncioTestCase):
 
         self.assertEqual(stat_calls, ["/tmp/v.mp4"])
         self.assertIsNone(download.info.size)
+
+    async def test_clip_file_status_records_range_and_relative_path(self):
+        download = _make_test_download()
+        download.info.clip_ranges = [{"start": 10.0, "end": 20.0}]
+        download.download_dir = "/tmp"
+        source = queue.Queue()
+        source.put({
+            "status": "finished",
+            "filename": "/tmp/video - clip-01.mp4",
+            "clip_file": {
+                "clip_index": 0,
+                "filename": "/tmp/video - clip-01.mp4",
+            },
+        })
+        source.put(None)
+        download.status_queue = source
+        download.loop = asyncio.get_running_loop()
+        download._executor = ThreadPoolExecutor(max_workers=1)
+        download.notifier = MagicMock(updated=AsyncMock())
+        try:
+            with patch("ytdl.os.path.exists", return_value=False):
+                await download.update_status()
+        finally:
+            download._executor.shutdown(wait=True)
+
+        self.assertEqual(download.info.clip_files, [{
+            "filename": "video - clip-01.mp4",
+            "start": 10.0,
+            "end": 20.0,
+            "size": None,
+        }])
 
     async def test_repeated_postprocessing_status_is_broadcast_once(self):
         # yt-dlp's metaclass wraps run() once per class in a postprocessor's MRO,

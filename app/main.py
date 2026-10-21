@@ -15,6 +15,7 @@ import logging
 import json
 import pathlib
 import re
+import math
 import time
 from urllib.parse import parse_qs, urlencode, urlparse, urlunparse
 from watchfiles import awatch
@@ -566,6 +567,7 @@ _YOUTUBE_T_COMPACT_RE = re.compile(
     r'^(?:(\d+)h)?(?:(\d+)m)?(?:(\d+)(?:s)?)?$',
     re.IGNORECASE,
 )
+_MAX_CLIP_RANGES = 50
 
 
 def _parse_youtube_t_compact(value: str) -> float | None:
@@ -598,6 +600,8 @@ def _parse_clock_timestamp(s: str) -> float:
         nums = [float(x) for x in segments]
     except ValueError as exc:
         raise ValueError('invalid number') from exc
+    if any(not math.isfinite(x) for x in nums):
+        raise ValueError('non-finite segment')
     if any(x < 0 for x in nums):
         raise ValueError('negative segment')
     if len(segments) == 1:
@@ -612,7 +616,7 @@ def _parse_clip_timestamp_value(value) -> float:
     if isinstance(value, bool):
         raise web.HTTPBadRequest(reason='clip timestamp must be a number or string')
     if isinstance(value, (int, float)):
-        if value < 0:
+        if value < 0 or not math.isfinite(value):
             raise web.HTTPBadRequest(reason='clip timestamp must be non-negative')
         return float(value)
     s = str(value).strip()
@@ -643,6 +647,31 @@ def _clip_field_provided_in_post(raw) -> bool:
     if isinstance(raw, str) and not raw.strip():
         return False
     return True
+
+
+def _parse_clip_ranges(raw) -> tuple[tuple[float, float], ...]:
+    """Parse the multi-clip request field into validated ``(start, end)`` pairs."""
+    if raw is None or (isinstance(raw, str) and not raw.strip()):
+        return ()
+    if not isinstance(raw, list):
+        raise web.HTTPBadRequest(reason='clip_ranges must be a JSON array')
+    if len(raw) > _MAX_CLIP_RANGES:
+        raise web.HTTPBadRequest(reason=f'clip_ranges must contain at most {_MAX_CLIP_RANGES} ranges')
+
+    ranges = []
+    for index, item in enumerate(raw, start=1):
+        if not isinstance(item, dict) or 'start' not in item or 'end' not in item:
+            raise web.HTTPBadRequest(
+                reason=f'clip_ranges item {index} must contain start and end timestamps',
+            )
+        start = _parse_clip_timestamp_value(item['start'])
+        end = _parse_clip_timestamp_value(item['end'])
+        if end <= start:
+            raise web.HTTPBadRequest(
+                reason=f'clip_ranges item {index} end must be greater than start',
+            )
+        ranges.append((start, end))
+    return tuple(ranges)
 
 
 def _extract_t_query_from_url(url: str) -> tuple[str, float | None]:
@@ -1024,12 +1053,17 @@ def parse_download_options(post: dict) -> tuple[str, DownloadOptions]:
 
     clip_start_raw = post.get('clip_start')
     clip_end_raw = post.get('clip_end')
+    clip_ranges = _parse_clip_ranges(post.get('clip_ranges'))
     clip_start: float | None
     clip_end: float | None
     if download_type in ('captions', 'thumbnail'):
-        if _clip_field_provided_in_post(clip_start_raw) or _clip_field_provided_in_post(clip_end_raw):
+        if (
+            _clip_field_provided_in_post(clip_start_raw)
+            or _clip_field_provided_in_post(clip_end_raw)
+            or clip_ranges
+        ):
             raise web.HTTPBadRequest(
-                reason='clip_start and clip_end are only supported for video and audio downloads',
+                reason='clip fields are only supported for video and audio downloads',
             )
         clip_start = None
         clip_end = None
@@ -1037,23 +1071,31 @@ def parse_download_options(post: dict) -> tuple[str, DownloadOptions]:
         cleaned_url, url_t = _extract_t_query_from_url(url)
         if url_t is not None:
             url = cleaned_url
-        explicit_start = _optional_clip_field(clip_start_raw)
-        explicit_end = _optional_clip_field(clip_end_raw)
-        explicit_start_provided = _clip_field_provided_in_post(clip_start_raw)
-        explicit_end_provided = _clip_field_provided_in_post(clip_end_raw)
-        if explicit_start_provided:
-            clip_start = explicit_start
-        elif explicit_end_provided:
-            clip_start = 0.0
-        elif url_t is not None:
-            clip_start = url_t
-        else:
+        if clip_ranges:
+            if _clip_field_provided_in_post(clip_start_raw) or _clip_field_provided_in_post(clip_end_raw):
+                raise web.HTTPBadRequest(
+                    reason='clip_ranges cannot be combined with clip_start or clip_end',
+                )
             clip_start = None
-        clip_end = explicit_end
-        if clip_end is not None and clip_start is None:
-            clip_start = 0.0
-        if clip_start is not None and clip_end is not None and clip_end <= clip_start:
-            raise web.HTTPBadRequest(reason='clip_end must be greater than clip_start')
+            clip_end = None
+        else:
+            explicit_start = _optional_clip_field(clip_start_raw)
+            explicit_end = _optional_clip_field(clip_end_raw)
+            explicit_start_provided = _clip_field_provided_in_post(clip_start_raw)
+            explicit_end_provided = _clip_field_provided_in_post(clip_end_raw)
+            if explicit_start_provided:
+                clip_start = explicit_start
+            elif explicit_end_provided:
+                clip_start = 0.0
+            elif url_t is not None:
+                clip_start = url_t
+            else:
+                clip_start = None
+            clip_end = explicit_end
+            if clip_end is not None and clip_start is None:
+                clip_start = 0.0
+            if clip_start is not None and clip_end is not None and clip_end <= clip_start:
+                raise web.HTTPBadRequest(reason='clip_end must be greater than clip_start')
 
     return url, DownloadOptions(
         download_type=download_type,
@@ -1074,6 +1116,7 @@ def parse_download_options(post: dict) -> tuple[str, DownloadOptions]:
         ytdl_options_overrides=ytdl_options_overrides,
         clip_start=clip_start,
         clip_end=clip_end,
+        clip_ranges=clip_ranges,
         video_password=video_password,
     )
 
@@ -1156,6 +1199,8 @@ async def retry(request):
 async def subscribe(request):
     post = await _read_json_request(request)
     url, options = parse_download_options(post)
+    if options.clip_ranges:
+        raise web.HTTPBadRequest(reason='clip_ranges are only supported for direct downloads')
     cic = post.get('check_interval_minutes')
     if cic is None:
         cic = config.SUBSCRIPTION_DEFAULT_CHECK_INTERVAL

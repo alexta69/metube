@@ -17,6 +17,9 @@ from dataclasses import dataclass, field
 from typing import Any, Optional
 
 
+ClipRange = tuple[float, float]
+
+
 @dataclass(frozen=True)
 class DownloadOptions:
     download_type: str = 'video'
@@ -37,6 +40,7 @@ class DownloadOptions:
     ytdl_options_overrides: dict[str, Any] = field(default_factory=dict, repr=False)
     clip_start: Optional[float] = None
     clip_end: Optional[float] = None
+    clip_ranges: tuple[ClipRange, ...] = ()
     sponsorblock: bool = False
     audio_tags: str = 'with_cover'
     video_password: Optional[str] = field(default=None, repr=False)
@@ -46,6 +50,15 @@ class DownloadOptions:
         # of one download's options can reach another download's.
         object.__setattr__(self, 'ytdl_options_presets', tuple(self.ytdl_options_presets or ()))
         object.__setattr__(self, 'ytdl_options_overrides', dict(self.ytdl_options_overrides or {}))
+        ranges = []
+        for clip_range in self.clip_ranges or ():
+            if isinstance(clip_range, dict):
+                start = clip_range['start']
+                end = clip_range['end']
+            else:
+                start, end = clip_range
+            ranges.append((float(start), float(end)))
+        object.__setattr__(self, 'clip_ranges', tuple(ranges))
 
     def replace(self, **changes) -> 'DownloadOptions':
         return dataclasses.replace(self, **changes)

@@ -3,7 +3,7 @@ import { HttpClient, HttpErrorResponse } from '@angular/common/http';
 import { Observable, of, Subject } from 'rxjs';
 import { catchError } from 'rxjs/operators';
 import { MeTubeSocket } from './metube-socket.service';
-import { Download, FormatCatalog, Status, State } from '../interfaces';
+import { ClipRange, Download, FormatCatalog, Status, State } from '../interfaces';
 import { takeUntilDestroyed } from '@angular/core/rxjs-interop';
 
 // Maximum number of /add or /retry requests to have in flight at once when
@@ -32,6 +32,7 @@ export interface AddDownloadPayload {
   ytdlOptionsOverrides: string;
   clipStart?: string;
   clipEnd?: string;
+  clipRanges: ClipRange[];
   videoPassword?: string;
 }
 
@@ -196,6 +197,7 @@ export class DownloadsService {
     const ce = payload.clipEnd?.trim();
     if (cs) body['clip_start'] = cs;
     if (ce) body['clip_end'] = ce;
+    if (payload.clipRanges?.length) body['clip_ranges'] = payload.clipRanges;
     if (payload.videoPassword) body['video_password'] = payload.videoPassword;
     return this.http.post<Status>('add', body).pipe(
       catchError(this.handleHTTPError)

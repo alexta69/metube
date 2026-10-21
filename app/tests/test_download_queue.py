@@ -460,6 +460,41 @@ async def test_retry_restores_playlist_output_context(dq_env):
     assert queued.info.entry["playlist_title"] == "My Playlist"
 
 
+@pytest.mark.asyncio
+async def test_retry_preserves_completed_clip_files(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    url = "https://example.com/watch?v=1"
+    clip_files = [{
+        "filename": "Test Video - clip-01.mp4",
+        "start": 10.0,
+        "end": 20.0,
+        "size": 123,
+    }]
+    failed_info = _failed_playlist_item(
+        url,
+        clip_ranges=[(10.0, 20.0), (30.0, 40.0)],
+        clip_files=clip_files,
+    )
+    await dq.done.put(Download(None, None, None, None, "best", "any", {}, failed_info))
+
+    def fake_extract(self, extracted_url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": extracted_url,
+            "webpage_url": extracted_url,
+        }
+
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        result = await dq.retry(url)
+
+    assert result["status"] == "ok"
+    assert dq.queue.get(url).info.clip_files == clip_files
+
+
 def _failed_playlist_item(url, **overrides):
     """A done-list entry for a playlist item that failed mid-download."""
     info = DownloadInfo(
@@ -1453,6 +1488,37 @@ async def test_add_sets_clip_bounds_on_download_info(dq_env):
     assert download.info.clip_end == 99.5
 
 
+@pytest.mark.asyncio
+async def test_add_sets_clip_ranges_on_download_info(dq_env):
+    notifier = AsyncMock()
+
+    def fake_extract(self, url, *_args, **_kwargs):
+        return {
+            "_type": "video",
+            "id": "vid1",
+            "title": "Test Video",
+            "url": url,
+            "webpage_url": url,
+        }
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", fake_extract):
+        result = await dq.add(
+            "https://example.com/multi-clip",
+            DownloadOptions(
+                auto_start=False,
+                clip_ranges=[(10.0, 20.0), (30.0, 40.0)],
+            ),
+        )
+
+    assert result["status"] == "ok"
+    download = dq.pending.get("https://example.com/multi-clip")
+    assert download.info.clip_ranges == [
+        {"start": 10.0, "end": 20.0},
+        {"start": 30.0, "end": 40.0},
+    ]
+
+
 def _upcoming_entry(url: str, *, release_timestamp: float | None = None) -> dict:
     return {
         "_type": "video",
@@ -1935,6 +2001,28 @@ async def test_post_download_cleanup_keeps_captured_subtitles_on_error(dq_env):
 
     assert download.info.status == "error"
     assert download.info.filename == "en.srt"
+
+
+@pytest.mark.asyncio
+async def test_canceled_download_removes_new_clip_files_but_keeps_retry_files(dq_env):
+    notifier = AsyncMock()
+    dq = DownloadQueue(dq_env, notifier)
+    new_path = os.path.join(dq_env.DOWNLOAD_DIR, "new-clip.mp4")
+    old_path = os.path.join(dq_env.DOWNLOAD_DIR, "old-clip.mp4")
+    for path in (new_path, old_path):
+        with open(path, "wb") as output:
+            output.write(b"clip")
+
+    download = _make_download(dq_env, status="postprocessing")
+    download.canceled = True
+    download._captured_clip_paths = {new_path, old_path}
+    download._initial_clip_filenames = {"old-clip.mp4"}
+    await dq.queue.put(download)
+
+    await dq._post_download_cleanup(download)
+
+    assert not os.path.exists(new_path)
+    assert os.path.exists(old_path)
 
 
 @pytest.mark.asyncio

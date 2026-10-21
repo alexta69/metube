@@ -330,6 +330,22 @@ def _trim_to_name_max(path: str) -> str:
     return os.path.join(directory, (trimmed or '_') + ext)
 
 
+def _clip_output_template(template: str, index: int) -> str:
+    """Add a stable, extension-safe suffix to one clip's output template."""
+    if not isinstance(template, str):
+        return template
+    suffix = f' - clip-{index:02d}'
+    extension_field = '%(ext)s'
+    marker = template.find(extension_field)
+    if marker >= 0:
+        prefix = template[:marker]
+        if prefix.endswith('.'):
+            prefix = prefix[:-1]
+        return f'{prefix}{suffix}.{template[marker:]}'
+    stem, extension = os.path.splitext(template)
+    return f'{stem}{suffix}{extension}' if extension else f'{template}{suffix}'
+
+
 class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
     """A ``YoutubeDL`` that refuses to emit any output path outside the allowed roots.
 
@@ -536,6 +552,8 @@ _DOWNLOAD_INFO_DEFAULTS: dict[str, Any] = {
     "chapter_files": [],
     "clip_start": None,
     "clip_end": None,
+    "clip_ranges": [],
+    "clip_files": [],
     "live_status": None,
     "live_release_timestamp": None,
     "status": "pending",
@@ -571,11 +589,13 @@ class DownloadInfo:
         ytdl_options_overrides=None,
         clip_start=None,
         clip_end=None,
+        clip_ranges=None,
         live_status=None,
         live_release_timestamp=None,
         sponsorblock=False,
         audio_tags='with_cover',
         video_password=None,
+        clip_files=None,
     ):
         self.id = id if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{id}'
         self.title = title if len(custom_name_prefix) == 0 else f'{custom_name_prefix}.{title}'
@@ -611,6 +631,11 @@ class DownloadInfo:
         self.ytdl_options_overrides = dict(ytdl_options_overrides or {})
         self.clip_start = clip_start
         self.clip_end = clip_end
+        self.clip_ranges = [
+            {'start': start, 'end': end}
+            for start, end in (clip_ranges or ())
+        ]
+        self.clip_files = copy.deepcopy(clip_files or [])
         self.live_status = live_status
         self.live_release_timestamp = live_release_timestamp
         self.subtitle_files = []
@@ -706,6 +731,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "ytdl_options_overrides",
     "clip_start",
     "clip_end",
+    "clip_ranges",
     "live_status",
     "live_release_timestamp",
     "status",
@@ -715,6 +741,7 @@ _PERSISTED_DOWNLOAD_FIELDS = (
     "filename",
     "size",
     "chapter_files",
+    "clip_files",
 )
 
 
@@ -815,6 +842,12 @@ class Download:
         self.loop = None
         self.notifier = None
         self._executor = None
+        self._initial_clip_filenames = {
+            os.path.normpath(clip_file['filename'])
+            for clip_file in (getattr(info, 'clip_files', None) or [])
+            if isinstance(clip_file, dict) and clip_file.get('filename')
+        }
+        self._captured_clip_paths = set()
 
     @classmethod
     def record(cls, info):
@@ -834,7 +867,7 @@ class Download:
     # download broadcasts hundreds of socket.io events/sec to every client.
     _PROGRESS_THROTTLE_SECONDS = 0.5
 
-    def _make_progress_hook(self):
+    def _make_progress_hook(self, clip_index=None):
         last_forward = 0.0
 
         def put_status(st):
@@ -844,7 +877,7 @@ class Download:
                 if now - last_forward < self._PROGRESS_THROTTLE_SECONDS:
                     return
                 last_forward = now
-            self.status_queue.put({k: v for k, v in st.items() if k in (
+            status = {k: v for k, v in st.items() if k in (
                 'tmpfilename',
                 'filename',
                 'status',
@@ -854,11 +887,22 @@ class Download:
                 'downloaded_bytes',
                 'speed',
                 'eta',
-            )})
+            )}
+            if clip_index is not None and st.get('status') == 'finished':
+                # A clip's yt-dlp download is only one step of the overall
+                # request. The queue emits the single terminal 'finished'
+                # state after every requested clip has completed.
+                status['status'] = 'postprocessing'
+                if st.get('filename'):
+                    status['clip_file'] = {
+                        'clip_index': clip_index,
+                        'filename': st['filename'],
+                    }
+            self.status_queue.put(status)
 
         return put_status
 
-    def _make_postprocessor_hook(self):
+    def _make_postprocessor_hook(self, clip_index=None):
         # yt-dlp reports the download 'finished' as soon as the media bytes
         # have landed, but the ffmpeg work that follows -- merging,
         # re-encoding, chapter splitting, sponsor removal -- routinely takes
@@ -867,8 +911,7 @@ class Download:
         # so the UI can run its indeterminate bar instead.
         #
         # Latched off once MoveFiles reports finished: that branch emits the
-        # terminal 'finished', and _post_download_cleanup turns any other
-        # final status into an error, so nothing may overwrite it. yt-dlp does
+        # final postprocessing update for this yt-dlp invocation. yt-dlp does
         # run an 'after_move' stage after MoveFiles, but every postprocessor
         # MeTube configures is 'after_filter' or 'post_process', both of which
         # precede it. Each postprocessor emits exactly one started/finished
@@ -885,7 +928,16 @@ class Download:
                     filename = os.path.join(finaldir, os.path.basename(filepath))
                 else:
                     filename = filepath
-                self.status_queue.put({'status': 'finished', 'filename': filename})
+                status = {
+                    'status': 'postprocessing' if clip_index is not None else 'finished',
+                    'filename': filename,
+                }
+                if clip_index is not None:
+                    status['clip_file'] = {
+                        'clip_index': clip_index,
+                        'filename': filename,
+                    }
+                self.status_queue.put(status)
                 # For captions-only downloads, yt-dlp may still report a media-like
                 # filepath in MoveFiles. Capture subtitle outputs explicitly so the
                 # UI can link to real caption files.
@@ -1023,17 +1075,46 @@ class Download:
                     'force_keyframes': False
                 })
 
-            clip_start = getattr(self.info, 'clip_start', None)
-            clip_end = getattr(self.info, 'clip_end', None)
-            if clip_start is not None or clip_end is not None:
-                start = float(clip_start) if clip_start is not None else 0.0
-                end = float(clip_end) if clip_end is not None else float('inf')
-                ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(
-                    None,
-                    [(start, end)],
-                )
+            clip_ranges = getattr(self.info, 'clip_ranges', None) or []
+            if clip_ranges:
+                ret = 0
+                for clip_index, clip_range in enumerate(clip_ranges):
+                    if isinstance(clip_range, dict):
+                        start = float(clip_range['start'])
+                        end = float(clip_range['end'])
+                    else:
+                        start, end = map(float, clip_range)
 
-            ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
+                    clip_params = copy.deepcopy(ytdl_params)
+                    clip_params['logger'] = ytdl_logger
+                    clip_params['outtmpl'] = dict(ytdl_params['outtmpl'])
+                    clip_params['outtmpl']['default'] = _clip_output_template(
+                        clip_params['outtmpl']['default'], clip_index + 1,
+                    )
+                    if self.info.split_by_chapters:
+                        clip_params['outtmpl']['chapter'] = _clip_output_template(
+                            self.info.chapter_template, clip_index + 1,
+                        )
+                    clip_params['progress_hooks'] = [self._make_progress_hook(clip_index)]
+                    clip_params['postprocessor_hooks'] = [self._make_postprocessor_hook(clip_index)]
+                    clip_params['download_ranges'] = yt_dlp.utils.download_range_func(
+                        None,
+                        [(start, end)],
+                    )
+                    ret = self._make_youtube_dl(clip_params).download([self.info.url])
+                    if ret != 0:
+                        break
+            else:
+                clip_start = getattr(self.info, 'clip_start', None)
+                clip_end = getattr(self.info, 'clip_end', None)
+                if clip_start is not None or clip_end is not None:
+                    start = float(clip_start) if clip_start is not None else 0.0
+                    end = float(clip_end) if clip_end is not None else float('inf')
+                    ytdl_params['download_ranges'] = yt_dlp.utils.download_range_func(
+                        None,
+                        [(start, end)],
+                    )
+                ret = self._make_youtube_dl(ytdl_params).download([self.info.url])
             if ret == 0:
                 self.status_queue.put({'status': 'finished'})
             else:
@@ -1185,6 +1266,44 @@ class Download:
 
             # Handle chapter files
             log.debug(f"Update status for {self.info.title}: {status}")
+            if 'clip_file' in status:
+                clip_data = status.get('clip_file') or {}
+                clip_index = clip_data.get('clip_index')
+                clip_filename = clip_data.get('filename')
+                clip_ranges = getattr(self.info, 'clip_ranges', None) or []
+                if (
+                    isinstance(clip_index, int)
+                    and not isinstance(clip_index, bool)
+                    and 0 <= clip_index < len(clip_ranges)
+                    and clip_filename
+                    and self.download_dir
+                ):
+                    path = clip_filename if os.path.isabs(clip_filename) else os.path.join(self.download_dir, clip_filename)
+                    full_path = os.path.realpath(path)
+                    real_base_directory = os.path.realpath(self.download_dir)
+                    if _is_within_directory(real_base_directory, full_path):
+                        rel_path = os.path.relpath(full_path, real_base_directory)
+                        clip_range = clip_ranges[clip_index]
+                        if isinstance(clip_range, dict):
+                            start = clip_range['start']
+                            end = clip_range['end']
+                        else:
+                            start, end = clip_range
+                        clip_file = {
+                            'filename': rel_path,
+                            'start': start,
+                            'end': end,
+                            'size': os.path.getsize(full_path) if os.path.exists(full_path) else None,
+                        }
+                        self._captured_clip_paths.add(full_path)
+                        if not hasattr(self.info, 'clip_files'):
+                            self.info.clip_files = []
+                        while len(self.info.clip_files) <= clip_index:
+                            self.info.clip_files.append({})
+                        self.info.clip_files[clip_index] = clip_file
+                    else:
+                        log.warning(f"Skipping clip file outside download directory: {clip_filename}")
+
             if 'chapter_file' in status:
                 chapter_file = status.get('chapter_file')
                 if not hasattr(self.info, 'chapter_files'):
@@ -1250,6 +1369,30 @@ class Download:
             self.info.eta = status.get('eta')
             log.debug(f"Updating status for {self.info.title}: {status}")
             await self.notifier.updated(self.info)
+
+    def _remove_captured_clip_files(self):
+        """Remove clip outputs made during a canceled attempt.
+
+        A retry can inherit clip metadata from an earlier failed attempt. Keep
+        those paths intact so the original completed-row links remain valid;
+        remove only newly captured paths that were not already present.
+        """
+        if not self.download_dir:
+            return
+        real_base_directory = os.path.realpath(self.download_dir)
+        for path in self._captured_clip_paths:
+            full_path = os.path.realpath(path)
+            if not _is_within_directory(real_base_directory, full_path):
+                continue
+            rel_path = os.path.normpath(os.path.relpath(full_path, real_base_directory))
+            if rel_path in self._initial_clip_filenames:
+                continue
+            try:
+                os.remove(full_path)
+            except FileNotFoundError:
+                pass
+            except OSError as exc:
+                log.warning(f'Could not remove canceled clip file {full_path}: {exc}')
 
 class PersistentQueue:
     def __init__(self, name, path):
@@ -1673,11 +1816,18 @@ class DownloadQueue:
             # doesn't render a broken link (or, worse, so a later trashcan
             # delete doesn't act on a path outside the download directory).
             # Captions downloads may still have captured valid subtitle
-            # files even when the overall status is 'error' — keep those.
+            # files even when the overall status is 'error' — keep those. A
+            # multi-clip request can likewise have completed earlier clips.
             has_captured_subtitles = bool(getattr(download.info, 'subtitle_files', None))
-            if not (download.info.download_type == 'captions' and has_captured_subtitles):
+            has_captured_clip_files = bool(getattr(download.info, 'clip_files', None))
+            if not (
+                (download.info.download_type == 'captions' and has_captured_subtitles)
+                or has_captured_clip_files
+            ):
                 download.info.filename = None
                 download.info.size = None
+        if download.canceled:
+            download._remove_captured_clip_files()
         download.close()
         if self.queue.exists(download.info.url):
             await self.queue.delete(download.info.url)
@@ -1897,7 +2047,9 @@ class DownloadQueue:
             # Supplemental output must never fail the add.
             log.warning(f'Could not write {etype} metadata files: {exc}')
 
-    async def __add_entry(self, entry, options: DownloadOptions, already, _add_gen=None, retry_entry=None):
+    async def __add_entry(
+        self, entry, options: DownloadOptions, already, _add_gen=None, retry_entry=None, retry_info=None,
+    ):
         if not entry:
             return {'status': 'error', 'msg': "Invalid/empty data was given."}
 
@@ -1919,8 +2071,10 @@ class DownloadQueue:
             # unprocessed url/url_transparent result, and dropping the retry
             # context here would send the retried item back to the root
             # directory instead of its original playlist folder.
-            return await self.add(entry['url'], options, already=already, _add_gen=_add_gen,
-                                  retry_entry=retry_entry)
+            return await self.add(
+                entry['url'], options, already=already, _add_gen=_add_gen,
+                retry_entry=retry_entry, retry_info=retry_info,
+            )
         elif etype == 'playlist' or etype == 'channel':
             if etype == 'playlist' and self.__is_channel_extraction(entry):
                 etype = 'channel'
@@ -1990,6 +2144,7 @@ class DownloadQueue:
                 entry=entry,
                 live_status=entry.get('live_status'),
                 live_release_timestamp=entry.get('release_timestamp'),
+                clip_files=getattr(retry_info, 'clip_files', None),
                 **options.download_info_fields(),
             )
             error = await self.__add_download(dl, options.auto_start)
@@ -2000,7 +2155,7 @@ class DownloadQueue:
             return {'status': 'ok'}
         return {'status': 'error', 'msg': f'Unsupported resource "{etype}"'}
 
-    async def __record_add_failure(self, url, msg, options: DownloadOptions, entry=None):
+    async def __record_add_failure(self, url, msg, options: DownloadOptions, entry=None, retry_info=None):
         """Surface a URL that failed before a DownloadInfo could be created (unsupported
         URL, SSRF-rejected, extraction error) as a failed entry in the done list, so the
         frontend shows it with the same red-cross/retry/error-detail treatment as a
@@ -2011,6 +2166,7 @@ class DownloadQueue:
             url=url,
             error=msg,
             entry=entry,
+            clip_files=getattr(retry_info, 'clip_files', None),
             **options.download_info_fields(),
         )
         info.status = 'error'
@@ -2019,22 +2175,27 @@ class DownloadQueue:
         await self.done.put(download)
         await self.notifier.completed(info)
 
-    async def add(self, url, options: DownloadOptions, *, already=None, _add_gen=None, retry_entry=None):
+    async def add(
+        self, url, options: DownloadOptions, *, already=None, _add_gen=None,
+        retry_entry=None, retry_info=None,
+    ):
         if already is not None:
             # A URL a playlist or a url-type result led to.
-            return await self.__add(url, options, already, _add_gen, retry_entry)
+            return await self.__add(url, options, already, _add_gen, retry_entry, retry_info)
         self._adds_in_flight += 1
         # Asking for a URL again is a fresh request for it, even if it was
         # canceled out of an add that is still running.
         self._canceled_urls.discard(url)
         try:
-            return await self.__add(url, options, set(), self._add_generation, retry_entry)
+            return await self.__add(
+                url, options, set(), self._add_generation, retry_entry, retry_info,
+            )
         finally:
             self._adds_in_flight -= 1
             if self._adds_in_flight == 0:
                 self._canceled_urls.clear()
 
-    async def __add(self, url, options: DownloadOptions, already, _add_gen, retry_entry):
+    async def __add(self, url, options: DownloadOptions, already, _add_gen, retry_entry, retry_info):
         log.info(f'adding {url}: {options} {already=}')
         if url in already:
             log.info('recursion detected, skipping')
@@ -2055,7 +2216,7 @@ class DownloadQueue:
                           proxies=proxies))
         if url_error is not None:
             log.warning('Rejected URL "%s": %s', url, url_error)
-            await self.__record_add_failure(url, url_error, options, retry_entry)
+            await self.__record_add_failure(url, url_error, options, retry_entry, retry_info)
             return {'status': 'error', 'msg': url_error}
         extract_logger = _ExtractYtdlLogger()
         try:
@@ -2067,7 +2228,7 @@ class DownloadQueue:
             )
         except yt_dlp.utils.YoutubeDLError as exc:
             msg = str(exc)
-            await self.__record_add_failure(url, msg, options, retry_entry)
+            await self.__record_add_failure(url, msg, options, retry_entry, retry_info)
             return {'status': 'error', 'msg': msg}
         if entry is None:
             # Not a failure to record: nothing was attempted (#691).
@@ -2077,7 +2238,7 @@ class DownloadQueue:
         retry_context = _compact_persisted_entry(retry_entry)
         if isinstance(entry, dict) and retry_context is not None:
             entry = {**entry, **copy.deepcopy(retry_context)}
-        return await self.__add_entry(entry, options, already, _add_gen, retry_entry)
+        return await self.__add_entry(entry, options, already, _add_gen, retry_entry, retry_info)
 
     async def retry(self, id):
         if not self.done.exists(id):
@@ -2101,7 +2262,7 @@ class DownloadQueue:
                 p for p in info.ytdl_options_presets if p in self.config.YTDL_OPTIONS_PRESETS
             ],
         )
-        return await self.add(info.url, options, retry_entry=info.entry)
+        return await self.add(info.url, options, retry_entry=info.entry, retry_info=info)
 
     async def add_entry(self, entry, options: DownloadOptions):
         normalized_entry = copy.deepcopy(entry) if isinstance(entry, dict) else entry
@@ -2183,6 +2344,9 @@ class DownloadQueue:
                         if isinstance(extra, dict) and extra.get('filename'):
                             rel_names.append(extra['filename'])
                     for extra in (getattr(dl.info, 'subtitle_files', None) or []):
+                        if isinstance(extra, dict) and extra.get('filename'):
+                            rel_names.append(extra['filename'])
+                    for extra in (getattr(dl.info, 'clip_files', None) or []):
                         if isinstance(extra, dict) and extra.get('filename'):
                             rel_names.append(extra['filename'])
                     real_base_directory = os.path.realpath(dldirectory)

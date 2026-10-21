@@ -45,6 +45,7 @@ function basePayload(): AddDownloadPayload {
     ytdlOptionsOverrides: '',
     clipStart: '',
     clipEnd: '',
+    clipRanges: [],
     videoPassword: '',
   };
 }
@@ -107,6 +108,28 @@ describe('DownloadsService', () => {
       expect.objectContaining({
         clip_start: '1:00',
         clip_end: '2:00',
+      }),
+    );
+    req.flush({ status: 'ok' });
+  });
+
+  it('add() sends multiple clip ranges when set', () => {
+    service
+      .add({
+        ...basePayload(),
+        clipRanges: [
+          { start: 1159, end: 1195 },
+          { start: '22:00', end: '22:30' },
+        ],
+      })
+      .subscribe();
+    const req = httpMock.expectOne('add');
+    expect(req.request.body).toEqual(
+      expect.objectContaining({
+        clip_ranges: [
+          { start: 1159, end: 1195 },
+          { start: '22:00', end: '22:30' },
+        ],
       }),
     );
     req.flush({ status: 'ok' });

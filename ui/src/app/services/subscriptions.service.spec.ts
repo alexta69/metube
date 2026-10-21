@@ -37,6 +37,7 @@ function basePayload(): SubscribePayload {
     ytdlOptionsOverrides: '',
     clipStart: '',
     clipEnd: '',
+    clipRanges: [],
     checkIntervalMinutes: 60,
     titleRegex: '',
     skipSubscriberOnly: false,

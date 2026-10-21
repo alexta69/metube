@@ -170,7 +170,7 @@ export class CompletedSectionComponent {
     return this.downloads.configuration['DELETE_FILE_ON_TRASHCAN'] === 'ask' &&
       ids.some((id) => {
         const dl = this.downloads.done.get(id);
-        return !!dl?.filename || !!dl?.chapter_files?.length;
+        return !!dl?.filename || !!dl?.chapter_files?.length || !!dl?.clip_files?.length;
       });
   }
 
@@ -268,18 +268,32 @@ export class CompletedSectionComponent {
   private static readonly DOWNLOAD_BATCH_DELAY_MS = 1000;
 
   async downloadSelectedFiles() {
-    const selected: Download[] = [];
+    const selectedFiles: { download: Download; filename: string; link: string }[] = [];
     this.downloads.done.forEach((dl) => {
       if (dl.status === 'finished' && dl.checked) {
-        selected.push(dl);
+        if (dl.clip_files?.length) {
+          for (const clipFile of dl.clip_files) {
+            selectedFiles.push({
+              download: dl,
+              filename: clipFile.filename,
+              link: this.buildClipDownloadLink(dl, clipFile.filename),
+            });
+          }
+        } else if (dl.filename) {
+          selectedFiles.push({
+            download: dl,
+            filename: dl.filename,
+            link: this.buildDownloadLink(dl),
+          });
+        }
       }
     });
 
-    for (let i = 0; i < selected.length; i++) {
-      const dl = selected[i];
+    for (let i = 0; i < selectedFiles.length; i++) {
+      const file = selectedFiles[i];
       const link = document.createElement('a');
-      link.href = this.buildDownloadLink(dl);
-      link.setAttribute('download', dl.filename);
+      link.href = file.link;
+      link.setAttribute('download', this.getChapterFileName(file.filename));
       link.setAttribute('target', '_self');
       document.body.appendChild(link);
       link.click();
@@ -287,7 +301,7 @@ export class CompletedSectionComponent {
 
       if (
         (i + 1) % CompletedSectionComponent.DOWNLOAD_BATCH_SIZE === 0 &&
-        i + 1 < selected.length
+        i + 1 < selectedFiles.length
       ) {
         await new Promise((resolve) =>
           setTimeout(resolve, CompletedSectionComponent.DOWNLOAD_BATCH_DELAY_MS),
@@ -400,6 +414,14 @@ export class CompletedSectionComponent {
   }
 
   buildChapterDownloadLink(download: Download, chapterFilename: string) {
+    return this.buildExtraDownloadLink(download, chapterFilename);
+  }
+
+  buildClipDownloadLink(download: Download, clipFilename: string) {
+    return this.buildExtraDownloadLink(download, clipFilename);
+  }
+
+  private buildExtraDownloadLink(download: Download, filename: string) {
     let baseDir = this.downloads.configuration["PUBLIC_HOST_URL"];
     // Same server-side rule as buildDownloadLink above.
     if (download.download_type === 'audio') {
@@ -410,7 +432,7 @@ export class CompletedSectionComponent {
       baseDir += this.encodeFolderPath(download.folder);
     }
 
-    return baseDir + encodeURIComponent(chapterFilename);
+    return baseDir + encodeURIComponent(filename);
   }
 
   private encodeFolderPath(folder: string): string {

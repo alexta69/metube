@@ -410,6 +410,54 @@
                   </div>
                 </div>
                 }
+                @if (downloadType === 'video' || downloadType === 'audio') {
+                <div class="col-12">
+                  <div class="d-flex align-items-center gap-2 mb-2">
+                    <span class="help-title" ngbPopover="Add several independent clips from the same video. Use seconds, M:SS, or H:MM:SS. These ranges cannot be combined with Clip start or Clip end." triggers="click" autoClose="outside" container="body">Multiple clips</span>
+                    <button type="button" class="btn btn-sm btn-outline-secondary"
+                      (click)="addClipRange()"
+                      [disabled]="addInProgress || subscribeInProgress || downloads.loading || clipRanges.length >= maxClipRanges">
+                      Add clip
+                    </button>
+                    @if (clipRanges.length > 0) {
+                      <small class="text-muted">{{ clipRanges.length }} / {{ maxClipRanges }}</small>
+                    }
+                  </div>
+                  @for (clipRange of clipRanges; track clipRange) {
+                    <div class="row g-2 mb-2">
+                      <div class="col-md-5">
+                        <div class="input-group">
+                          <span class="input-group-text">{{ $index + 1 }} start</span>
+                          <input type="text" class="form-control"
+                            [name]="'clipRangeStart' + $index"
+                            [(ngModel)]="clipRange.start"
+                            (change)="clipRangesChanged()"
+                            placeholder="e.g. 19:19"
+                            [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                        </div>
+                      </div>
+                      <div class="col-md-5">
+                        <div class="input-group">
+                          <span class="input-group-text">end</span>
+                          <input type="text" class="form-control"
+                            [name]="'clipRangeEnd' + $index"
+                            [(ngModel)]="clipRange.end"
+                            (change)="clipRangesChanged()"
+                            placeholder="e.g. 19:55"
+                            [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                        </div>
+                      </div>
+                      <div class="col-md-2">
+                        <button type="button" class="btn btn-outline-danger w-100"
+                          (click)="removeClipRange($index)"
+                          [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+                          Remove
+                        </button>
+                      </div>
+                    </div>
+                  }
+                </div>
+                }
               </div>
 
               <!-- Behavior -->
