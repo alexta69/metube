@@ -231,6 +231,60 @@ def _entry_id(entry: dict) -> Optional[str]:
     return url
 
 
+def is_channel_extraction(feed: dict) -> bool:
+    """Return True when yt-dlp reported a channel as a playlist.
+
+    A channel *tab* -- ``/channel/UC...``, ``/@handle/videos``, and the
+    streams, shorts and playlists tabs -- is extracted with ``id`` equal to
+    ``channel_id``. A channel addressed without a tab keeps the form it was
+    asked for instead: ``@handle`` for a handle URL and the vanity name for
+    a legacy ``/c/`` URL. Both of those match ``uploader_id``, which is the
+    handle either way, so compare against it as well.
+
+    A real playlist has an id of its own and matches neither, even though
+    it also carries its owner's ``channel_id``.
+    """
+    channel_id = feed.get("channel_id")
+    feed_id = feed.get("id")
+    if not channel_id or not feed_id:
+        return False
+    if feed_id == channel_id:
+        return True
+    uploader_id = feed.get("uploader_id")
+    if not uploader_id:
+        return False
+    # Compared without case because a legacy vanity name and the handle it
+    # became need not agree on it. No playlist id can collide here: those
+    # are 'PL...', 'OLAK...' and the like, never a handle.
+    handle = uploader_id.casefold()
+    feed_id = feed_id.casefold()
+    return handle in (feed_id, f"@{feed_id}")
+
+
+def annotate_feed_entry(entry: dict, feed: dict, etype: str, index: int, total_entries: int) -> None:
+    """Copy a playlist's or channel's context onto one of its flat entries.
+
+    A flat scan leaves the entries without it, and the download queue picks
+    OUTPUT_TEMPLATE_PLAYLIST / OUTPUT_TEMPLATE_CHANNEL (and fills their
+    ``%(playlist_title)s``-style fields) from these keys. ``etype`` is
+    ``"playlist"`` or ``"channel"``; ``index`` is 1-based.
+    """
+    if etype == "channel":
+        entry["channel"] = feed.get("channel") or feed.get("uploader") or feed.get("title") or feed.get("id")
+    else:
+        entry["playlist"] = feed.get("id") or feed.get("channel_id") or feed.get("channel")
+    entry[f"{etype}_index"] = f"{index:0{len(str(total_entries))}d}"
+    entry[f"{etype}_count"] = total_entries
+    entry[f"{etype}_autonumber"] = index
+    # n_entries: standard yt-dlp field for total count (used by template engine)
+    # __last_playlist_index: yt-dlp internal field for auto-padding autonumber
+    entry["n_entries"] = total_entries
+    entry["__last_playlist_index"] = total_entries
+    for prop in ("id", "title", "uploader", "uploader_id"):
+        if prop in feed:
+            entry[f"{etype}_{prop}"] = feed[prop]
+
+
 def _is_subscriber_only_entry(entry: dict) -> bool:
     """True when yt-dlp marks the entry as channel member-only (subscriber_only availability)."""
     return str(entry.get("availability") or "") == "subscriber_only"
@@ -1001,6 +1055,12 @@ class SubscriptionManager:
             log.warning("Subscription check finished for %s: No entries found", sub.name)
             await self.notifier.subscription_updated(sub)
             return
+        if etype in ("playlist", "channel"):
+            # The same context an Add of this feed gives its items, so queued
+            # items get OUTPUT_TEMPLATE_PLAYLIST/CHANNEL as they would there.
+            feed_type = "channel" if etype == "channel" or is_channel_extraction(info) else "playlist"
+            for index, ent in enumerate(entries, start=1):
+                annotate_feed_entry(ent, info, feed_type, index, len(entries))
 
         async with self._lock:
             cur = self._subs.get(sid)

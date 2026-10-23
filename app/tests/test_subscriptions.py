@@ -1565,6 +1565,83 @@ class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(check_captured[0].get("cookiefile"), "preset.txt")
 
 
+class SubscriptionFeedContextTests(unittest.IsolatedAsyncioTestCase):
+    """Issue #1106: queued subscription items carry the playlist/channel
+    context an Add of the same feed gives them, so OUTPUT_TEMPLATE_PLAYLIST and
+    OUTPUT_TEMPLATE_CHANNEL apply to them too."""
+
+    async def _check_and_queue(self, info: dict) -> list[dict]:
+        def scan(first_ids):
+            return (
+                dict(info),
+                [
+                    {"id": vid, "title": vid.upper(), "webpage_url": f"https://example.com/{vid}"}
+                    for vid in first_ids
+                ],
+            )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            queue = _Queue()
+            mgr = SubscriptionManager(_Config(tmp), queue, _Notifier())
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[scan(["v1"]), scan(["v2", "v1"])],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/feed",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+                await mgr.check_now([result["subscription"]["id"]])
+        return [entry for entry, _, _ in queue.entries]
+
+    async def test_playlist_items_carry_playlist_context(self):
+        queued = await self._check_and_queue({
+            "_type": "playlist",
+            "id": "PL123",
+            "title": "My List",
+            "channel_id": "UCowner",
+            "uploader": "Owner",
+        })
+
+        self.assertEqual(len(queued), 1)
+        entry = queued[0]
+        self.assertEqual(entry["id"], "v2")
+        self.assertEqual(entry["playlist"], "PL123")
+        self.assertEqual(entry["playlist_title"], "My List")
+        self.assertEqual(entry["playlist_index"], "1")
+        self.assertEqual(entry["playlist_count"], 2)
+        self.assertEqual(entry["n_entries"], 2)
+        self.assertNotIn("channel_index", entry)
+
+    async def test_channel_items_carry_channel_context(self):
+        queued = await self._check_and_queue({
+            "_type": "playlist",
+            "id": "UCchan",
+            "channel_id": "UCchan",
+            "channel": "Some Channel",
+            "title": "Some Channel - Videos",
+        })
+
+        self.assertEqual(len(queued), 1)
+        entry = queued[0]
+        self.assertEqual(entry["channel"], "Some Channel")
+        self.assertEqual(entry["channel_index"], "1")
+        self.assertEqual(entry["channel_count"], 2)
+        self.assertNotIn("playlist_index", entry)
+
+
 class BrowsePlaylistTests(unittest.IsolatedAsyncioTestCase):
     """browse_playlist is a read-only flat probe backing the Browse dialog."""
 

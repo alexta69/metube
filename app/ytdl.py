@@ -27,7 +27,7 @@ import format_catalog
 from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
-from subscriptions import _entry_id
+from subscriptions import _entry_id, annotate_feed_entry, is_channel_extraction
 from url_guard import validate_url, install_socket_guard, socket_guard_scope, download_proxies
 from urllib.parse import urlsplit
 
@@ -1429,36 +1429,6 @@ class DownloadQueue:
         self._add_generation += 1
         log.info('Playlist add operation canceled by user')
 
-    @staticmethod
-    def __is_channel_extraction(entry):
-        """Return True when yt-dlp reported a channel as a playlist.
-
-        A channel *tab* -- ``/channel/UC...``, ``/@handle/videos``, and the
-        streams, shorts and playlists tabs -- is extracted with ``id`` equal to
-        ``channel_id``. A channel addressed without a tab keeps the form it was
-        asked for instead: ``@handle`` for a handle URL and the vanity name for
-        a legacy ``/c/`` URL. Both of those match ``uploader_id``, which is the
-        handle either way, so compare against it as well.
-
-        A real playlist has an id of its own and matches neither, even though
-        it also carries its owner's ``channel_id``.
-        """
-        channel_id = entry.get('channel_id')
-        entry_id = entry.get('id')
-        if not channel_id or not entry_id:
-            return False
-        if entry_id == channel_id:
-            return True
-        uploader_id = entry.get('uploader_id')
-        if not uploader_id:
-            return False
-        # Compared without case because a legacy vanity name and the handle it
-        # became need not agree on it. No playlist id can collide here: those
-        # are 'PL...', 'OLAK...' and the like, never a handle.
-        handle = uploader_id.casefold()
-        entry_id = entry_id.casefold()
-        return handle in (entry_id, f'@{entry_id}')
-
     async def __import_queue(self):
         for k, v in self.queue.saved_items():
             await self.__import_saved(v, True)
@@ -1922,7 +1892,7 @@ class DownloadQueue:
             return await self.add(entry['url'], options, already=already, _add_gen=_add_gen,
                                   retry_entry=retry_entry)
         elif etype == 'playlist' or etype == 'channel':
-            if etype == 'playlist' and self.__is_channel_extraction(entry):
+            if etype == 'playlist' and is_channel_extraction(entry):
                 etype = 'channel'
             log.debug(f'Processing as a {etype}')
             entries = entry['entries']
@@ -1932,7 +1902,6 @@ class DownloadQueue:
             total_entries = len(entries)
             log.info(f'{etype} detected with {total_entries} entries')
             await self.__write_feed_metadata(entry, etype, options)
-            index_digits = len(str(total_entries))
             results = []
             playlist_item_limit = options.playlist_item_limit
             if playlist_item_limit > 0:
@@ -1945,25 +1914,7 @@ class DownloadQueue:
                 if "id" not in etr:
                     etr["id"] = _entry_id(etr)
                 etr["_type"] = "video"
-                if etype == 'channel':
-                    etr["channel"] = (
-                        entry.get("channel")
-                        or entry.get("uploader")
-                        or entry.get("title")
-                        or entry.get("id")
-                    )
-                else:
-                    etr["playlist"] = entry.get("id") or entry.get("channel_id") or entry.get("channel")
-                etr[f"{etype}_index"] = '{{0:0{0:d}d}}'.format(index_digits).format(index)
-                etr[f"{etype}_count"] = total_entries
-                etr[f"{etype}_autonumber"] = index
-                # n_entries: standard yt-dlp field for total count (used by template engine)
-                # __last_playlist_index: yt-dlp internal field for auto-padding autonumber
-                etr["n_entries"] = total_entries
-                etr["__last_playlist_index"] = total_entries
-                for property in ("id", "title", "uploader", "uploader_id"):
-                    if property in entry:
-                        etr[f"{etype}_{property}"] = entry[property]
+                annotate_feed_entry(etr, entry, etype, index, total_entries)
                 results.append(await self.__add_entry(etr, options, already, _add_gen))
             if any(res['status'] == 'error' for res in results):
                 # Deduplicated: a folder error repeats identically for every item.
