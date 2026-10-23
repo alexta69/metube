@@ -1564,6 +1564,50 @@ class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
         self.assertTrue(check_captured)
         self.assertEqual(check_captured[0].get("cookiefile"), "preset.txt")
 
+    async def test_scan_leaves_out_unavailable_videos_keeping_user_compat_opts(self):
+        """A video added to a playlist while still private is listed by the
+        scan, marked seen, fails to download, and is never queued once it is
+        published. yt-dlp's compat option keeps it out of the listing instead,
+        so it is new on the first check after it goes public. Issue #1105."""
+        captured_params: list = []
+        fake_ydl = _make_scan_capturing_fake_ydl(
+            captured_params,
+            [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+        )
+
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            cfg.YTDL_OPTIONS = {"compat_opts": ["no-live-chat"]}
+            cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"compat_opts": ["playlist-index"]}}
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+
+            with patch("subscriptions.yt_dlp.YoutubeDL", fake_ydl, create=True):
+                await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                    ytdl_options_presets=["mypreset"],
+                )
+
+        self.assertTrue(captured_params)
+        self.assertEqual(
+            set(captured_params[0]["compat_opts"]),
+            {"playlist-index", "no-youtube-unavailable-videos"},
+        )
+        # The configured options themselves are left untouched.
+        self.assertEqual(cfg.YTDL_OPTIONS["compat_opts"], ["no-live-chat"])
+
 
 class SubscriptionFeedContextTests(unittest.IsolatedAsyncioTestCase):
     """Issue #1106: queued subscription items carry the playlist/channel

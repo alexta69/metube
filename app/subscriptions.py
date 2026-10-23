@@ -75,6 +75,12 @@ def _build_ydl_params(
         # get those files rewritten on every check interval. See issue #1040.
         "allow_playlist_files": False,
     }
+    # Leave YouTube's hidden private/deleted placeholders out of the scan. A
+    # video added to a playlist while still private would otherwise be marked
+    # seen, fail to download, and never be queued once it is published. Left
+    # out, it is simply new on the first check after it goes public (#1105).
+    # Added to, not replacing, any compat_opts the user configured.
+    params["compat_opts"] = set(params.get("compat_opts") or ()) | {"no-youtube-unavailable-videos"}
     params = _impersonate_opt(params)
     if playlistend is not None and playlistend > 0:
         params["playlistend"] = playlistend
