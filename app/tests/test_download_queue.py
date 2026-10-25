@@ -150,6 +150,28 @@ async def test_add_unsupported_url_recorded_as_failed_entry(dq_env):
 
 
 @pytest.mark.asyncio
+async def test_add_extractor_crash_recorded_as_failed_entry(dq_env):
+    """yt-dlp lets an extractor bug escape as-is, not as a YoutubeDLError
+    (#1108: GloboArticle's AttributeError on an m3u8 URL). It must fail the
+    add like any extraction error, not reach aiohttp as a bare 500."""
+    notifier = AsyncMock()
+    url = "https://example.com/manifest.m3u8"
+
+    def crash(self, url, *_args, **_kwargs):
+        raise AttributeError("'NoneType' object has no attribute 'strip'")
+
+    dq = DownloadQueue(dq_env, notifier)
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", crash):
+        result = await dq.add(url, DownloadOptions())
+    assert result["status"] == "error"
+    assert "AttributeError" in result["msg"]
+    assert "has no attribute 'strip'" in result["msg"]
+    failed = dq.done.get(url)
+    assert failed.info.status == "error"
+    assert failed.info.error == result["msg"]
+
+
+@pytest.mark.asyncio
 @pytest.mark.parametrize("url", ["127.0.0.1:18443/probe", "//127.0.0.1:18443/probe"])
 async def test_add_scheme_less_internal_url_refused_before_any_connection(dq_env, url):
     """validate_url passes inputs without '://' (bare IDs, ytsearch:), and

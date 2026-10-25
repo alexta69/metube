@@ -368,6 +368,72 @@ class SubscriptionPersistenceTests(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(sub.error, "queue failed")
             self.assertEqual(sub.seen_ids, ["v1"])
 
+    async def test_extractor_crash_is_recorded_as_a_failed_check(self):
+        # #1108: an extractor bug escapes yt-dlp unwrapped. Unrecorded, the
+        # subscription kept no error and was re-checked on every tick.
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=[
+                    (
+                        {"_type": "channel", "title": "Channel"},
+                        [{"id": "v1", "title": "One", "webpage_url": "https://example.com/v1"}],
+                    ),
+                    AttributeError("'NoneType' object has no attribute 'strip'"),
+                ],
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+                before = time.time()
+                await mgr.check_now([result["subscription"]["id"]])
+
+            sub = mgr.list_all()[0]
+            self.assertIn("has no attribute 'strip'", sub.error)
+            self.assertGreaterEqual(sub.last_checked, before)
+            self.assertEqual(sub.seen_ids, ["v1"])
+
+    async def test_extractor_crash_fails_the_subscribe(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
+            with patch(
+                "subscriptions.extract_flat_playlist",
+                side_effect=AttributeError("'NoneType' object has no attribute 'strip'"),
+            ):
+                result = await mgr.add_subscription(
+                    "https://example.com/channel",
+                    check_interval_minutes=60,
+                    download_type="video",
+                    codec="auto",
+                    format="any",
+                    quality="best",
+                    folder="",
+                    custom_name_prefix="",
+                    auto_start=True,
+                    playlist_item_limit=0,
+                    split_by_chapters=False,
+                    chapter_template="",
+                    subtitle_language="en",
+                    subtitle_mode="prefer_manual",
+                )
+            self.assertEqual(result["status"], "error")
+            self.assertIn("has no attribute 'strip'", result["msg"])
+            self.assertEqual(mgr.list_all(), [])
+
     async def test_repeated_queue_errors_are_reported_once(self):
         with tempfile.TemporaryDirectory() as tmp:
             queue = _Queue()
@@ -1793,6 +1859,12 @@ class BrowsePlaylistTests(unittest.IsolatedAsyncioTestCase):
         result, _ = await self._browse(extract)
         self.assertEqual(result["status"], "error")
         self.assertIn("boom", result["msg"])
+
+    async def test_extractor_crash_becomes_error_status(self):
+        extract = MagicMock(side_effect=AttributeError("'NoneType' object has no attribute 'strip'"))
+        result, _ = await self._browse(extract)
+        self.assertEqual(result["status"], "error")
+        self.assertIn("has no attribute 'strip'", result["msg"])
 
     async def test_unresolvable_url(self):
         extract = MagicMock(return_value=(None, []))

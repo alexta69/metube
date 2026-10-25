@@ -27,7 +27,7 @@ import format_catalog
 from music_metadata import MusicMetadataPreProcessor
 from datetime import datetime
 from state_store import AtomicJsonStore, from_json_compatible, read_legacy_shelf, to_json_compatible
-from subscriptions import _entry_id, annotate_feed_entry, is_channel_extraction
+from subscriptions import _entry_id, annotate_feed_entry, is_channel_extraction, unexpected_ytdl_error
 from url_guard import validate_url, install_socket_guard, socket_guard_scope, download_proxies
 from urllib.parse import urlsplit
 
@@ -1043,6 +1043,9 @@ class Download:
         except yt_dlp.utils.YoutubeDLError as exc:
             log.error(f"Download error for {self.info.title}: {str(exc)}")
             self.status_queue.put({'status': 'error', 'msg': ytdl_logger.failure_message(str(exc))})
+        except Exception as exc:
+            log.exception(f"yt-dlp crashed downloading {self.info.title}")
+            self.status_queue.put({'status': 'error', 'msg': unexpected_ytdl_error(exc)})
         except KeyboardInterrupt:
             # cancel()'s SIGINT: the download is being removed, so there is no
             # status to report; just exit without a traceback.
@@ -2018,6 +2021,11 @@ class DownloadQueue:
             )
         except yt_dlp.utils.YoutubeDLError as exc:
             msg = str(exc)
+            await self.__record_add_failure(url, msg, options, retry_entry)
+            return {'status': 'error', 'msg': msg}
+        except Exception as exc:
+            log.exception('yt-dlp crashed extracting %s', url)
+            msg = unexpected_ytdl_error(exc)
             await self.__record_add_failure(url, msg, options, retry_entry)
             return {'status': 'error', 'msg': msg}
         if entry is None:

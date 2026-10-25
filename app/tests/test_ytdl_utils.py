@@ -590,6 +590,17 @@ class DownloadResultTests(unittest.TestCase):
             },
         )
 
+    def test_extractor_crash_reports_an_error_status(self):
+        # #1108: an exception yt-dlp lets out unwrapped used to end the child
+        # process with no status, leaving a failed row with no message.
+        with self.assertLogs('ytdl', level='ERROR'):
+            statuses, _ = self._run_download(
+                error=AttributeError("'NoneType' object has no attribute 'strip'"),
+            )
+
+        self.assertEqual(statuses[-1]['status'], 'error')
+        self.assertIn("AttributeError: 'NoneType' object has no attribute 'strip'", statuses[-1]['msg'])
+
     def test_youtube_dl_error_drops_a_last_warning_that_repeats_it(self):
         statuses, _ = self._run_download(
             warnings=['Earlier warning', 'Requested format is not available'],

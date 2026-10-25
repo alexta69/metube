@@ -104,6 +104,16 @@ def _is_media_entry(entry: Any) -> bool:
     return True
 
 
+def unexpected_ytdl_error(exc: Exception) -> str:
+    """The user-facing message for an exception yt-dlp let escape unwrapped.
+
+    yt-dlp only wraps its own failures in YoutubeDLError; an extractor bug
+    (a bare AttributeError, say) comes out as-is (#1108). Callers log the
+    traceback and report this instead of letting the exception through.
+    """
+    return f"Unexpected yt-dlp error: {type(exc).__name__}: {exc} (see the server log)"
+
+
 def extract_flat_playlist(
     config, url: str, playlistend: Optional[int], *, extra_opts: Optional[dict[str, Any]] = None, _depth: int = 0
 ):
@@ -203,6 +213,9 @@ async def browse_playlist(
         )
     except yt_dlp.utils.YoutubeDLError as exc:
         return {"status": "error", "msg": str(exc)}
+    except Exception as exc:
+        log.exception("yt-dlp crashed browsing %s", url)
+        return {"status": "error", "msg": unexpected_ytdl_error(exc)}
 
     if not info:
         return {"status": "error", "msg": "Could not resolve URL"}
@@ -811,6 +824,9 @@ class SubscriptionManager:
                 )
             except yt_dlp.utils.YoutubeDLError as exc:
                 return {"status": "error", "msg": str(exc)}
+            except Exception as exc:
+                log.exception("yt-dlp crashed scanning %s", url)
+                return {"status": "error", "msg": unexpected_ytdl_error(exc)}
 
             if not info:
                 return {"status": "error", "msg": "Could not resolve URL"}
@@ -1046,6 +1062,13 @@ class SubscriptionManager:
         except yt_dlp.utils.YoutubeDLError as exc:
             sub = await self._record_check(sid, error=str(exc)) or sub
             log.warning("Subscription check failed for %s: %s", sub.name, exc)
+            await self.notifier.subscription_updated(sub)
+            return
+        except Exception as exc:
+            # Recorded like any failed check, so the subscription shows the
+            # error and waits its interval instead of retrying every tick.
+            log.exception("yt-dlp crashed checking subscription %s", sub.name)
+            sub = await self._record_check(sid, error=unexpected_ytdl_error(exc)) or sub
             await self.notifier.subscription_updated(sub)
             return
         entries = [ent for ent in entries if _is_media_entry(ent)]
