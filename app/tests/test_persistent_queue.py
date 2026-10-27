@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+import errno
 import json
 import os
 import threading
@@ -26,16 +27,34 @@ class _ImpersonateTarget:
         return value
 
 
+# ytdl subclasses these while importing. Registered only if yt-dlp is not loaded yet.
+class _YoutubeDL:
+    pass
+
+
+class _PostProcessor:
+    def __init__(self, downloader=None):
+        pass
+
+
+fake_postprocessor = types.ModuleType("yt_dlp.postprocessor")
+fake_postprocessor_common = types.ModuleType("yt_dlp.postprocessor.common")
+fake_postprocessor_common.PostProcessor = _PostProcessor
+fake_postprocessor.common = fake_postprocessor_common
 fake_impersonate.ImpersonateTarget = _ImpersonateTarget
 fake_networking.impersonate = fake_impersonate
 fake_utils.STR_FORMAT_RE_TMPL = r"(?P<prefix>)%\((?P<has_key>{})\)(?P<format>[-0-9.]*{})"
 fake_utils.STR_FORMAT_TYPES = "diouxXeEfFgGcrsa"
+fake_yt_dlp.YoutubeDL = _YoutubeDL
 fake_yt_dlp.networking = fake_networking
 fake_yt_dlp.utils = fake_utils
+fake_yt_dlp.postprocessor = fake_postprocessor
 sys.modules.setdefault("yt_dlp", fake_yt_dlp)
 sys.modules.setdefault("yt_dlp.networking", fake_networking)
 sys.modules.setdefault("yt_dlp.networking.impersonate", fake_impersonate)
 sys.modules.setdefault("yt_dlp.utils", fake_utils)
+sys.modules.setdefault("yt_dlp.postprocessor", fake_postprocessor)
+sys.modules.setdefault("yt_dlp.postprocessor.common", fake_postprocessor_common)
 
 from ytdl import DownloadInfo, PersistentQueue
 
@@ -300,6 +319,66 @@ class PersistentQueueTests(unittest.IsolatedAsyncioTestCase):
                     await pq.put(second)
 
             self.assertEqual(pq.get("http://same.example").info.title, "Title")
+
+    async def test_large_batch_survives_one_missing_temp_replace(self):
+        # Issue #1099: expanding a ~150-item playlist aborted when os.replace
+        # raised ENOENT because the state temp file was already gone. One such
+        # failure is retried inside the awaited save.
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue")
+            pq = PersistentQueue("queue", path)
+            self.addCleanup(pq.close)
+            real_replace = os.replace
+            calls = {"n": 0}
+
+            def flaky_replace(src, dst):
+                calls["n"] += 1
+                if calls["n"] == 75:
+                    os.remove(src)
+                    raise FileNotFoundError(errno.ENOENT, "No such file or directory", src)
+                return real_replace(src, dst)
+
+            urls = [f"http://playlist.example/{i}" for i in range(150)]
+            with patch("state_store.os.replace", side_effect=flaky_replace):
+                for index, url in enumerate(urls):
+                    download = _FakeDownload(_make_info(url))
+                    download.info.timestamp = index
+                    await pq.put(download)
+
+            self.assertEqual(calls["n"], 151)
+            self.assertEqual([key for key, _ in pq.items()], urls)
+            self.assertEqual([], [name for name in os.listdir(tmp) if name.endswith(".tmp")])
+
+            reloaded = PersistentQueue("queue", path)
+            self.addCleanup(reloaded.close)
+            reloaded.load()
+            self.assertEqual([key for key, _ in reloaded.saved_items()], urls)
+
+    async def test_put_rolls_back_when_missing_temp_retries_are_exhausted(self):
+        with tempfile.TemporaryDirectory() as tmp:
+            path = os.path.join(tmp, "queue")
+            pq = PersistentQueue("queue", path)
+            self.addCleanup(pq.close)
+            await pq.put(_FakeDownload(_make_info("http://kept.example")))
+            with open(path + ".json", encoding="utf-8") as handle:
+                previous = handle.read()
+            attempts = {"n": 0}
+
+            def lose_temp(src, _dst):
+                attempts["n"] += 1
+                os.remove(src)
+                raise FileNotFoundError(errno.ENOENT, "No such file or directory", src)
+
+            with patch("state_store.os.replace", side_effect=lose_temp):
+                with self.assertRaises(FileNotFoundError):
+                    await pq.put(_FakeDownload(_make_info("http://new.example")))
+
+            self.assertEqual(attempts["n"], 3)
+            self.assertEqual([key for key, _ in pq.items()], ["http://kept.example"])
+            self.assertFalse(pq.exists("http://new.example"))
+            with open(path + ".json", encoding="utf-8") as handle:
+                self.assertEqual(handle.read(), previous)
+            self.assertEqual([], [name for name in os.listdir(tmp) if name.endswith(".tmp")])
 
 
 class StateWriteOffEventLoopTests(unittest.IsolatedAsyncioTestCase):
