@@ -1923,6 +1923,14 @@ class DownloadQueue:
                 if _add_gen is not None and self._add_generation != _add_gen:
                     log.info(f'Playlist add canceled after processing {len(already)} entries')
                     return {'status': 'ok', 'msg': f'Canceled - added {len(already)} items before cancel'}
+                if etr.get('_type') == 'playlist' and etr.get('entries') is not None:
+                    # A playlist of playlists: a channel URL without a tab comes
+                    # back as one per tab (Videos, Live, Shorts). Queued as a
+                    # video, each tab became a single row that downloaded the
+                    # whole tab, and a retry of it named the folder differently
+                    # (#1111). Add its videos exactly as the tab's own URL would.
+                    results.append(await self.__add_entry(etr, options, already, _add_gen))
+                    continue
                 if "id" not in etr:
                     etr["id"] = _entry_id(etr)
                 etr["_type"] = "video"
