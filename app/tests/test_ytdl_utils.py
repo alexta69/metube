@@ -868,6 +868,60 @@ class PostprocessorHookTests(unittest.TestCase):
         self.assertEqual(statuses.count("finished"), 1)
         self.assertTrue(all(st == "postprocessing" for st in statuses[:-1]))
 
+    def test_captions_report_the_moved_subtitle_path(self):
+        # requested_subtitles still carries the temp-location path after
+        # MoveFiles; with a custom folder (or a separate TEMP_DIR) the file is
+        # no longer there, and recording it gave a dead '../' link (#1114).
+        dl = _make_test_download()
+        dl.info.download_type = "captions"
+        forwarded = []
+        dl.status_queue = types.SimpleNamespace(put=forwarded.append)
+        hook = dl._make_postprocessor_hook()
+        hook({
+            "postprocessor": "MoveFiles",
+            "status": "finished",
+            "info_dict": {
+                "filepath": "/downloads/v.webm",
+                "__finaldir": "/downloads/Video",
+                "requested_subtitles": {"en": {"filepath": "/downloads/v.en.srt"}},
+            },
+        })
+        self.assertEqual(forwarded, [
+            {"status": "finished", "filename": "/downloads/Video/v.webm"},
+            {"subtitle_file": "/downloads/Video/v.en.srt"},
+        ])
+
+    def test_captions_link_points_at_the_moved_srt(self):
+        # The progress hook reports the subtitle at its pre-move temp path
+        # first; the moved file reported after MoveFiles must replace it as
+        # the row's link, not only fill an empty one (#1114).
+        with tempfile.TemporaryDirectory() as tmp:
+            final_dir = os.path.join(tmp, "downloads", "Video")
+            os.makedirs(final_dir)
+            final = os.path.join(final_dir, "v.en.srt")
+            Path(final).write_text("1\n00:00:00,000 --> 00:00:01,000\nhi\n")
+            dl = _make_test_download()
+            dl.download_dir = final_dir
+            dl.info.download_type = "captions"
+            dl.info.format = "srt"
+            dl.status_queue = types.SimpleNamespace(get=iter([
+                {"status": "finished", "filename": os.path.join(tmp, "temp", "v.en.srt")},
+                {"subtitle_file": final},
+                None,
+            ]).__next__)
+            dl.notifier = AsyncMock()
+
+            async def run():
+                dl.loop = asyncio.get_running_loop()
+                await dl.update_status()
+
+            asyncio.run(run())
+            size = os.path.getsize(final)
+
+        self.assertEqual(dl.info.filename, "v.en.srt")
+        self.assertEqual(dl.info.size, size)
+        self.assertEqual(dl.info.subtitle_files, [{"filename": "v.en.srt", "size": size}])
+
     def test_split_chapters_still_captures_files_without_a_status(self):
         hook, forwarded = self._hook()
         hook({

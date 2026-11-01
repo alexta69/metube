@@ -893,7 +893,14 @@ class Download:
                     requested_subtitles = d.get('info_dict', {}).get('requested_subtitles', {}) or {}
                     for subtitle in requested_subtitles.values():
                         if isinstance(subtitle, dict) and subtitle.get('filepath'):
-                            self.status_queue.put({'subtitle_file': subtitle['filepath']})
+                            # filepath is where yt-dlp wrote the file, in the
+                            # temp location; MoveFiles has just moved it into
+                            # __finaldir under the same name, as for the media.
+                            subtitle_path = subtitle['filepath']
+                            if '__finaldir' in d['info_dict']:
+                                subtitle_path = os.path.join(
+                                    d['info_dict']['__finaldir'], os.path.basename(subtitle_path))
+                            self.status_queue.put({'subtitle_file': subtitle_path})
 
             # Capture all chapter files when SplitChapters finishes
             elif d.get('postprocessor') == 'SplitChapters' and d.get('status') == 'finished':
@@ -1224,8 +1231,10 @@ class Download:
                 if not existing:
                     self.info.subtitle_files.append({'filename': rel_path, 'size': file_size})
                 # Prefer first subtitle file as the primary result link in captions mode.
+                # It replaces any filename the progress hook set: that one is the
+                # path before MoveFiles, in the temp location when that differs.
                 if getattr(self.info, 'download_type', '') == 'captions' and (
-                    not getattr(self.info, 'filename', None) or
+                    self.info.subtitle_files[0]['filename'] == rel_path or
                     str(getattr(self.info, 'format', '')).lower() == 'txt'
                 ):
                     self.info.filename = rel_path
