@@ -149,16 +149,18 @@
             }
           </ng-template>
 
+          <!-- The URL box takes input while the queue is still loading so a paste
+               right after the page opens is not lost; the buttons wait. -->
           <!-- Narrow viewports: full-width field, then Bootstrap btn-group (no faux input-group strip) -->
           <div class="vstack gap-2 d-md-none">
-            <input type="text"
+            <input type="text" #urlInput
               autocomplete="off"
               spellcheck="false"
               class="form-control form-control-lg"
               placeholder="Enter video, channel, or playlist URL"
               [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
-              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              [disabled]="addInProgress || subscribeInProgress">
             <div class="btn-group w-100" role="group" aria-label="Download or subscribe">
               <ng-container [ngTemplateOutlet]="urlBarActions" />
             </div>
@@ -166,14 +168,14 @@
 
           <!-- md and up: standard input-group so Bootstrap handles fused borders -->
           <div class="input-group input-group-lg shadow-sm d-none d-md-flex">
-            <input type="text"
+            <input type="text" #urlInput
               autocomplete="off"
               spellcheck="false"
               class="form-control form-control-lg"
               placeholder="Enter video, channel, or playlist URL"
               [(ngModel)]="addUrl"
               [ngModelOptions]="{standalone: true}"
-              [disabled]="addInProgress || subscribeInProgress || downloads.loading">
+              [disabled]="addInProgress || subscribeInProgress">
             <ng-container [ngTemplateOutlet]="urlBarActions" />
           </div>
         </div>

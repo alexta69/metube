@@ -1,4 +1,4 @@
-import { ChangeDetectorRef } from '@angular/core';
+import { ApplicationRef, ChangeDetectorRef } from '@angular/core';
 import { TestBed } from '@angular/core/testing';
 import { HttpClient } from '@angular/common/http';
 import { Subject, of } from 'rxjs';
@@ -227,6 +227,24 @@ describe('App', () => {
     const fixture = TestBed.createComponent(App);
     const app = fixture.componentInstance;
     expect(app).toBeTruthy();
+  });
+
+  it('focuses the URL box on load, before the queue has arrived, for a quick paste', async () => {
+    downloads.loading = true;
+    const fixture = TestBed.createComponent(App);
+    fixture.detectChanges();
+    // NgModel applies [disabled] a microtask after the view is checked, and the
+    // focus waits for the render to finish, which a tick of the application completes.
+    await Promise.resolve();
+    TestBed.inject(ApplicationRef).tick();
+    const boxes = Array.from(
+      fixture.nativeElement.querySelectorAll('input[placeholder^="Enter video"]') as NodeListOf<HTMLInputElement>,
+    );
+    expect(boxes.length).toBe(2);
+    expect(boxes.every((box) => !box.disabled)).toBe(true);
+    expect(boxes).toContain(document.activeElement as HTMLInputElement);
+    const download = fixture.nativeElement.querySelector('button[type="submit"]') as HTMLButtonElement;
+    expect(download.disabled).toBe(true);
   });
 
   it('pre-fills the download folder from DEFAULT_FOLDER', () => {
