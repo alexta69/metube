@@ -5,6 +5,8 @@ from __future__ import annotations
 import copy
 import unittest
 
+from yt_dlp import YoutubeDL
+
 from app.dl_formats import (
     _normalize_caption_mode,
     _normalize_subtitle_language,
@@ -68,6 +70,67 @@ class DlFormatsTests(unittest.TestCase):
     def test_video_ios_selector_contains_avc_pattern(self):
         s = get_format("video", "auto", "ios", "best")
         self.assertIn("h26[45]", s)
+
+    def test_video_selection_preserves_original_audio(self):
+        profiles = (
+            ("auto", "any", "avc1"),
+            ("auto", "mp4", "avc1"),
+            ("h264", "any", "avc1"),
+            ("h265", "any", "hevc"),
+            ("av1", "any", "av01"),
+            ("vp9", "any", "vp09"),
+            ("h264", "mp4", "avc1"),
+            ("auto", "ios", "avc1"),
+        )
+        with YoutubeDL({"cachedir": False, "quiet": True}) as ydl:
+            for codec, container, vcodec in profiles:
+                music = {
+                    "format_id": "music", "url": "https://example.invalid/music.m4a",
+                    "ext": "m4a", "vcodec": "none", "acodec": "aac",
+                }
+                silent = {
+                    "format_id": "silent", "url": "https://example.invalid/silent.mp4",
+                    "ext": "mp4", "vcodec": vcodec, "acodec": "none", "height": 720,
+                }
+                original = {
+                    **silent, "format_id": "original", "acodec": "aac",
+                    "url": "https://example.invalid/original.mp4",
+                }
+                alternatives = [
+                    {**original, "format_id": "too-high", "height": 1080},
+                ]
+                if codec != "auto" or container == "ios":
+                    alternatives.append({**original, "format_id": "other-codec", "vcodec": "theora"})
+                if container == "mp4":
+                    alternatives.append({**original, "format_id": "other-container", "ext": "webm"})
+                if container == "ios":
+                    alternatives.append({**original, "format_id": "other-audio", "acodec": "opus"})
+
+                # yt-dlp expects formats ordered from least to most preferred.
+                for source, formats, expected in (
+                    ("muxed-and-adaptive", [music, silent, original, *alternatives], ["original"]),
+                    ("adaptive", [music, silent], ["silent+music"]),
+                    ("muxed-only", [original], ["original"]),
+                    ("audio-only", [music], []),
+                    ("codec-container-fallback", [music, {**original, "vcodec": "theora"}], ["original"]),
+                ):
+                    with self.subTest(codec=codec, container=container, source=source):
+                        selector = ydl.build_format_selector(get_format("video", codec, container, "720"))
+                        selected = list(selector({
+                            "formats": formats,
+                            "has_merged_format": any(
+                                f["vcodec"] != "none" and f["acodec"] != "none" for f in formats
+                            ),
+                            "incomplete_formats": source == "audio-only",
+                        }))
+                        self.assertEqual([f["format_id"] for f in selected], expected)
+                        if expected == ["original"]:
+                            self.assertNotIn("requested_formats", selected[0])
+                        elif expected == ["silent+music"]:
+                            self.assertEqual(
+                                [f["format_id"] for f in selected[0]["requested_formats"]],
+                                ["silent", "music"],
+                            )
 
     def test_get_opts_deepcopy_does_not_mutate_input(self):
         base = {"postprocessors": [{"key": "Existing"}]}

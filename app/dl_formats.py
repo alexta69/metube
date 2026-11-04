@@ -107,12 +107,14 @@ def get_format(download_type: str, codec: str, format: str, quality: str) -> str
         vcombo = vres + vfmt
         codec_filter = CODEC_FILTER_MAP.get(codec, "")
 
+        # Keep audio already present in the preferred video; yt-dlp only
+        # adds the separate audio stream when the video has none.
         if format == "ios":
-            return f"bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio[acodec=aac]/bestvideo[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
+            return f"bestvideo*[vcodec~='^((he|a)vc|h26[45])'][acodec~='^(aac|none)$']{vres}+bestaudio[acodec=aac]/bestvideo*[vcodec~='^((he|a)vc|h26[45])']{vres}+bestaudio{afmt}/bestvideo*{vcombo}+bestaudio{afmt}/best{vcombo}"
 
         if codec_filter:
-            return f"bestvideo{codec_filter}{vcombo}+bestaudio{afmt}/bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
-        return f"bestvideo{vcombo}+bestaudio{afmt}/best{vcombo}"
+            return f"bestvideo*{codec_filter}{vcombo}+bestaudio{afmt}/bestvideo*{vcombo}+bestaudio{afmt}/best{vcombo}"
+        return f"bestvideo*{vcombo}+bestaudio{afmt}/best{vcombo}"
 
     raise ValueError(f"Unknown download_type {download_type}")
 
