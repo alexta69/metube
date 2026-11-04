@@ -404,6 +404,13 @@ def _resolve_outtmpl_fields(template: str, info_dict: dict, prefixes: tuple[str,
 
     return template
 
+
+def _prefix_outtmpl_basename(template: str, prefix: str) -> str:
+    """Put *prefix* on the final path component, keeping '/' separators."""
+    directory, _, name = template.rpartition('/')
+    return f'{directory}/{prefix}.{name}' if directory else f'{prefix}.{name}'
+
+
 _MAX_ENTRY_SANITIZE_DEPTH = 64
 
 
@@ -1022,7 +1029,11 @@ class Download:
 
             # Add chapter splitting options if enabled
             if self.info.split_by_chapters:
-                ytdl_params['outtmpl']['chapter'] = self.info.chapter_template
+                chapter_template = self.info.chapter_template
+                if chapter_template and len(self.info.custom_name_prefix):
+                    chapter_template = _prefix_outtmpl_basename(
+                        chapter_template, self.info.custom_name_prefix)
+                ytdl_params['outtmpl']['chapter'] = chapter_template
                 if 'postprocessors' not in ytdl_params:
                     ytdl_params['postprocessors'] = []
                 ytdl_params['postprocessors'].append({
@@ -1755,9 +1766,12 @@ class DownloadQueue:
         dldirectory, error_message = self.__calc_download_path(dl.download_type, dl.folder)
         if error_message is not None:
             return error_message
-        output = self.config.OUTPUT_TEMPLATE if len(dl.custom_name_prefix) == 0 else f'{dl.custom_name_prefix}.{self.config.OUTPUT_TEMPLATE}'
+        output = self.config.OUTPUT_TEMPLATE
         output_chapter = self.config.OUTPUT_TEMPLATE_CHAPTER
         entry = getattr(dl, 'entry', None)
+        feed_item = entry is not None and (
+            entry.get('playlist_index') is not None or entry.get('channel_index') is not None
+        )
         if entry is not None and entry.get('playlist_index') is not None:
             if len(self.config.OUTPUT_TEMPLATE_PLAYLIST):
                 output = self.config.OUTPUT_TEMPLATE_PLAYLIST
@@ -1768,6 +1782,11 @@ class DownloadQueue:
                 output = self.config.OUTPUT_TEMPLATE_CHANNEL
             sanitized = {k: _sanitize_path_component(v) for k, v in entry.items()}
             output = _resolve_outtmpl_fields(output, sanitized, ('channel',))
+        if len(dl.custom_name_prefix):
+            if feed_item:
+                output = _prefix_outtmpl_basename(output, dl.custom_name_prefix)
+            else:
+                output = f'{dl.custom_name_prefix}.{output}'
         ytdl_options = self._build_ytdl_options(
             getattr(dl, 'ytdl_options_presets', None),
             getattr(dl, 'ytdl_options_overrides', {}) or {},

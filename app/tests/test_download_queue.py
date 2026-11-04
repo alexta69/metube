@@ -1300,6 +1300,68 @@ _PLAYLIST_FEED = {
 }
 
 
+@pytest.mark.parametrize("feed, option, template, expected, resolved", [
+    (_CHANNEL_FEED, "OUTPUT_TEMPLATE_CHANNEL", "%(channel)s/%(title)s.%(ext)s",
+     "Vanessa/%(upload_date)s .%(title)s.%(ext)s", "Vanessa/20240102 .One.mp4"),
+    (_PLAYLIST_FEED, "OUTPUT_TEMPLATE_PLAYLIST", "%(playlist_title)s/%(title)s.%(ext)s",
+     "My Playlist/%(upload_date)s .%(title)s.%(ext)s", "My Playlist/20240102 .One.mp4"),
+])
+@pytest.mark.asyncio
+async def test_custom_name_prefix_applies_to_feed_downloads(dq_env, feed, option, template, expected, resolved):
+    """Issue #1118: picking the feed template replaced the prefixed one."""
+    setattr(dq_env, option, template)
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(feed)):
+        result = await dq.add(
+            feed["webpage_url"],
+            DownloadOptions(custom_name_prefix="%(upload_date)s ", auto_start=False),
+        )
+
+    assert result["status"] == "ok"
+    download = dq.pending.get("https://example.com/v1")
+    assert download.output_template == expected
+    with yt_dlp.YoutubeDL({'quiet': True}) as ydl:
+        resolved_filename = ydl.evaluate_outtmpl(
+            download.output_template,
+            {**download.info.entry, "upload_date": "20240102", "ext": "mp4"},
+        )
+    assert resolved_filename == resolved
+
+
+def test_custom_name_prefix_applies_to_chapter_files(dq_env):
+    info = DownloadInfo(
+        id="v1", title="One", url="https://example.com/v1", quality="best",
+        download_type="video", codec="auto", format="any", folder="",
+        custom_name_prefix="%(upload_date)s ", error=None, entry=None,
+        playlist_item_limit=0, split_by_chapters=True,
+        chapter_template="%(title)s - %(section_number)02d - %(section_title)s.%(ext)s",
+    )
+    download = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s",
+                        "%(title)s.%(ext)s", "best", "any", {}, info)
+    download.status_queue = MagicMock()
+    captured = {}
+
+    class FakeYDL:
+        def download(self, urls):
+            return 0
+
+    def fake_make(self, params):
+        captured.update(params)
+        return FakeYDL()
+
+    with patch.object(Download, "_make_youtube_dl", fake_make), \
+         patch("ytdl.install_socket_guard"), \
+         patch("ytdl.os.setpgrp", create=True), \
+         patch("ytdl.signal.set_wakeup_fd"), \
+         patch("ytdl.signal.signal"):
+        download._download()
+
+    assert captured["outtmpl"]["chapter"] == (
+        "%(upload_date)s .%(title)s - %(section_number)02d - %(section_title)s.%(ext)s"
+    )
+
+
 def _written_files(root):
     found = []
     for dirpath, _dirs, files in os.walk(root):
