@@ -136,7 +136,7 @@ The [wiki](https://github.com/alexta69/metube/wiki) covers everything beyond the
 * [yt-dlp options](https://github.com/alexta69/metube/wiki/yt-dlp-options) and the [YTDL_OPTIONS Cookbook](https://github.com/alexta69/metube/wiki/YTDL_OPTIONS-Cookbook) — notifications, embedded metadata, subtitles and more.
 * [Output templates](https://github.com/alexta69/metube/wiki/Output-templates) and the [OUTPUT_TEMPLATE Cookbook](https://github.com/alexta69/metube/wiki/OUTPUT_TEMPLATE-Cookbook) — how files are named and sorted into folders.
 * [Using browser cookies](https://github.com/alexta69/metube/wiki/Using-browser-cookies) — for private, age-restricted and "confirm you're not a bot" videos.
-* [Sending links to MeTube](https://github.com/alexta69/metube/wiki/Sending-links-to-MeTube) — browser extensions, bookmarklets, iOS and Android apps, Raycast.
+* [Sending links to MeTube](https://github.com/alexta69/metube/wiki/Sending-links-to-MeTube) — browser extensions, bookmarklets, iOS, Android and Windows apps, Raycast.
 * [HTTPS and reverse proxies](https://github.com/alexta69/metube/wiki/Reverse-proxy-configurations) — NGINX, Apache, Caddy and swag examples, and adding authentication.
 * [Hardware-accelerated transcoding](https://github.com/alexta69/metube/wiki/Hardware-accelerated-transcoding) — re-encode downloads on an Intel or AMD GPU.
 * [yt-dlp plugins](https://github.com/alexta69/metube/wiki/yt-dlp-plugins) — extend yt-dlp, e.g. to accept links from Invidious or Piped.
