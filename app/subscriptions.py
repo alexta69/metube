@@ -182,7 +182,8 @@ async def browse_playlist(
     no limit.
     """
     extra = merge_ytdl_option_layers(
-        ytdl_options_presets, ytdl_options_overrides, config.YTDL_OPTIONS_PRESETS
+        ytdl_options_presets, ytdl_options_overrides, config.YTDL_OPTIONS_PRESETS,
+        allow_overrides=config.ALLOW_YTDL_OPTIONS_OVERRIDES,
     )
     loop = asyncio.get_running_loop()
     # SSRF guard, same as add_subscription: block non-http(s) schemes and
@@ -666,7 +667,8 @@ class SubscriptionManager:
         is already spread into the scan params by ``_build_ydl_params``.)
         """
         return merge_ytdl_option_layers(
-            ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
+            ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS,
+            allow_overrides=self.config.ALLOW_YTDL_OPTIONS_OVERRIDES,
         )
 
     async def _queue_subscription_entries(

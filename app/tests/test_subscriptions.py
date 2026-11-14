@@ -52,6 +52,7 @@ class _Config:
         self.TEMP_DIR = state_dir
         self.YTDL_OPTIONS = {}
         self.YTDL_OPTIONS_PRESETS = {}
+        self.ALLOW_YTDL_OPTIONS_OVERRIDES = False
 
 
 class _Queue:
@@ -1522,6 +1523,7 @@ class SubscriptionScanExtraOptsTests(unittest.IsolatedAsyncioTestCase):
         with tempfile.TemporaryDirectory() as tmp:
             cfg = _Config(tmp)
             cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"cookiefile": "preset.txt"}}
+            cfg.ALLOW_YTDL_OPTIONS_OVERRIDES = True
             mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
 
             with patch("subscriptions.yt_dlp.YoutubeDL", fake_ydl, create=True):
@@ -1890,6 +1892,7 @@ class BrowsePlaylistTests(unittest.IsolatedAsyncioTestCase):
     async def test_presets_and_overrides_are_merged_into_extra_opts(self):
         cfg = self._config()
         cfg.YTDL_OPTIONS_PRESETS = {"mypreset": {"cookiefile": "preset.txt", "a": 1}}
+        cfg.ALLOW_YTDL_OPTIONS_OVERRIDES = True
         extract = MagicMock(return_value=({"_type": "playlist"}, [{"url": "https://example.com/a"}]))
         await self._browse(
             extract, cfg=cfg, presets=["mypreset"], overrides={"a": 2, "extra": "override"}
@@ -2035,3 +2038,28 @@ class SubscriptionMutateTests(unittest.IsolatedAsyncioTestCase):
             mgr = SubscriptionManager(_Config(tmp), _Queue(), _Notifier())
             result = await mgr.update_subscription("gone", {"name": "x"})
             self.assertEqual(result, {"status": "error", "msg": "Subscription not found"})
+
+
+class SubscriptionOverridesGateTests(unittest.TestCase):
+    """Stored per-subscription overrides only apply while overrides are allowed.
+
+    A subscription loaded from the state directory never passes the request
+    check that refuses overrides, so the gate has to hold where the scan
+    options are built.
+    """
+
+    def _scan_opts(self, allowed):
+        with tempfile.TemporaryDirectory() as tmp:
+            cfg = _Config(tmp)
+            cfg.ALLOW_YTDL_OPTIONS_OVERRIDES = allowed
+            cfg.YTDL_OPTIONS_PRESETS = {"Configured": {"writesubtitles": True}}
+            mgr = SubscriptionManager(cfg, _Queue(), _Notifier())
+            return mgr._scan_extra_opts(["Configured", "Removed"], {"ratelimit": 1234})
+
+    def test_overrides_dropped_while_disallowed(self):
+        self.assertEqual(self._scan_opts(False), {"writesubtitles": True})
+
+    def test_overrides_applied_while_allowed(self):
+        self.assertEqual(
+            self._scan_opts(True), {"writesubtitles": True, "ratelimit": 1234}
+        )

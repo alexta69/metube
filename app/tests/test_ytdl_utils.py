@@ -289,9 +289,10 @@ class ConfinedYoutubeDLTests(unittest.TestCase):
     def setUp(self):
         self.base = os.path.realpath(tempfile.mkdtemp())
 
-    def _prepared_path(self, resolved, roots=None):
+    def _prepared_path(self, resolved, roots=None, state_dir=None):
         ydl = ytdl._ConfinedYoutubeDL.__new__(ytdl._ConfinedYoutubeDL)
         ydl._allowed_roots = [self.base] if roots is None else roots
+        ydl._state_dir = state_dir
         with patch.object(
             ytdl.yt_dlp.YoutubeDL, "prepare_filename", return_value=resolved
         ):
@@ -317,6 +318,40 @@ class ConfinedYoutubeDLTests(unittest.TestCase):
         sibling = self.base + "-secret"
         with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
             self._prepared_path(os.path.join(sibling, "video.mp4"))
+
+    def test_state_dir_inside_download_dir_is_blocked(self):
+        # The Docker image keeps STATE_DIR at /downloads/.metube. A file a
+        # download writes there would be read back as state on the next start.
+        state = os.path.join(self.base, ".metube")
+        for name in ("pending.json", "subscriptions.json", "anything.mp4"):
+            with self.subTest(name=name), self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+                self._prepared_path(os.path.join(state, name), state_dir=state)
+        with self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+            self._prepared_path(os.path.join(state, "sub", "x.mp4"), state_dir=state)
+
+    def test_sibling_of_state_dir_is_allowed(self):
+        state = os.path.join(self.base, ".metube")
+        ok = os.path.join(self.base, ".metube-videos", "pending.json")
+        self.assertEqual(self._prepared_path(ok, state_dir=state), ok)
+
+    def test_state_dir_equal_to_download_dir_protects_only_state_files(self):
+        # Run from source, DOWNLOAD_DIR and STATE_DIR are both '.', so ordinary
+        # downloads share the directory with the state files.
+        for name in ("queue.json", "completed.json", "pending.json", "subscriptions.json", "pending", "pending.db"):
+            with self.subTest(name=name), self.assertRaises(ytdl.yt_dlp.utils.DownloadError):
+                self._prepared_path(os.path.join(self.base, name), state_dir=self.base)
+        for name in ("video.mp4", "pending.mp4", "pending.info.json"):
+            ok = os.path.join(self.base, name)
+            self.assertEqual(self._prepared_path(ok, state_dir=self.base), ok)
+        nested = os.path.join(self.base, "Show", "pending.json")
+        self.assertEqual(self._prepared_path(nested, state_dir=self.base), nested)
+
+    def test_state_dir_containing_download_dir_does_not_block_downloads(self):
+        # STATE_DIR=/data, DOWNLOAD_DIR=/data/downloads: downloads sit below
+        # the state files and can never reach them.
+        downloads = os.path.join(self.base, "downloads")
+        ok = os.path.join(downloads, "pending.json")
+        self.assertEqual(self._prepared_path(ok, roots=[downloads], state_dir=self.base), ok)
 
     def test_empty_and_stdout_targets_pass_through(self):
         self.assertEqual(self._prepared_path(""), "")

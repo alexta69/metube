@@ -23,18 +23,26 @@ _AUTO_AUDIO_AS_SERVED = "/".join(
 )
 
 
-def merge_ytdl_option_layers(presets, overrides, presets_config) -> dict:
+def merge_ytdl_option_layers(presets, overrides, presets_config, *, allow_overrides) -> dict:
     """Overlay named presets (in order) then per-item overrides onto a fresh dict.
 
     Does NOT include any base ``YTDL_OPTIONS`` — callers layer this on top of
     their own base (a per-download build adds the global base; a subscription
     scan relies on ``**config.YTDL_OPTIONS`` already being present in its
-    params). ``presets_config`` maps a preset name to its options dict.
+    params). ``presets_config`` maps a preset name to its options dict, so a
+    name that is no longer configured contributes nothing.
+
+    ``allow_overrides`` is ``ALLOW_YTDL_OPTIONS_OVERRIDES``. A request carrying
+    overrides is refused when it is off, but records restored from the state
+    directory (the saved queue, pending items, subscriptions) never pass
+    through that check, so the gate has to hold here, where every set of
+    options is built, as well.
     """
     merged: dict = {}
     for name in presets or []:
         merged.update(presets_config.get(name, {}))
-    merged.update(overrides or {})
+    if allow_overrides:
+        merged.update(overrides or {})
     return merged
 
 # Every codec in the catalog other than "auto" needs an entry here.

@@ -169,16 +169,33 @@ class MergeYtdlOptionLayersTests(unittest.TestCase):
             "a": {"x": 1, "y": 1},
             "b": {"y": 2, "z": 2},
         }
-        merged = merge_ytdl_option_layers(["a", "b"], {"z": 3, "w": 4}, presets_config)
+        merged = merge_ytdl_option_layers(
+            ["a", "b"], {"z": 3, "w": 4}, presets_config, allow_overrides=True
+        )
         # b overrides a's y; explicit overrides win over presets.
         self.assertEqual(merged, {"x": 1, "y": 2, "z": 3, "w": 4})
 
     def test_no_base_options_included(self):
         # The helper only produces the preset/override layer, never base opts.
-        self.assertEqual(merge_ytdl_option_layers(None, None, {}), {})
+        self.assertEqual(merge_ytdl_option_layers(None, None, {}, allow_overrides=True), {})
 
     def test_unknown_preset_names_ignored(self):
-        self.assertEqual(merge_ytdl_option_layers(["missing"], {"a": 1}, {}), {"a": 1})
+        self.assertEqual(
+            merge_ytdl_option_layers(["missing"], {"a": 1}, {}, allow_overrides=True), {"a": 1}
+        )
+
+    def test_overrides_dropped_unless_allowed(self):
+        # Records restored from the state directory never pass the request
+        # check that refuses overrides, so the merge itself must drop them.
+        presets_config = {"a": {"x": 1}}
+        self.assertEqual(
+            merge_ytdl_option_layers(["a"], {"x": 2, "y": 3}, presets_config, allow_overrides=False),
+            {"x": 1},
+        )
+
+    def test_allow_overrides_must_be_passed(self):
+        with self.assertRaises(TypeError):
+            merge_ytdl_option_layers(None, {"a": 1}, {})
 
 
 if __name__ == "__main__":

@@ -788,6 +788,91 @@ async def test_saved_download_that_cannot_be_restored_is_kept_as_failed(dq_env):
 
 
 @pytest.mark.asyncio
+@pytest.mark.parametrize("allowed", [False, True])
+async def test_restored_download_applies_overrides_only_while_allowed(dq_env, allowed):
+    # A saved record never passes the request check that refuses overrides,
+    # so restoring it must not apply overrides the configuration disallows.
+    url = "https://example.com/watch?v=1"
+    dq_env.ALLOW_YTDL_OPTIONS_OVERRIDES = True
+    first = DownloadQueue(dq_env, AsyncMock())
+    entry = {"_type": "video", "id": "vid1", "title": "Test Video", "url": url, "webpage_url": url}
+    await first.add_entry(
+        entry, DownloadOptions(auto_start=False, ytdl_options_overrides={"ratelimit": 1234})
+    )
+    assert first.pending.get(url).ytdl_opts["ratelimit"] == 1234
+
+    dq_env.ALLOW_YTDL_OPTIONS_OVERRIDES = allowed
+    second = DownloadQueue(dq_env, AsyncMock())
+    await second._DownloadQueue__import_pending()
+
+    restored = second.pending.get(url)
+    assert ("ratelimit" in restored.ytdl_opts) is allowed
+
+
+@pytest.mark.asyncio
+async def test_folder_inside_the_state_directory_is_refused(dq_env):
+    # The Docker image keeps STATE_DIR inside DOWNLOAD_DIR.
+    dq_env.STATE_DIR = os.path.join(dq_env.DOWNLOAD_DIR, ".metube")
+    os.makedirs(dq_env.STATE_DIR)
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+    entry = {"_type": "video", "id": "vid1", "title": "Test Video", "url": url, "webpage_url": url}
+
+    for folder in (".metube", ".metube/sub", "Shows/../.metube"):
+        result = await dq.add_entry(entry, DownloadOptions(folder=folder, auto_start=False))
+        assert result["status"] == "error", folder
+        assert "state directory" in result["msg"]
+    assert not os.path.exists(os.path.join(dq_env.STATE_DIR, "sub"))
+
+    result = await dq.add_entry(entry, DownloadOptions(folder="Shows", auto_start=False))
+    assert result["status"] == "ok"
+
+
+@pytest.mark.asyncio
+async def test_queued_download_carries_the_state_dir(dq_env):
+    dq = DownloadQueue(dq_env, AsyncMock())
+    url = "https://example.com/watch?v=1"
+    entry = {"_type": "video", "id": "vid1", "title": "Test Video", "url": url, "webpage_url": url}
+    await dq.add_entry(entry, DownloadOptions(auto_start=False))
+    assert dq.pending.get(url).state_dir == dq_env.STATE_DIR
+
+
+@pytest.mark.asyncio
+async def test_feed_metadata_writer_is_kept_out_of_the_state_directory(dq_env):
+    dq_env.YTDL_OPTIONS = {"writeinfojson": True}
+    dq_env.STATE_DIR = os.path.join(dq_env.DOWNLOAD_DIR, ".metube")
+    os.makedirs(dq_env.STATE_DIR)
+    import ytdl as ytdl_module
+    real = ytdl_module._ConfinedYoutubeDL
+    seen = []
+
+    def spy(*args, **kwargs):
+        seen.append(kwargs.get("state_dir"))
+        return real(*args, **kwargs)
+
+    dq = DownloadQueue(dq_env, AsyncMock())
+    with patch.object(ytdl_module, "_ConfinedYoutubeDL", side_effect=spy), \
+         patch.object(DownloadQueue, "_DownloadQueue__extract_info", _feed_extract(_PLAYLIST_FEED)), \
+         patch.object(DownloadQueue, "_DownloadQueue__start_download", new=AsyncMock()):
+        await dq.add("https://example.com/playlist?list=PL123", DownloadOptions(auto_start=False))
+
+    assert seen and all(s == dq_env.STATE_DIR for s in seen)
+
+
+def test_download_passes_the_state_dir_to_its_writer(dq_env):
+    info = DownloadInfo(
+        id="vid1", title="t", url="https://example.com/v", quality="best",
+        download_type="video", codec="auto", format="any", folder="",
+        custom_name_prefix="", error=None, entry=None, playlist_item_limit=0,
+        split_by_chapters=False, chapter_template="",
+    )
+    dl = Download(dq_env.DOWNLOAD_DIR, dq_env.TEMP_DIR, "%(title)s.%(ext)s", "%(title)s.%(ext)s",
+                  "best", "any", {}, info, state_dir=dq_env.STATE_DIR)
+    ydl = dl._make_youtube_dl({"quiet": True})
+    assert ydl._state_dir == os.path.realpath(dq_env.STATE_DIR)
+
+
+@pytest.mark.asyncio
 async def test_channel_download_uses_output_template_when_channel_template_empty(dq_env):
     """Channel tabs reported as playlists must honor OUTPUT_TEMPLATE when OUTPUT_TEMPLATE_CHANNEL is empty."""
     notifier = AsyncMock()

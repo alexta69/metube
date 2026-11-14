@@ -330,6 +330,36 @@ def _trim_to_name_max(path: str) -> str:
     return os.path.join(directory, (trimmed or '_') + ext)
 
 
+# Names MeTube reads its state from inside STATE_DIR: the JSON stores and the
+# shelve files of the legacy format they replaced, which are still read when
+# no JSON store exists yet.
+_STATE_FILE_NAMES = frozenset(
+    stem + suffix
+    for stem in ('queue', 'completed', 'pending', 'subscriptions')
+    for suffix in ('', '.json', '.db', '.dat', '.dir', '.bak', '.pag')
+)
+
+
+def _is_state_path(real_state_dir: str | None, real_roots, real_target: str) -> bool:
+    """True if a download writing ``real_target`` could plant a file MeTube loads as state.
+
+    All arguments must already be resolved with ``os.path.realpath``. When
+    STATE_DIR sits inside a download root (the Docker image keeps it at
+    ``/downloads/.metube``), nothing a download writes belongs anywhere in it.
+    When STATE_DIR is itself a download root or contains one (both default to
+    ``.`` when run from source), downloads legitimately land beside the state
+    files, so only the state file names are protected.
+    """
+    if not real_state_dir or not _is_within_directory(real_state_dir, real_target):
+        return False
+    if not any(_is_within_directory(real_state_dir, root) for root in real_roots):
+        return True
+    return (
+        os.path.dirname(real_target) == real_state_dir
+        and os.path.basename(real_target) in _STATE_FILE_NAMES
+    )
+
+
 class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
     """A ``YoutubeDL`` that refuses to emit any output path outside the allowed roots.
 
@@ -345,10 +375,15 @@ class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
     metadata field carries the traversal. Checking the resolved path (rather than
     the template string) is what makes this robust: the ``..`` only exists after
     expansion, so no ingress string check can see it.
+
+    ``state_dir`` is refused even where it lies inside an allowed root (see
+    ``_is_state_path``): a file a download writes there would be read back as
+    MeTube's own state on the next start.
     """
 
-    def __init__(self, params=None, *, allowed_roots=(), **kwargs):
+    def __init__(self, params=None, *, allowed_roots=(), state_dir=None, **kwargs):
         self._allowed_roots = [os.path.realpath(r) for r in allowed_roots if r]
+        self._state_dir = os.path.realpath(state_dir) if state_dir else None
         super().__init__(params=params, **kwargs)
 
     def prepare_filename(self, *args, **kwargs):
@@ -364,6 +399,10 @@ class _ConfinedYoutubeDL(yt_dlp.YoutubeDL):
             if not any(_is_within_directory(root, resolved) for root in self._allowed_roots):
                 raise yt_dlp.utils.DownloadError(
                     f'Refusing to write outside the download directory: {filename}'
+                )
+            if _is_state_path(self._state_dir, self._allowed_roots, resolved):
+                raise yt_dlp.utils.DownloadError(
+                    f"Refusing to write into MeTube's state directory: {filename}"
                 )
         return filename
 
@@ -782,10 +821,11 @@ class Download:
             cls.manager.shutdown()
             cls.manager = None
 
-    def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info, allow_private=False):
+    def __init__(self, download_dir, temp_dir, output_template, output_template_chapter, quality, format, ytdl_opts, info, allow_private=False, state_dir=None):
         self._init_state(info)
         self.download_dir = download_dir
         self.temp_dir = temp_dir
+        self.state_dir = state_dir
         self.output_template = output_template
         self.output_template_chapter = output_template_chapter
         self.allow_private = allow_private
@@ -929,6 +969,7 @@ class Download:
         ydl = _ConfinedYoutubeDL(
             params=params,
             allowed_roots=(self.download_dir, self.temp_dir),
+            state_dir=self.state_dir,
         )
         if getattr(self.info, 'download_type', '') == 'audio':
             ydl.add_post_processor(_AlbumArtistPostProcessor(ydl), when='pre_process')
@@ -1697,7 +1738,8 @@ class DownloadQueue:
         """Merge global options, presets (in order), and per-download overrides."""
         opts = dict(self.config.YTDL_OPTIONS)
         opts.update(merge_ytdl_option_layers(
-            ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS
+            ytdl_options_presets, ytdl_options_overrides, self.config.YTDL_OPTIONS_PRESETS,
+            allow_overrides=self.config.ALLOW_YTDL_OPTIONS_OVERRIDES,
         ))
         # A deep copy: YoutubeDL writes its own defaults into nested option
         # dicts such as outtmpl in place. Sharing them with the config let the
@@ -1754,6 +1796,8 @@ class DownloadQueue:
             real_base_directory = os.path.realpath(base_directory)
             if not _is_within_directory(real_base_directory, dldirectory):
                 return None, {'status': 'error', 'msg': f'Folder "{folder}" must resolve inside the base download directory "{real_base_directory}"'}
+            if _is_state_path(os.path.realpath(self.config.STATE_DIR), (real_base_directory,), dldirectory):
+                return None, {'status': 'error', 'msg': f'Folder "{folder}" is inside MeTube\'s state directory and cannot be used for downloads'}
             if not os.path.isdir(dldirectory):
                 if not self.config.CREATE_CUSTOM_DIRS:
                     return None, {'status': 'error', 'msg': f'Folder "{folder}" for download does not exist inside base directory "{real_base_directory}", and CREATE_CUSTOM_DIRS is not true in the configuration.'}
@@ -1796,7 +1840,7 @@ class DownloadQueue:
         if playlist_item_limit > 0:
             log.info(f'playlist limit is set. Processing only first {playlist_item_limit} entries')
             ytdl_options['playlistend'] = playlist_item_limit
-        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl, allow_private=self.config.ALLOW_PRIVATE_ADDRESSES)
+        download = Download(dldirectory, self.config.TEMP_DIR, output, output_chapter, dl.quality, dl.format, ytdl_options, dl, allow_private=self.config.ALLOW_PRIVATE_ADDRESSES, state_dir=self.config.STATE_DIR)
         is_upcoming = (
             getattr(dl, 'live_status', None) == 'is_upcoming'
             or getattr(dl, 'status', None) == 'scheduled'
@@ -1883,6 +1927,7 @@ class DownloadQueue:
         ):
             _ConfinedYoutubeDL(
                 params=params, allowed_roots=(dldirectory, self.config.TEMP_DIR),
+                state_dir=self.config.STATE_DIR,
             ).process_ie_result(feed, download=False)
 
     async def __write_feed_metadata(self, entry, etype, options: DownloadOptions):
