@@ -62,9 +62,25 @@ main
     justify-content: center
     align-items: center
     flex-wrap: wrap
-    gap: 20px
+    gap: 8px 0
     color: #fff
     font-size: 0.9rem
+    overflow: hidden
+    margin-left: -1px
+
+    .footer-item
+      position: relative
+      padding: 0 12px
+
+      &::before
+        content: ""
+        position: absolute
+        left: 0
+        top: 50%
+        transform: translateY(-50%)
+        width: 1px
+        height: 16px
+        background: rgba(255,255,255,0.2)
 
     .version-item
       display: flex
@@ -84,12 +100,6 @@ main
         background: rgba(255,255,255,0.1)
         border-radius: 4px
 
-    .version-separator
-      width: 1px
-      height: 16px
-      background: rgba(255,255,255,0.2)
-      margin: 0 4px
-
     .github-link
       display: flex
       align-items: center
@@ -97,7 +107,6 @@ main
       color: #fff
       text-decoration: none
       font-size: 0.85rem
-      padding: 2px 8px
       border-radius: 4px
       transition: background-color 0.2s ease
 
