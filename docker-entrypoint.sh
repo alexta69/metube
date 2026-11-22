@@ -51,7 +51,7 @@ disable_nightly_for_non_root() {
     fi
 }
 
-if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
+if [ $(id -u) -eq 0 ] && [ $(id -g) -eq 0 ]; then
     if [ "${PUID}" -eq 0 ]; then
         echo "Warning: it is not recommended to run as root user, please check your setting of the PUID/PGID (or legacy UID/GID) environment variables"
     fi
@@ -69,7 +69,7 @@ if [ `id -u` -eq 0 ] && [ `id -g` -eq 0 ]; then
     run_supervised gosu "${PUID}":"${PGID}" python3 app/main.py
     exit $?
 else
-    echo "User set by docker; running MeTube as `id -u`:`id -g`"
+    echo "User set by docker; running MeTube as $(id -u):$(id -g)"
     disable_nightly_for_non_root
     echo "Starting BgUtils POT Provider"
     bgutil-pot server >/tmp/bgutil-pot.log 2>&1 &

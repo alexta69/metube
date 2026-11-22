@@ -28,10 +28,8 @@ WORKDIR /app
 
 COPY pyproject.toml uv.lock docker-entrypoint.sh ./
 
-# Use sed to strip carriage-return characters from the entrypoint script (in case building on Windows)
 # Install dependencies
-RUN sed -i 's/\r$//g' docker-entrypoint.sh && \
-    chmod +x docker-entrypoint.sh && \
+RUN chmod +x docker-entrypoint.sh && \
     apt-get update && \
     apt-get install -y --no-install-recommends \
       ca-certificates \
