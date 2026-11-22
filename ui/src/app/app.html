@@ -625,20 +625,15 @@
           <span class="version-label">yt-dlp</span>
           <span class="version-value">{{ytDlpVersion}}</span>
         </div>
-        <div class="version-separator"></div>
         <div class="version-item">
           <span class="version-label">MeTube</span>
           <span class="version-value">{{metubeVersion}}</span>
         </div>
-        <div class="version-separator"></div>
         @if (ytDlpOptionsUpdateTime) {
           <div class="version-item">
             <span class="version-label">yt-dlp-options</span>
             <span class="version-value">{{ytDlpOptionsUpdateTime}}</span>
           </div>
-        }
-        @if (ytDlpOptionsUpdateTime) {
-          <div class="version-separator"></div>
         }
         <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
           <fa-icon [icon]="faGithub" />

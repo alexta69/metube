@@ -57,11 +57,14 @@ main
   padding: 10px 0
   background: linear-gradient(to bottom, rgba(0,0,0,0.2), rgba(0,0,0,0.1))
 
+  // Wraps on narrow screens instead of overflowing. The items are spaced by
+  // the gap alone: a separator between them would end or start a wrapped row.
   .footer-content
     display: flex
+    flex-wrap: wrap
     justify-content: center
     align-items: center
-    gap: 20px
+    gap: 8px 28px
     color: #fff
     font-size: 0.9rem
 
@@ -82,12 +85,6 @@ main
         padding: 2px 6px
         background: rgba(255,255,255,0.1)
         border-radius: 4px
-
-    .version-separator
-      width: 1px
-      height: 16px
-      background: rgba(255,255,255,0.2)
-      margin: 0 4px
 
     .github-link
       display: flex
