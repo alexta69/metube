@@ -416,6 +416,21 @@ describe('App', () => {
       expect(fixture.nativeElement.querySelector('.footer-content')?.textContent).toContain('2026.10.18');
     });
 
+    it('wraps the footer and hides its separators on extra-small screens', () => {
+      (TestBed.inject(HttpClient).get as ReturnType<typeof vi.fn>).mockReturnValue(
+        of({ 'yt-dlp': '2026.10.01', version: '2026.10.18' }),
+      );
+      const fixture = TestBed.createComponent(App);
+      fixture.detectChanges();
+      downloads.ytdlOptionsChanged.next({ success: true, update_time: 1792281600 });
+      fixture.detectChanges();
+
+      const footer: HTMLElement = fixture.nativeElement.querySelector('.footer-content');
+      expect(footer.classList.contains('flex-wrap')).toBe(true);
+      expect(footer.querySelectorAll('.version-separator')).toHaveLength(3);
+      expect(footer.querySelectorAll('.version-separator.d-none.d-sm-block')).toHaveLength(3);
+    });
+
     it('marks the view when the copied confirmation is set and when it clears', async () => {
       vi.useFakeTimers();
       try {

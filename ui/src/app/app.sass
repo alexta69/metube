@@ -59,14 +59,19 @@ main
 
   .footer-content
     display: flex
+    flex-wrap: wrap
     justify-content: center
     align-items: center
-    gap: 20px
+    row-gap: 8px
+    column-gap: 20px
     color: #fff
     font-size: 0.9rem
 
     .version-item
       display: flex
+      flex-wrap: wrap
+      justify-content: center
+      max-width: 100%
       align-items: center
       gap: 8px
 
@@ -77,6 +82,8 @@ main
         opacity: 0.7
 
       .version-value
+        max-width: 100%
+        overflow-wrap: break-word
         font-family: monospace
         font-size: 0.85rem
         padding: 2px 6px

@@ -620,17 +620,17 @@
 <footer class="footer navbar-dark bg-dark py-3 mt-5">
   <div class="container text-center">
     @if (ytDlpVersion && metubeVersion) {
-      <div class="footer-content">
+      <div class="footer-content flex-wrap">
         <div class="version-item">
           <span class="version-label">yt-dlp</span>
           <span class="version-value">{{ytDlpVersion}}</span>
         </div>
-        <div class="version-separator"></div>
+        <div class="version-separator d-none d-sm-block"></div>
         <div class="version-item">
           <span class="version-label">MeTube</span>
           <span class="version-value">{{metubeVersion}}</span>
         </div>
-        <div class="version-separator"></div>
+        <div class="version-separator d-none d-sm-block"></div>
         @if (ytDlpOptionsUpdateTime) {
           <div class="version-item">
             <span class="version-label">yt-dlp-options</span>
@@ -638,7 +638,7 @@
           </div>
         }
         @if (ytDlpOptionsUpdateTime) {
-          <div class="version-separator"></div>
+          <div class="version-separator d-none d-sm-block"></div>
         }
         <a href="https://github.com/alexta69/metube" target="_blank" class="github-link">
           <fa-icon [icon]="faGithub" />
