@@ -690,6 +690,39 @@ def _capture_ytdl_params(download: Download) -> dict:
     return params
 
 
+class RetryTests(unittest.TestCase):
+    def test_transfers_and_fragments_retry_like_the_cli(self):
+        # YoutubeDL treats a missing 'retries' as 0; the CLI's 10 come from
+        # its option parser, so MeTube has to set them itself.
+        params = _capture_ytdl_params(_make_test_download())
+
+        self.assertEqual(params['retries'], 10)
+        self.assertEqual(params['fragment_retries'], 10)
+
+    def test_only_transfer_retries_wait(self):
+        params = _capture_ytdl_params(_make_test_download())
+
+        sleep = params['retry_sleep_functions']
+        # Fragment retries also cover 4xx: waiting there would hold each
+        # missing fragment for minutes before yt-dlp skips it.
+        self.assertEqual(set(sleep), {'http'})
+        # yt-dlp calls it as sleep_func(n=attempt - 1); the default 10 retries
+        # then wait 1, 2, 4 ... 32 seconds and a minute for the rest.
+        waits = [sleep['http'](n=n) for n in range(10)]
+        self.assertEqual(waits, [1, 2, 4, 8, 16, 32, 60, 60, 60, 60])
+
+    def test_user_options_replace_the_default(self):
+        download = _make_test_download()
+        custom = {'http': lambda n: 5}
+        download.ytdl_opts = {'retries': 50, 'fragment_retries': 0, 'retry_sleep_functions': custom}
+
+        params = _capture_ytdl_params(download)
+
+        self.assertEqual(params['retries'], 50)
+        self.assertEqual(params['fragment_retries'], 0)
+        self.assertIs(params['retry_sleep_functions'], custom)
+
+
 class SponsorBlockPostprocessorTests(unittest.TestCase):
     def test_no_sponsorblock_postprocessors_when_disabled(self):
         download = _make_test_download()

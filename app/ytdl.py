@@ -174,6 +174,26 @@ _LIVE_MAX_CHECK_INTERVAL = 3600
 # errors) tolerated before a scheduled live download is abandoned as errored.
 _LIVE_PROBE_MAX_FAILURES = 5
 
+# How often yt-dlp retries a failed transfer. Used as a library it doesn't
+# retry at all unless told to: the CLI's default of 10 comes from its option
+# parser, not from YoutubeDL. With no retries, a dropped connection fails the
+# download, and in HLS/DASH the fragment is skipped and the file still
+# finishes with a gap.
+_DOWNLOAD_RETRIES = 10
+# yt-dlp also retries back to back unless told to wait, so a connection that
+# takes a few seconds to come back would use all 10 up at once. Exponential
+# waits capped at a minute, the CLI's `--retry-sleep http:exp=1:60`, spread
+# them over about five minutes. Only the 'http' retries wait: they cover 5xx
+# and network errors, including inside a fragment. The 'fragment' retries also
+# cover 4xx, so a wait there would hold every missing fragment for five minutes
+# before yt-dlp skips it.
+_RETRY_SLEEP_MAX_SECONDS = 60
+
+
+def _retry_sleep(n: int) -> float:
+    """Seconds to wait before retry n+1 (yt-dlp passes n = attempt - 1)."""
+    return min(2.0 ** n, _RETRY_SLEEP_MAX_SECONDS)
+
 
 class _AlbumArtistPostProcessor(PostProcessor):
     """Fill missing album-artist metadata from yt-dlp's album-level signals."""
@@ -1029,6 +1049,10 @@ class Download:
                 'format': self.format,
                 'socket_timeout': 30,
                 'ignore_no_formats_error': True,
+                # Before **self.ytdl_opts, so user values replace these.
+                'retries': _DOWNLOAD_RETRIES,
+                'fragment_retries': _DOWNLOAD_RETRIES,
+                'retry_sleep_functions': {'http': _retry_sleep},
                 **self.ytdl_opts,
                 # paths and outtmpl are dicts of independent keys. A user value
                 # (YTDL_OPTIONS, a preset, an override) is merged into MeTube's
